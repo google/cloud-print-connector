@@ -1,0 +1,156 @@
+package main
+
+import (
+	"cups-connector/lib"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"log"
+	"net/http"
+	"net/url"
+
+	"github.com/golang/oauth2"
+)
+
+const (
+	defaultMaxConcurrentFetch      = 5
+	defaultCUPSQueueSize           = 2
+	defaultCUPSPollIntervalPrinter = 60
+	defaultCUPSPollIntervalJob     = 5
+)
+
+func getUserClient() *http.Client {
+	options := oauth2.Options{
+		ClientID:     lib.ClientID,
+		ClientSecret: lib.ClientSecret,
+		RedirectURL:  lib.RedirectURL,
+		Scopes:       []string{lib.ScopeCloudPrint},
+	}
+	oauthConfig, err := oauth2.NewConfig(&options, lib.AuthURL, lib.TokenURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Login to Google as the user that will share printers, then visit this URL:")
+	fmt.Println("")
+	fmt.Println(oauthConfig.AuthCodeURL("", "offline", "auto"))
+	fmt.Println("")
+	fmt.Println("After authenticating, enter the provided code here:")
+
+	var authCode string
+	if _, err = fmt.Scan(&authCode); err != nil {
+		log.Fatal(err)
+	}
+
+	transport, err := oauthConfig.NewTransportWithCode(authCode)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("")
+	fmt.Println("Acquired OAuth credentials for user account")
+
+	return &http.Client{Transport: transport}
+}
+
+func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
+	params := url.Values{}
+	params.Set("oauth_client_id", lib.ClientID)
+	params.Set("proxy", proxy)
+	response, err := userClient.Get(lib.CreateRobotURL + "?" + params.Encode())
+	if err != nil {
+		log.Fatal(err)
+	}
+	if response.StatusCode != 200 {
+		log.Fatal("failed to initialize robot account: " + response.Status)
+	}
+
+	var robotInit struct {
+		Success  bool   `json:"success"`
+		Message  string `json:"message"`
+		XMPPJID  string `json:"xmpp_jid"`
+		AuthCode string `json:"authorization_code"`
+	}
+
+	if err = json.NewDecoder(response.Body).Decode(&robotInit); err != nil {
+		log.Fatal(err)
+	}
+	if !robotInit.Success {
+		log.Fatal("failed to initialize robot account: " + robotInit.Message)
+	}
+
+	fmt.Println("Requested OAuth credentials for robot account")
+
+	return robotInit.XMPPJID, robotInit.AuthCode
+}
+
+func verifyRobotAccount(authCode string) *oauth2.Token {
+	options := oauth2.Options{
+		ClientID:     lib.ClientID,
+		ClientSecret: lib.ClientSecret,
+		RedirectURL:  lib.RedirectURL,
+		Scopes:       []string{lib.ScopeCloudPrint, lib.ScopeGoogleTalk},
+	}
+	oauthConfig, err := oauth2.NewConfig(&options, lib.AuthURL, lib.TokenURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	token, err := oauthConfig.Exchange(authCode)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Acquired OAuth credentials for robot account")
+
+	return token
+}
+
+func createRobotAccount(userClient *http.Client, proxy string) (string, *oauth2.Token) {
+	xmppJID, authCode := initRobotAccount(userClient, proxy)
+	token := verifyRobotAccount(authCode)
+
+	return xmppJID, token
+}
+
+func createConfigFile(xmppJID string, token *oauth2.Token, proxy string) {
+	config := lib.Config{
+		RefreshToken:            token.RefreshToken,
+		XMPPJID:                 xmppJID,
+		Proxy:                   proxy,
+		MaxConcurrentFetch:      defaultMaxConcurrentFetch,
+		CUPSQueueSize:           defaultCUPSQueueSize,
+		CUPSPollIntervalPrinter: defaultCUPSPollIntervalPrinter,
+		CUPSPollIntervalJob:     defaultCUPSPollIntervalJob,
+	}
+
+	if err := config.ToFile(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func getProxy() string {
+	fmt.Printf("Proxy name for this CloudPrint-CUPS server: ")
+	var proxy string
+	if _, err := fmt.Scan(&proxy); err != nil {
+		log.Fatal(err)
+	} else if len(proxy) < 1 {
+		log.Fatal(errors.New("Proxy cannot be blank."))
+	}
+
+	return proxy
+}
+
+func main() {
+	flag.Parse()
+
+	userClient := getUserClient()
+	proxy := getProxy()
+	xmppJID, token := createRobotAccount(userClient, proxy)
+	createConfigFile(xmppJID, token, proxy)
+
+	fmt.Println("")
+	fmt.Printf("The config file %s is ready to rock.\n", *lib.ConfigFilename)
+	fmt.Println("Keep it somewhere safe, as it contains an OAuth token.")
+}
