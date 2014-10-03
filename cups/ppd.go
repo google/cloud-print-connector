@@ -13,7 +13,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-package ppd
+package cups
 
 /*
 #cgo LDFLAGS: -lcups
@@ -36,7 +36,7 @@ import (
 	"unsafe"
 )
 
-type PPDCache struct {
+type ppdCache struct {
 	httpConnection *C.http_t
 	m              map[string]*ppdCacheEntry
 	request        chan ppdRequest
@@ -54,14 +54,14 @@ type ppdResponse struct {
 	err      error
 }
 
-func NewPPDCache(httpConnection *C.http_t) *PPDCache {
+func newPPDCache(httpConnection *C.http_t) *ppdCache {
 	m := make(map[string]*ppdCacheEntry)
-	pc := PPDCache{httpConnection, m, make(chan ppdRequest), make(chan bool)}
+	pc := ppdCache{httpConnection, m, make(chan ppdRequest), make(chan bool)}
 	go pc.servePPDs()
 	return &pc
 }
 
-func (pc *PPDCache) Quit() {
+func (pc *ppdCache) quit() {
 	pc.q <- true
 	<-pc.q
 	for printerName, pce := range pc.m {
@@ -70,7 +70,7 @@ func (pc *PPDCache) Quit() {
 	}
 }
 
-func (pc *PPDCache) GetPPD(printerName string) (string, error) {
+func (pc *ppdCache) getPPD(printerName string) (string, error) {
 	ch := make(chan ppdResponse)
 	request := ppdRequest{printerName, ch}
 	pc.request <- request
@@ -87,7 +87,7 @@ func (pc *PPDCache) GetPPD(printerName string) (string, error) {
 	return string(ppd), nil
 }
 
-func (pc *PPDCache) GetPPDHash(printerName string) (string, error) {
+func (pc *ppdCache) getPPDHash(printerName string) (string, error) {
 	ch := make(chan ppdResponse)
 	request := ppdRequest{printerName, ch}
 	pc.request <- request
@@ -95,7 +95,7 @@ func (pc *PPDCache) GetPPDHash(printerName string) (string, error) {
 	return response.hash, response.err
 }
 
-func (pc *PPDCache) getPrinterNames() ([]string, error) {
+func (pc *ppdCache) getPrinterNames() ([]string, error) {
 	var c_dests *C.cups_dest_t
 	c_num_dests := C.cupsGetDests2(pc.httpConnection, &c_dests)
 	if c_num_dests < 0 {
@@ -121,7 +121,7 @@ func (pc *PPDCache) getPrinterNames() ([]string, error) {
 	return names, nil
 }
 
-func (pc *PPDCache) servePPDs() {
+func (pc *ppdCache) servePPDs() {
 	// Prime the cache.
 	printerNames, err := pc.getPrinterNames()
 	if err != nil {
@@ -167,7 +167,7 @@ type ppdCacheEntry struct {
 	hash    string
 }
 
-// Creates an instance of PPDCache with the name field set, all else empty.
+// Creates an instance of ppdCache with the name field set, all else empty.
 // Don't forget to call C.free() for the name and buffer fields with
 // ppdCacheEntry.free()!
 func createPPDCacheEntry(name string) (*ppdCacheEntry, error) {

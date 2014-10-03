@@ -22,7 +22,6 @@ package cups
 */
 import "C"
 import (
-	"cups-connector/cups/ppd"
 	"cups-connector/lib"
 	"errors"
 	"fmt"
@@ -35,7 +34,7 @@ import (
 // Interface between Go and the CUPS API.
 type CUPS struct {
 	httpConnection *C.http_t
-	pc             *ppd.PPDCache
+	pc             *ppdCache
 }
 
 // These variables would be C.free()'d, but we treat them like constants.
@@ -55,13 +54,14 @@ func NewCUPS(host string, port int) *CUPS {
 }
 
 func NewCUPSDefault() *CUPS {
-	pc := ppd.NewPPDCache(nil)
+	pc := newPPDCache(nil)
 	c := &CUPS{nil, pc}
+
 	return c
 }
 
 func (c *CUPS) Quit() {
-	c.pc.Quit()
+	c.pc.quit()
 }
 
 // Calls cupsGetDests2().
@@ -131,7 +131,7 @@ func (c *CUPS) destToPrinter(c_dest *C.cups_dest_t) (lib.Printer, error) {
 		location = C.GoString(c_printerLocation)
 	}
 
-	ppdHash, err := c.pc.GetPPDHash(name)
+	ppdHash, err := c.pc.getPPDHash(name)
 	if err != nil {
 		return lib.Printer{}, err
 	}
@@ -151,14 +151,14 @@ func (c *CUPS) destToPrinter(c_dest *C.cups_dest_t) (lib.Printer, error) {
 //
 // Calls cupsGetPPD3().
 func (c *CUPS) GetPPD(printerName string) (string, error) {
-	return c.pc.GetPPD(printerName)
+	return c.pc.getPPD(printerName)
 }
 
 // Gets the PPD hash, aka capsHash, for printer.
 //
 // Calls cupsGetPPD3().
 func (c *CUPS) GetPPDHash(printerName string) (string, error) {
-	return c.pc.GetPPDHash(printerName)
+	return c.pc.getPPDHash(printerName)
 }
 
 // Gets the status of all jobs, jobID:status map.
