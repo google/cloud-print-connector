@@ -25,7 +25,6 @@ import (
 	"cups-connector/lib"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"reflect"
 	"unsafe"
@@ -47,15 +46,33 @@ var (
 	cupsGCPID            *C.char = C.CString("gcp-id")
 )
 
-func NewCUPS(host string, port int) *CUPS {
-	// TODO implement
-	log.Fatal(errors.New("NewCUPS constructor not implemented"))
-	panic("unreachable")
-}
-
+// Connects to the CUPS server specified by environment vars, client.conf, etc.
 func NewCUPSDefault() *CUPS {
-	pc := newPPDCache(nil)
-	c := &CUPS{nil, pc}
+	c_host := C.cupsServer()
+	c_port := C.ippPort()
+	c_encryption := C.cupsEncryption()
+
+	c_http := C.httpConnectEncrypt(c_host, c_port, c_encryption)
+
+	var e string
+	switch c_encryption {
+	case C.HTTP_ENCRYPTION_ALWAYS:
+		e = "encrypting ALWAYS"
+	case C.HTTP_ENCRYPTION_IF_REQUESTED:
+		e = "encrypting IF REQUESTED"
+	case C.HTTP_ENCRYPTION_NEVER:
+		e = "encrypting NEVER"
+	case C.HTTP_ENCRYPTION_REQUIRED:
+		e = "encryption REQUIRED"
+	default:
+		c_encryption = C.HTTP_ENCRYPTION_IF_REQUESTED
+		e = "encrypting IF REQUESTED"
+	}
+
+	fmt.Printf("connected to CUPS server %s:%d %s\n", C.GoString(c_host), int(c_port), e)
+
+	pc := newPPDCache(c_http)
+	c := &CUPS{c_http, pc}
 
 	return c
 }
