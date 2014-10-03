@@ -33,7 +33,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	cups := cups.NewCUPSDefault()
+	cups, err := cups.NewCUPS()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	gcp, err := gcp.NewGoogleCloudPrint(config.RefreshToken, config.XMPPJID, config.Proxy)
 	if err != nil {

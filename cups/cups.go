@@ -30,12 +30,6 @@ import (
 	"unsafe"
 )
 
-// Interface between Go and the CUPS API.
-type CUPS struct {
-	httpConnection *C.http_t
-	pc             *ppdCache
-}
-
 // These variables would be C.free()'d, but we treat them like constants.
 var (
 	cupsPrinterInfo      *C.char = C.CString("printer-info")
@@ -46,13 +40,23 @@ var (
 	cupsGCPID            *C.char = C.CString("gcp-id")
 )
 
+// Interface between Go and the CUPS API.
+type CUPS struct {
+	httpConnection *C.http_t
+	pc             *ppdCache
+}
+
 // Connects to the CUPS server specified by environment vars, client.conf, etc.
-func NewCUPSDefault() *CUPS {
+func NewCUPS() (*CUPS, error) {
 	c_host := C.cupsServer()
 	c_port := C.ippPort()
 	c_encryption := C.cupsEncryption()
 
 	c_http := C.httpConnectEncrypt(c_host, c_port, c_encryption)
+	if c_http == nil {
+		msg := fmt.Sprintf("Failed to connect to %s:%d", C.GoString(c_host), int(c_port))
+		return nil, errors.New(msg)
+	}
 
 	var e string
 	switch c_encryption {
@@ -74,7 +78,7 @@ func NewCUPSDefault() *CUPS {
 	pc := newPPDCache(c_http)
 	c := &CUPS{c_http, pc}
 
-	return c
+	return c, nil
 }
 
 func (c *CUPS) Quit() {
