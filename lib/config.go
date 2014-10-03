@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	ConfigFilename = flag.String("config-filename", "cpc.oauth.json", "Name of config file")
+	ConfigFilename = flag.String("config-filename", "cups-connector.oauth.json", "Name of config file")
 )
 
 type Config struct {
