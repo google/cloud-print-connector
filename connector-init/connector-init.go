@@ -18,12 +18,12 @@ package main
 import (
 	"cups-connector/lib"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/golang/oauth2"
 )
@@ -129,15 +129,16 @@ func createRobotAccount(userClient *http.Client, proxy string) (string, *oauth2.
 	return xmppJID, token
 }
 
-func createConfigFile(xmppJID string, token *oauth2.Token, proxy string) {
+func createConfigFile(xmppJID string, token *oauth2.Token, proxy string, infoToDisplayName bool) {
 	config := lib.Config{
-		RefreshToken:            token.RefreshToken,
-		XMPPJID:                 xmppJID,
-		Proxy:                   proxy,
-		MaxConcurrentFetch:      defaultMaxConcurrentFetch,
-		CUPSQueueSize:           defaultCUPSQueueSize,
-		CUPSPollIntervalPrinter: defaultCUPSPollIntervalPrinter,
-		CUPSPollIntervalJob:     defaultCUPSPollIntervalJob,
+		RefreshToken:                 token.RefreshToken,
+		XMPPJID:                      xmppJID,
+		Proxy:                        proxy,
+		MaxConcurrentFetch:           defaultMaxConcurrentFetch,
+		CUPSQueueSize:                defaultCUPSQueueSize,
+		CUPSPollIntervalPrinter:      defaultCUPSPollIntervalPrinter,
+		CUPSPollIntervalJob:          defaultCUPSPollIntervalJob,
+		CopyPrinterInfoToDisplayName: infoToDisplayName,
 	}
 
 	if err := config.ToFile(); err != nil {
@@ -146,15 +147,36 @@ func createConfigFile(xmppJID string, token *oauth2.Token, proxy string) {
 }
 
 func getProxy() string {
-	fmt.Printf("Proxy name for this CloudPrint-CUPS server: ")
-	var proxy string
-	if _, err := fmt.Scan(&proxy); err != nil {
-		log.Fatal(err)
-	} else if len(proxy) < 1 {
-		log.Fatal(errors.New("Proxy cannot be blank."))
+	for {
+		var proxy string
+		fmt.Printf("Proxy name for this CloudPrint-CUPS server: ")
+		if _, err := fmt.Scan(&proxy); err != nil {
+			log.Fatal(err)
+		} else if len(proxy) > 0 {
+			return proxy
+		}
 	}
 
-	return proxy
+	panic("unreachable")
+}
+
+func getInfoToDisplayName() bool {
+	for {
+		var infoToDisplayName string
+		fmt.Printf("Copy CUPS printer-info attribute to GCP defaultDisplayName? ")
+		if _, err := fmt.Scan(&infoToDisplayName); err != nil {
+			log.Fatal(err)
+		} else if len(infoToDisplayName) > 0 {
+			switch strings.ToLower(infoToDisplayName[0:1]) {
+			case "y", "t", "1":
+				return true
+			case "n", "f", "0":
+				return false
+			}
+		}
+	}
+
+	panic("unreachable")
 }
 
 func main() {
@@ -162,8 +184,9 @@ func main() {
 
 	userClient := getUserClient()
 	proxy := getProxy()
+	infoToDisplayName := getInfoToDisplayName()
 	xmppJID, token := createRobotAccount(userClient, proxy)
-	createConfigFile(xmppJID, token, proxy)
+	createConfigFile(xmppJID, token, proxy, infoToDisplayName)
 
 	fmt.Println("")
 	fmt.Printf("The config file %s is ready to rock.\n", *lib.ConfigFilename)

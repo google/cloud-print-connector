@@ -63,6 +63,12 @@ const (
 type PrinterDiff struct {
 	Operation PrinterDiffOperation
 	Printer   Printer // Only GCPID, Name, and changed fields are filled.
+
+	DefaultDisplayNameChanged bool
+	DescriptionChanged        bool
+	StatusChanged             bool
+	CapsHashChanged           bool
+	LocationChanged           bool
 }
 
 func printerSliceToMapByName(s []Printer) map[string]Printer {
@@ -86,7 +92,7 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 	for _, gcpPrinter := range gcpPrinters {
 		if printersConsidered[gcpPrinter.Name] {
 			// GCP can have multiple printers with one name. Remove dupes.
-			diffs = append(diffs, PrinterDiff{DeletePrinter, gcpPrinter})
+			diffs = append(diffs, PrinterDiff{Operation: DeletePrinter, Printer: gcpPrinter})
 			dirty = true
 
 		} else {
@@ -95,7 +101,7 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 			if cupsPrinter, exists := cupsPrintersByName[gcpPrinter.Name]; exists {
 				cupsPrinter.GCPID = gcpPrinter.GCPID
 				if cupsPrinter == gcpPrinter {
-					diffs = append(diffs, PrinterDiff{LeavePrinter, gcpPrinter})
+					diffs = append(diffs, PrinterDiff{Operation: LeavePrinter, Printer: gcpPrinter})
 
 				} else {
 					diffs = append(diffs, diffPrinter(&cupsPrinter, &gcpPrinter))
@@ -103,7 +109,7 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 				}
 
 			} else {
-				diffs = append(diffs, PrinterDiff{DeletePrinter, gcpPrinter})
+				diffs = append(diffs, PrinterDiff{Operation: DeletePrinter, Printer: gcpPrinter})
 				dirty = true
 			}
 		}
@@ -111,7 +117,7 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 
 	for _, cupsPrinter := range cupsPrinters {
 		if !printersConsidered[cupsPrinter.Name] {
-			diffs = append(diffs, PrinterDiff{RegisterPrinter, cupsPrinter})
+			diffs = append(diffs, PrinterDiff{Operation: RegisterPrinter, Printer: cupsPrinter})
 			dirty = true
 		}
 	}
@@ -127,30 +133,26 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 // pc: printer-CUPS; the thing that is correct
 // pg: printer-GCP; the thing that will be updated
 func diffPrinter(pc, pg *Printer) PrinterDiff {
-	// pd: printer-diff; the thing that fixes pg.
-	// Name and GCPID are immutable keys, so don't diff them.
-	pd := Printer{
-		GCPID: pg.GCPID,
-		Name:  pg.Name,
-	}
-	if pg.DefaultDisplayName != pc.DefaultDisplayName {
-		pd.DefaultDisplayName = pc.DefaultDisplayName
-	}
-	if pg.Description != pc.Description {
-		pd.Description = pc.Description
-	}
-	if pg.Status != pc.Status {
-		pd.Status = pc.Status
-	}
-	if pg.CapsHash != pc.CapsHash {
-		pd.CapsHash = pc.CapsHash
-	}
-	if pg.Location != pc.Location {
-		pd.Location = pc.Location
+	d := PrinterDiff{
+		Operation: UpdatePrinter,
+		Printer:   *pc,
 	}
 
-	return PrinterDiff{
-		Operation: UpdatePrinter,
-		Printer:   pd,
+	if pg.DefaultDisplayName != pc.DefaultDisplayName {
+		d.DefaultDisplayNameChanged = true
 	}
+	if pg.Description != pc.Description {
+		d.DescriptionChanged = true
+	}
+	if pg.Status != pc.Status {
+		d.StatusChanged = true
+	}
+	if pg.CapsHash != pc.CapsHash {
+		d.CapsHashChanged = true
+	}
+	if pg.Location != pc.Location {
+		d.LocationChanged = true
+	}
+
+	return d
 }

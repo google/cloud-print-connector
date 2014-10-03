@@ -245,31 +245,31 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 // Updates a Google Cloud Print Printer.
 //
 // Calls google.com/cloudprint/update.
-func (gcp *GoogleCloudPrint) Update(printer *lib.Printer, ppd string) error {
+func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 	form := url.Values{}
-	form.Set("printerid", printer.GCPID)
+	form.Set("printerid", diff.Printer.GCPID)
 	form.Set("proxy", gcp.proxyName)
 
 	// Ignore Name field because it never changes.
-	if len(printer.DefaultDisplayName) > 0 {
-		form.Set("default_display_name", printer.DefaultDisplayName)
+	if diff.DefaultDisplayNameChanged {
+		form.Set("default_display_name", diff.Printer.DefaultDisplayName)
 	}
 
-	if len(printer.Description) > 0 {
-		form.Set("description", printer.Description)
+	if diff.DescriptionChanged {
+		form.Set("description", diff.Printer.Description)
 	}
 
-	if len(printer.Status) > 0 {
-		form.Set("status", string(printer.Status))
+	if diff.StatusChanged {
+		form.Set("status", string(diff.Printer.Status))
 	}
 
-	if len(printer.CapsHash) > 0 {
-		form.Set("capsHash", printer.CapsHash)
+	if diff.CapsHashChanged {
+		form.Set("capsHash", diff.Printer.CapsHash)
 		form.Set("capabilities", ppd)
 	}
 
-	if len(printer.Location) > 0 {
-		form.Add("tag", fmt.Sprintf("location=%s", printer.Location))
+	if diff.LocationChanged {
+		form.Add("tag", fmt.Sprintf("location=%s", diff.Printer.Location))
 	}
 
 	if _, err := gcp.post("update", form); err != nil {

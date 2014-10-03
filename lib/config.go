@@ -46,6 +46,9 @@ type Config struct {
 
 	// Maximum interval, in seconds, between CUPS job status polls.
 	CUPSPollIntervalJob uint `json:"cups_poll_interval_job"`
+
+	// Copy CUPS printer-info attribute to GCP defaultDisplayName field.
+	CopyPrinterInfoToDisplayName bool `json:"copy_printer_info"`
 }
 
 func ConfigFromFile() (*Config, error) {

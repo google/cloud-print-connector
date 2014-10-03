@@ -116,37 +116,31 @@ func (pm *PrinterManager) syncPrinters() {
 			}
 			if err := pm.gcp.Register(&diff.Printer, ppd); err != nil {
 				log.Printf("Failed to register a new printer:\n  %s\n", err)
-				break
 			} else {
 				currentPrinters[diff.Printer.GCPID] = diff.Printer
 			}
-			fmt.Println("Registration complete")
 
 		case lib.UpdatePrinter:
 			fmt.Printf("Updating %s\n", diff.Printer.Name)
-			ppd := ""
-			if len(diff.Printer.CapsHash) > 0 {
+			var ppd string
+			if diff.CapsHashChanged {
 				ppd, err = pm.cups.GetPPD(diff.Printer.Name)
 				if err != nil {
 					log.Printf("Failed to call GetPPD():\n  %s\n", err)
 					break
 				}
 			}
-			if err = pm.gcp.Update(&diff.Printer, ppd); err != nil {
+			if err = pm.gcp.Update(&diff, ppd); err != nil {
 				log.Printf("Failed to update a printer:\n  %s\n", err)
-				break
 			} else {
 				currentPrinters[diff.Printer.GCPID] = diff.Printer
 			}
-			fmt.Println("Update complete")
 
 		case lib.DeletePrinter:
 			fmt.Printf("Deleting %s\n", diff.Printer.Name)
 			if err := pm.gcp.Delete(diff.Printer.GCPID); err != nil {
 				log.Printf("Failed to delete a printer %s:\n  %s\n", diff.Printer.GCPID, err)
-				break
 			}
-			fmt.Println("Delete complete")
 
 		case lib.LeavePrinter:
 			fmt.Printf("Leaving %s\n", diff.Printer.Name)

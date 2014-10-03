@@ -42,12 +42,13 @@ var (
 
 // Interface between Go and the CUPS API.
 type CUPS struct {
-	httpConnection *C.http_t
-	pc             *ppdCache
+	httpConnection    *C.http_t
+	pc                *ppdCache
+	infoToDisplayName bool
 }
 
 // Connects to the CUPS server specified by environment vars, client.conf, etc.
-func NewCUPS() (*CUPS, error) {
+func NewCUPS(infoToDisplayName bool) (*CUPS, error) {
 	c_host := C.cupsServer()
 	c_port := C.ippPort()
 	c_encryption := C.cupsEncryption()
@@ -76,7 +77,7 @@ func NewCUPS() (*CUPS, error) {
 	fmt.Printf("connected to CUPS server %s:%d %s\n", C.GoString(c_host), int(c_port), e)
 
 	pc := newPPDCache(c_http)
-	c := &CUPS{c_http, pc}
+	c := &CUPS{c_http, pc, infoToDisplayName}
 
 	return c, nil
 }
@@ -158,12 +159,14 @@ func (c *CUPS) destToPrinter(c_dest *C.cups_dest_t) (lib.Printer, error) {
 	}
 
 	printer := lib.Printer{
-		Name:               name,
-		DefaultDisplayName: info,
-		Description:        makeModel,
-		Status:             status,
-		CapsHash:           ppdHash,
-		Location:           location,
+		Name:        name,
+		Description: makeModel,
+		Status:      status,
+		CapsHash:    ppdHash,
+		Location:    location,
+	}
+	if c.infoToDisplayName {
+		printer.DefaultDisplayName = info
 	}
 	return printer, nil
 }
