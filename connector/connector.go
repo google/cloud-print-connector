@@ -33,7 +33,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName)
+	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes)
 	if err != nil {
 		log.Fatal(err)
 	}

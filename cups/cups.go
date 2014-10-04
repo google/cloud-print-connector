@@ -32,23 +32,29 @@ import (
 
 // These variables would be C.free()'d, but we treat them like constants.
 var (
-	cupsPrinterInfo      *C.char = C.CString("printer-info")
-	cupsPrinterAccepting *C.char = C.CString("printer-is-accepting-jobs")
-	cupsPrinterLocation  *C.char = C.CString("printer-location")
-	cupsPrinterMakeModel *C.char = C.CString("printer-make-and-model")
-	cupsPrinterState     *C.char = C.CString("printer-state")
-	cupsGCPID            *C.char = C.CString("gcp-id")
+	cupsPrinterInfo         *C.char = C.CString("printer-info")
+	cupsPrinterAccepting    *C.char = C.CString("printer-is-accepting-jobs")
+	cupsPrinterLocation     *C.char = C.CString("printer-location")
+	cupsPrinterMakeModel    *C.char = C.CString("printer-make-and-model")
+	cupsPrinterState        *C.char = C.CString("printer-state")
+	cupsRequestedAttributes *C.char = C.CString("requested-attributes")
 )
 
 // Interface between Go and the CUPS API.
 type CUPS struct {
-	httpConnection    *C.http_t
-	pc                *ppdCache
-	infoToDisplayName bool
+	httpConnection      *C.http_t
+	pc                  *ppdCache
+	infoToDisplayName   bool
+	c_printerAttributes []*C.char
 }
 
 // Connects to the CUPS server specified by environment vars, client.conf, etc.
-func NewCUPS(infoToDisplayName bool) (*CUPS, error) {
+func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) {
+	c_printerAttributes := make([]*C.char, 0, len(printerAttributes))
+	for _, a := range printerAttributes {
+		c_printerAttributes = append(c_printerAttributes, C.CString(a))
+	}
+
 	c_host := C.cupsServer()
 	c_port := C.ippPort()
 	c_encryption := C.cupsEncryption()
@@ -77,13 +83,16 @@ func NewCUPS(infoToDisplayName bool) (*CUPS, error) {
 	fmt.Printf("connected to CUPS server %s:%d %s\n", C.GoString(c_host), int(c_port), e)
 
 	pc := newPPDCache(c_http)
-	c := &CUPS{c_http, pc, infoToDisplayName}
+	c := &CUPS{c_http, pc, infoToDisplayName, c_printerAttributes}
 
 	return c, nil
 }
 
 func (c *CUPS) Quit() {
 	c.pc.quit()
+	for _, a := range c.c_printerAttributes {
+		C.free(unsafe.Pointer(a))
+	}
 }
 
 // Calls cupsGetDests2().
@@ -116,6 +125,14 @@ func (c *CUPS) GetDests() ([]lib.Printer, error) {
 	}
 
 	return printers, nil
+}
+
+func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
+	req := C.ippNewRequest(C.IPP_OP_CUPS_GET_PRINTERS)
+	for _, a := range c.c_printerAttributes {
+		C.ippAddString(req, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, cupsRequestedAttributes, nil, a)
+	}
+	return nil, nil
 }
 
 // Converts a cups_dest_t to a *lib.Printer.

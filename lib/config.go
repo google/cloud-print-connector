@@ -21,8 +21,22 @@ import (
 	"io/ioutil"
 )
 
+const (
+	DefaultMaxConcurrentFetch      = 5
+	DefaultCUPSQueueSize           = 2
+	DefaultCUPSPollIntervalPrinter = 60
+	DefaultCUPSPollIntervalJob     = 5
+)
+
 var (
-	ConfigFilename = flag.String("config-filename", "cups-connector.oauth.json", "Name of config file")
+	ConfigFilename           = flag.String("config-filename", "cups-connector.oauth.json", "Name of config file")
+	DefaultPrinterAttributes = []string{
+		"printer-info",
+		"printer-is-accepting-jobs",
+		"printer-location",
+		"printer-make-and-model",
+		"printer-state",
+	}
 )
 
 type Config struct {
@@ -46,6 +60,9 @@ type Config struct {
 
 	// Maximum interval, in seconds, between CUPS job status polls.
 	CUPSPollIntervalJob uint `json:"cups_poll_interval_job"`
+
+	// CUPS printer attributes to copy to GCP.
+	CUPSPrinterAttributes []string `json:"cups_printer_attributes"`
 
 	// Copy CUPS printer-info attribute to GCP defaultDisplayName field.
 	CopyPrinterInfoToDisplayName bool `json:"copy_printer_info"`

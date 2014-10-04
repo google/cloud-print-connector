@@ -28,13 +28,6 @@ import (
 	"github.com/golang/oauth2"
 )
 
-const (
-	defaultMaxConcurrentFetch      = 5
-	defaultCUPSQueueSize           = 2
-	defaultCUPSPollIntervalPrinter = 60
-	defaultCUPSPollIntervalJob     = 5
-)
-
 func getUserClient() *http.Client {
 	options := oauth2.Options{
 		ClientID:     lib.ClientID,
@@ -134,10 +127,11 @@ func createConfigFile(xmppJID string, token *oauth2.Token, proxy string, infoToD
 		RefreshToken:                 token.RefreshToken,
 		XMPPJID:                      xmppJID,
 		Proxy:                        proxy,
-		MaxConcurrentFetch:           defaultMaxConcurrentFetch,
-		CUPSQueueSize:                defaultCUPSQueueSize,
-		CUPSPollIntervalPrinter:      defaultCUPSPollIntervalPrinter,
-		CUPSPollIntervalJob:          defaultCUPSPollIntervalJob,
+		MaxConcurrentFetch:           lib.DefaultMaxConcurrentFetch,
+		CUPSQueueSize:                lib.DefaultCUPSQueueSize,
+		CUPSPollIntervalPrinter:      lib.DefaultCUPSPollIntervalPrinter,
+		CUPSPollIntervalJob:          lib.DefaultCUPSPollIntervalJob,
+		CUPSPrinterAttributes:        lib.DefaultPrinterAttributes,
 		CopyPrinterInfoToDisplayName: infoToDisplayName,
 	}
 
