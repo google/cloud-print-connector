@@ -31,11 +31,13 @@ const (
 var (
 	ConfigFilename           = flag.String("config-filename", "cups-connector.oauth.json", "Name of config file")
 	DefaultPrinterAttributes = []string{
+		"printer-name",
 		"printer-info",
 		"printer-is-accepting-jobs",
 		"printer-location",
 		"printer-make-and-model",
 		"printer-state",
+		"printer-state-reasons",
 	}
 )
 

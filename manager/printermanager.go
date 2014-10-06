@@ -91,9 +91,9 @@ func printerMapToSlice(m map[string]lib.Printer) []lib.Printer {
 func (pm *PrinterManager) syncPrinters() {
 	fmt.Println("Starting syncPrinters")
 
-	cupsPrinters, err := pm.cups.GetDests()
+	cupsPrinters, err := pm.cups.GetPrinters()
 	if err != nil {
-		log.Printf("Failed to call GetDests():\n  %s\n", err)
+		log.Printf("Failed to call GetPrinters():\n  %s\n", err)
 	}
 	diffs := lib.DiffPrinters(cupsPrinters, printerMapToSlice(pm.gcpPrintersByGCPID))
 

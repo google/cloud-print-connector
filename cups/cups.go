@@ -19,6 +19,57 @@ package cups
 #cgo LDFLAGS: -lcups
 #include <cups/cups.h>
 #include <stdlib.h> // free
+#include <arpa/inet.h> // ntohs
+
+const char
+    *POST_RESOURCE = "/",
+    *PRINTER_INFO = "printer-info",
+    *PRINTER_ACCEPTING = "printer-is-accepting-jobs",
+    *PRINTER_MAKE_MODEL = "printer-make-and-model",
+    *PRINTER_STATE = "printer-state",
+    *REQUESTED_ATTRIBUTES = "requested-attributes";
+
+// Allocates a new char**, initializes the values to NULL.
+char **newArrayOfStrings(int size) {
+	return calloc(size, sizeof(char *));
+}
+
+// Sets one value in a char**.
+void setStringArrayValue(char **stringArray, int index, char *value) {
+	stringArray[index] = value;
+}
+
+// Frees a char** and associated non-NULL char*.
+void freeStringArrayAndStrings(char **stringArray, int size) {
+	int i;
+	for (i = 0; i < size; i++) {
+		if (stringArray[i] != NULL)
+			free(stringArray[i]);
+	}
+	free(stringArray);
+}
+
+// Wraps ippGetResolution() until bug fixed:
+// https://code.google.com/p/go/issues/detail?id=7270
+int ippGetResolutionWrapper(ipp_attribute_t *attr, int element, int *yres, int *units) {
+	return ippGetResolution(attr, element, yres, (ipp_res_t *)units);
+}
+
+// Parses octets from IPP date format (RFC 2579).
+void parseDate(ipp_uchar_t *ipp_date, unsigned short *year, unsigned char *month, unsigned char *day,
+		unsigned char *hour, unsigned char *minutes, unsigned char *seconds, unsigned char *deciseconds,
+		unsigned char *utcDirection, unsigned char *utcHours, unsigned char *utcMinutes) {
+	*year = ntohs(*(unsigned short*)ipp_date);
+	*month = ipp_date[2];
+	*day = ipp_date[3];
+	*hour = ipp_date[4];
+	*minutes = ipp_date[5];
+	*seconds = ipp_date[6];
+	*deciseconds = ipp_date[7];
+	*utcDirection = ipp_date[8] == '+' ? 1 : -1;
+	*utcHours = ipp_date[9];
+	*utcMinutes = ipp_date[10];
+}
 */
 import "C"
 import (
@@ -27,32 +78,26 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
+	"time"
 	"unsafe"
-)
-
-// These variables would be C.free()'d, but we treat them like constants.
-var (
-	cupsPrinterInfo         *C.char = C.CString("printer-info")
-	cupsPrinterAccepting    *C.char = C.CString("printer-is-accepting-jobs")
-	cupsPrinterLocation     *C.char = C.CString("printer-location")
-	cupsPrinterMakeModel    *C.char = C.CString("printer-make-and-model")
-	cupsPrinterState        *C.char = C.CString("printer-state")
-	cupsRequestedAttributes *C.char = C.CString("requested-attributes")
 )
 
 // Interface between Go and the CUPS API.
 type CUPS struct {
-	httpConnection      *C.http_t
-	pc                  *ppdCache
-	infoToDisplayName   bool
-	c_printerAttributes []*C.char
+	c_http                *C.http_t
+	pc                    *ppdCache
+	infoToDisplayName     bool
+	c_printerAttributes   **C.char
+	printerAttributesSize int
 }
 
 // Connects to the CUPS server specified by environment vars, client.conf, etc.
 func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) {
-	c_printerAttributes := make([]*C.char, 0, len(printerAttributes))
-	for _, a := range printerAttributes {
-		c_printerAttributes = append(c_printerAttributes, C.CString(a))
+	printerAttributesSize := len(printerAttributes)
+	c_printerAttributes := C.newArrayOfStrings(C.int(printerAttributesSize))
+	for i, a := range printerAttributes {
+		C.setStringArrayValue(c_printerAttributes, C.int(i), C.CString(a))
 	}
 
 	c_host := C.cupsServer()
@@ -83,26 +128,24 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) 
 	fmt.Printf("connected to CUPS server %s:%d %s\n", C.GoString(c_host), int(c_port), e)
 
 	pc := newPPDCache(c_http)
-	c := &CUPS{c_http, pc, infoToDisplayName, c_printerAttributes}
+	c := &CUPS{c_http, pc, infoToDisplayName, c_printerAttributes, printerAttributesSize}
 
 	return c, nil
 }
 
 func (c *CUPS) Quit() {
 	c.pc.quit()
-	for _, a := range c.c_printerAttributes {
-		C.free(unsafe.Pointer(a))
-	}
+	C.freeStringArrayAndStrings(c.c_printerAttributes, C.int(c.printerAttributesSize))
 }
 
 // Calls cupsGetDests2().
 func (c *CUPS) GetDests() ([]lib.Printer, error) {
 	var c_dests *C.cups_dest_t
-	c_numDests := C.cupsGetDests2(c.httpConnection, &c_dests)
+	c_numDests := C.cupsGetDests2(c.c_http, &c_dests)
 	if c_numDests < 0 {
-		text := fmt.Sprintf("CUPS failed to call cupsGetDests2(): %d %s",
+		msg := fmt.Sprintf("CUPS failed to call cupsGetDests2(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
-		return nil, errors.New(text)
+		return nil, errors.New(msg)
 	}
 	defer C.cupsFreeDests(c_numDests, c_dests)
 
@@ -127,12 +170,153 @@ func (c *CUPS) GetDests() ([]lib.Printer, error) {
 	return printers, nil
 }
 
+// Calls cupsDoRequest() with IPP_OP_CUPS_GET_PRINTERS.
 func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
-	req := C.ippNewRequest(C.IPP_OP_CUPS_GET_PRINTERS)
-	for _, a := range c.c_printerAttributes {
-		C.ippAddString(req, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, cupsRequestedAttributes, nil, a)
+	// ippNewRequest() returned ipp_t pointer does not need explicit free.
+	c_req := C.ippNewRequest(C.IPP_OP_CUPS_GET_PRINTERS)
+	C.ippAddStrings(c_req, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES,
+		C.int(c.printerAttributesSize), nil, c.c_printerAttributes)
+
+	c_res := C.cupsDoRequest(c.c_http, c_req, C.POST_RESOURCE)
+	if c_res == nil {
+		msg := fmt.Sprintf("CUPS failed to call cupsDoRequest(): %d %s",
+			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
+		return nil, errors.New(msg)
 	}
-	return nil, nil
+	// cupsDoRequest() returned ipp_t pointer needs explicit free.
+	defer C.ippDelete(c_res)
+
+	if C.ippGetStatusCode(c_res) != C.IPP_STATUS_OK {
+		msg := fmt.Sprintf("CUPS failed while calling cupsDoRequest(), IPP status code: %d",
+			C.ippGetStatusCode(c_res))
+		return nil, errors.New(msg)
+	}
+
+	printers := make([]lib.Printer, 0, 1)
+
+	for a := C.ippFirstAttribute(c_res); a != nil; a = C.ippNextAttribute(c_res) {
+		if C.ippGetGroupTag(a) != C.IPP_TAG_PRINTER {
+			continue
+		}
+
+		attributes := make([]*C.ipp_attribute_t, 0, c.printerAttributesSize)
+
+		for ; a != nil && C.ippGetGroupTag(a) == C.IPP_TAG_PRINTER; a = C.ippNextAttribute(c_res) {
+			attributes = append(attributes, a)
+		}
+
+		printer, err := c.printerFromAttributes(attributes)
+		if err != nil {
+			return nil, err
+		}
+		printers = append(printers, printer)
+
+		if a == nil {
+			break
+		}
+	}
+
+	return printers, nil
+}
+
+// Converts slice of attributes to a Printer.
+func (c *CUPS) printerFromAttributes(attributes []*C.ipp_attribute_t) (lib.Printer, error) {
+	tags := make(map[string]string)
+
+	for _, a := range attributes {
+		key := C.GoString(C.ippGetName(a))
+		count := int(C.ippGetCount(a))
+		values := make([]string, count)
+
+		switch C.ippGetValueTag(a) {
+		case C.IPP_TAG_NOVALUE, C.IPP_TAG_NOTSETTABLE:
+			// No value means no value.
+
+		case C.IPP_TAG_INTEGER, C.IPP_TAG_ENUM:
+			for i := 0; i < count; i++ {
+				values[i] = fmt.Sprintf("%d", int(C.ippGetInteger(a, C.int(i))))
+			}
+
+		case C.IPP_TAG_BOOLEAN:
+			for i := 0; i < count; i++ {
+				if int(C.ippGetInteger(a, C.int(i))) == 0 {
+					values[i] = "false"
+				} else {
+					values[i] = "true"
+				}
+			}
+
+		case C.IPP_TAG_STRING, C.IPP_TAG_TEXT, C.IPP_TAG_NAME, C.IPP_TAG_KEYWORD, C.IPP_TAG_URI, C.IPP_TAG_CHARSET, C.IPP_TAG_LANGUAGE, C.IPP_TAG_MIMETYPE:
+			for i := 0; i < count; i++ {
+				values[i] = C.GoString(C.ippGetString(a, C.int(i), nil))
+			}
+
+		case C.IPP_TAG_DATE:
+			for i := 0; i < count; i++ {
+				c_date := C.ippGetDate(a, C.int(i))
+				var c_year C.ushort
+				var c_month, c_day, c_hour, c_minutes, c_seconds, c_deciSeconds, c_utcDirection, c_utcHours, c_utcMinutes C.uchar
+				C.parseDate(c_date, &c_year, &c_month, &c_day, &c_hour, &c_minutes, &c_seconds, &c_deciSeconds, &c_utcDirection, &c_utcHours, &c_utcMinutes)
+				l := time.FixedZone("", 60*int(uint8(c_utcDirection)*uint8(c_utcHours)*uint8(c_utcMinutes)))
+				t := time.Date(int(c_year), (time.Month)(int(c_month)), int(c_day), int(c_hour), int(c_minutes), int(c_seconds), int(c_deciSeconds)*100000000, l)
+				values[i] = fmt.Sprintf("%d", t.Unix())
+			}
+
+		case C.IPP_TAG_RESOLUTION:
+			for i := 0; i < count; i++ {
+				c_yres := C.int(-1)
+				c_unit := C.int(-1)
+				c_xres := C.ippGetResolutionWrapper(a, C.int(i), &c_yres, &c_unit)
+				var unit string
+				if c_unit == C.IPP_RES_PER_CM {
+					unit = "cm"
+				} else {
+					unit = "i"
+				}
+				values[i] = fmt.Sprintf("%dx%dpp%s", int(c_xres), int(c_yres), unit)
+			}
+
+		case C.IPP_TAG_RANGE:
+			for i := 0; i < count; i++ {
+				c_uppervalue := C.int(-1)
+				c_lowervalue := C.ippGetRange(a, C.int(i), &c_uppervalue)
+				values[i] = fmt.Sprintf("%d~%d", int(c_lowervalue), int(c_uppervalue))
+			}
+
+		default:
+			if count > 0 {
+				values = []string{"unknown"}
+			}
+		}
+
+		value := strings.Join(values, ",")
+		if value == "none" {
+			value = ""
+		}
+		tags[key] = value
+	}
+
+	printerName, exists := tags["printer-name"]
+	if !exists {
+		return lib.Printer{}, errors.New("printer-name tag missing; did you remove it from the config file?")
+	}
+	ppdHash, err := c.pc.getPPDHash(printerName)
+	if err != nil {
+		return lib.Printer{}, err
+	}
+
+	p := lib.Printer{
+		Name:        tags["printer-name"],
+		Description: tags["printer-make-and-model"],
+		Status:      lib.PrinterStatusFromString(tags["printer-state"]),
+		CapsHash:    ppdHash,
+		Tags:        tags,
+	}
+	if c.infoToDisplayName {
+		p.DefaultDisplayName = tags["printer-info"]
+	}
+
+	return p, nil
 }
 
 // Converts a cups_dest_t to a *lib.Printer.
@@ -140,34 +324,28 @@ func (c *CUPS) destToPrinter(c_dest *C.cups_dest_t) (lib.Printer, error) {
 	name := C.GoString(c_dest.name)
 
 	var info string
-	c_info := C.cupsGetOption(cupsPrinterInfo, c_dest.num_options, c_dest.options)
+	c_info := C.cupsGetOption(C.PRINTER_INFO, c_dest.num_options, c_dest.options)
 	if c_info != nil {
 		info = C.GoString(c_info)
 	}
 
 	var makeModel string
-	c_makeModel := C.cupsGetOption(cupsPrinterMakeModel, c_dest.num_options, c_dest.options)
+	c_makeModel := C.cupsGetOption(C.PRINTER_MAKE_MODEL, c_dest.num_options, c_dest.options)
 	if c_makeModel != nil {
 		makeModel = C.GoString(c_makeModel)
 	}
 
 	acceptingJobs := true
-	c_acceptingJobs := C.cupsGetOption(cupsPrinterAccepting, c_dest.num_options, c_dest.options)
+	c_acceptingJobs := C.cupsGetOption(C.PRINTER_ACCEPTING, c_dest.num_options, c_dest.options)
 	if c_acceptingJobs != nil {
 		acceptingJobs = C.GoString(c_acceptingJobs) != "false"
 	}
 	var status lib.PrinterStatus
 	if acceptingJobs {
-		c_printerState := C.cupsGetOption(cupsPrinterState, c_dest.num_options, c_dest.options)
+		c_printerState := C.cupsGetOption(C.PRINTER_STATE, c_dest.num_options, c_dest.options)
 		status = lib.PrinterStatusFromString(C.GoString(c_printerState))
 	} else {
 		status = lib.PrinterStopped
-	}
-
-	var location string
-	c_printerLocation := C.cupsGetOption(cupsPrinterLocation, c_dest.num_options, c_dest.options)
-	if c_printerLocation != nil {
-		location = C.GoString(c_printerLocation)
 	}
 
 	ppdHash, err := c.pc.getPPDHash(name)
@@ -180,7 +358,6 @@ func (c *CUPS) destToPrinter(c_dest *C.cups_dest_t) (lib.Printer, error) {
 		Description: makeModel,
 		Status:      status,
 		CapsHash:    ppdHash,
-		Location:    location,
 	}
 	if c.infoToDisplayName {
 		printer.DefaultDisplayName = info
@@ -208,11 +385,11 @@ func (c *CUPS) GetPPDHash(printerName string) (string, error) {
 func (c *CUPS) GetJobs() (map[uint32]lib.JobStatus, error) {
 	// TODO: Get status message string like pycups Connection.getJobAttributes().
 	var c_jobs *C.cups_job_t
-	c_numJobs := C.cupsGetJobs2(c.httpConnection, &c_jobs, nil, 1, C.CUPS_WHICHJOBS_ALL)
+	c_numJobs := C.cupsGetJobs2(c.c_http, &c_jobs, nil, 1, C.CUPS_WHICHJOBS_ALL)
 	if c_numJobs < 0 {
-		text := fmt.Sprintf("CUPS failed to call cupsGetJobs2(): %d %s",
+		msg := fmt.Sprintf("CUPS failed to call cupsGetJobs2(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
-		return nil, errors.New(text)
+		return nil, errors.New(msg)
 	}
 	defer C.cupsFreeJobs(c_numJobs, c_jobs)
 
@@ -243,12 +420,12 @@ func (c *CUPS) Print(printerName, fileName, title string) (uint32, error) {
 	c_title := C.CString(title)
 	defer C.free(unsafe.Pointer(c_title))
 
-	c_jobID := C.cupsPrintFile2(c.httpConnection, c_printerName, c_fileName, c_title, 0, nil)
+	c_jobID := C.cupsPrintFile2(c.c_http, c_printerName, c_fileName, c_title, 0, nil)
 	jobID := uint32(c_jobID)
 	if jobID == 0 {
-		text := fmt.Sprintf("CUPS failed call cupsPrintFile2(): %d %s",
+		msg := fmt.Sprintf("CUPS failed call cupsPrintFile2(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
-		return 0, errors.New(text)
+		return 0, errors.New(msg)
 	}
 
 	return jobID, nil

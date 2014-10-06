@@ -15,7 +15,10 @@ limitations under the License.
 */
 package lib
 
-import "strings"
+import (
+	"reflect"
+	"strings"
+)
 
 type PrinterStatus string
 
@@ -41,13 +44,13 @@ const (
 
 // CUPS: cups_dest_t; GCP: /register and /update interfaces
 type Printer struct {
-	GCPID              string        // CUPS: custom field;                GCP: printerid (GCP key)
-	Name               string        // CUPS: cups_dest_t.name (CUPS key); GCP: name field
-	DefaultDisplayName string        // CUPS: printer-info option;         GCP: default_display_name field
-	Description        string        // CUPS: printer-make-and-model;      GCP: description field
-	Status             PrinterStatus // CUPS: printer-state;               GCP: status field
-	CapsHash           string        // CUPS: hash of PPD;                 GCP: capsHash field
-	Location           string        // CUPS: printer-location option;     GCP: custom tag
+	GCPID              string            // CUPS: custom field;                GCP: printerid (GCP key)
+	Name               string            // CUPS: cups_dest_t.name (CUPS key); GCP: name field
+	DefaultDisplayName string            // CUPS: printer-info option;         GCP: default_display_name field
+	Description        string            // CUPS: printer-make-and-model;      GCP: description field
+	Status             PrinterStatus     // CUPS: printer-state;               GCP: status field
+	CapsHash           string            // CUPS: hash of PPD;                 GCP: capsHash field
+	Tags               map[string]string // CUPS: all printer attributes;      GCP: repeated tag field
 }
 
 type PrinterDiffOperation int8
@@ -68,7 +71,7 @@ type PrinterDiff struct {
 	DescriptionChanged        bool
 	StatusChanged             bool
 	CapsHashChanged           bool
-	LocationChanged           bool
+	TagsChanged               bool
 }
 
 func printerSliceToMapByName(s []Printer) map[string]Printer {
@@ -100,7 +103,7 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 
 			if cupsPrinter, exists := cupsPrintersByName[gcpPrinter.Name]; exists {
 				cupsPrinter.GCPID = gcpPrinter.GCPID
-				if cupsPrinter == gcpPrinter {
+				if reflect.DeepEqual(cupsPrinter, gcpPrinter) {
 					diffs = append(diffs, PrinterDiff{Operation: LeavePrinter, Printer: gcpPrinter})
 
 				} else {
@@ -150,8 +153,8 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if pg.CapsHash != pc.CapsHash {
 		d.CapsHashChanged = true
 	}
-	if pg.Location != pc.Location {
-		d.LocationChanged = true
+	if !reflect.DeepEqual(pg.Tags, pc.Tags) {
+		d.TagsChanged = true
 	}
 
 	return d

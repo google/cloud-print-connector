@@ -37,10 +37,10 @@ import (
 )
 
 type ppdCache struct {
-	httpConnection *C.http_t
-	m              map[string]*ppdCacheEntry
-	request        chan ppdRequest
-	q              chan bool
+	c_http  *C.http_t
+	m       map[string]*ppdCacheEntry
+	request chan ppdRequest
+	q       chan bool
 }
 
 type ppdRequest struct {
@@ -54,9 +54,9 @@ type ppdResponse struct {
 	err      error
 }
 
-func newPPDCache(httpConnection *C.http_t) *ppdCache {
+func newPPDCache(c_http *C.http_t) *ppdCache {
 	m := make(map[string]*ppdCacheEntry)
-	pc := ppdCache{httpConnection, m, make(chan ppdRequest), make(chan bool)}
+	pc := ppdCache{c_http, m, make(chan ppdRequest), make(chan bool)}
 	go pc.servePPDs()
 	return &pc
 }
@@ -97,7 +97,7 @@ func (pc *ppdCache) getPPDHash(printerName string) (string, error) {
 
 func (pc *ppdCache) getPrinterNames() ([]string, error) {
 	var c_dests *C.cups_dest_t
-	c_num_dests := C.cupsGetDests2(pc.httpConnection, &c_dests)
+	c_num_dests := C.cupsGetDests2(pc.c_http, &c_dests)
 	if c_num_dests < 0 {
 		text := fmt.Sprintf("CUPS failed to call cupsGetDests2(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
@@ -132,7 +132,7 @@ func (pc *ppdCache) servePPDs() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		pce.refreshPPDCacheEntry(pc.httpConnection)
+		pce.refreshPPDCacheEntry(pc.c_http)
 		pc.m[printerName] = pce
 	}
 
@@ -146,7 +146,7 @@ func (pc *ppdCache) servePPDs() {
 					r.response <- ppdResponse{"", "", err}
 				}
 			}
-			if err := pce.refreshPPDCacheEntry(pc.httpConnection); err != nil {
+			if err := pce.refreshPPDCacheEntry(pc.c_http); err != nil {
 				r.response <- ppdResponse{"", "", err}
 			}
 			r.response <- ppdResponse{C.GoString(pce.buffer), pce.hash, nil}
@@ -193,8 +193,8 @@ func (pce *ppdCacheEntry) free() {
 }
 
 // Calls cupsGetPPD3().
-func (pce *ppdCacheEntry) refreshPPDCacheEntry(httpConnection *C.http_t) error {
-	c_http_status := C.cupsGetPPD3(httpConnection, pce.name, &pce.modtime, pce.buffer, pce.bufsize)
+func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
+	c_http_status := C.cupsGetPPD3(c_http, pce.name, &pce.modtime, pce.buffer, pce.bufsize)
 
 	switch c_http_status {
 	case C.HTTP_STATUS_NOT_MODIFIED:

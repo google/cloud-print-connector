@@ -182,13 +182,20 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, error) {
 
 	printers := make([]lib.Printer, 0, len(listData.Printers))
 	for _, p := range listData.Printers {
-		var location string
+		tags := make(map[string]string)
 		for _, tag := range p.Tags {
-			if strings.HasPrefix(tag, "location=") {
-				location = tag[strings.Index(tag, "=")+1:]
-				break
+			if !strings.HasPrefix(tag, "cups-") {
+				continue
 			}
+			s := strings.SplitN(tag, "=", 2)
+			key := s[0][5:]
+			var value string
+			if len(s) > 1 {
+				value = s[1]
+			}
+			tags[key] = value
 		}
+
 		printer := lib.Printer{
 			GCPID:              p.Id,
 			Name:               p.Name,
@@ -196,7 +203,7 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, error) {
 			Description:        p.Description,
 			Status:             lib.PrinterStatusFromString(p.Status),
 			CapsHash:           p.CapsHash,
-			Location:           location,
+			Tags:               tags,
 		}
 		printers = append(printers, printer)
 	}
@@ -221,7 +228,9 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 	form.Set("status", string(printer.Status))
 	form.Set("capsHash", printer.CapsHash)
 	form.Set("content_types", "application/pdf")
-	form.Add("tag", fmt.Sprintf("location=%s", printer.Location))
+	for key, value := range printer.Tags {
+		form.Add("tag", fmt.Sprintf("cups-%s=%s", key, value))
+	}
 
 	responseBody, err := gcp.post("register", form)
 	if err != nil {
@@ -268,8 +277,11 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 		form.Set("capabilities", ppd)
 	}
 
-	if diff.LocationChanged {
-		form.Add("tag", fmt.Sprintf("location=%s", diff.Printer.Location))
+	if diff.TagsChanged {
+		for key, value := range diff.Printer.Tags {
+			form.Add("tag", fmt.Sprintf("cups-%s=%s", key, value))
+		}
+		form.Set("remove_tag", "^cups-.*")
 	}
 
 	if _, err := gcp.post("update", form); err != nil {
