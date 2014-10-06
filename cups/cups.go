@@ -23,10 +23,6 @@ package cups
 
 const char
     *POST_RESOURCE = "/",
-    *PRINTER_INFO = "printer-info",
-    *PRINTER_ACCEPTING = "printer-is-accepting-jobs",
-    *PRINTER_MAKE_MODEL = "printer-make-and-model",
-    *PRINTER_STATE = "printer-state",
     *REQUESTED_ATTRIBUTES = "requested-attributes";
 
 // Allocates a new char**, initializes the values to NULL.
@@ -136,38 +132,6 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) 
 func (c *CUPS) Quit() {
 	c.pc.quit()
 	C.freeStringArrayAndStrings(c.c_printerAttributes, C.int(c.printerAttributesSize))
-}
-
-// Calls cupsGetDests2().
-func (c *CUPS) GetDests() ([]lib.Printer, error) {
-	var c_dests *C.cups_dest_t
-	c_numDests := C.cupsGetDests2(c.c_http, &c_dests)
-	if c_numDests < 0 {
-		msg := fmt.Sprintf("CUPS failed to call cupsGetDests2(): %d %s",
-			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
-		return nil, errors.New(msg)
-	}
-	defer C.cupsFreeDests(c_numDests, c_dests)
-
-	numDests := int(c_numDests)
-	hdr := reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(c_dests)),
-		Len:  numDests,
-		Cap:  numDests,
-	}
-	dests := *(*[]C.cups_dest_t)(unsafe.Pointer(&hdr))
-
-	printers := make([]lib.Printer, 0, len(dests))
-	for i := 0; i < len(dests); i++ {
-		c_dest := dests[i]
-		printer, err := c.destToPrinter(&c_dest)
-		if err != nil {
-			return nil, err
-		}
-		printers = append(printers, printer)
-	}
-
-	return printers, nil
 }
 
 // Calls cupsDoRequest() with IPP_OP_CUPS_GET_PRINTERS.
@@ -317,52 +281,6 @@ func (c *CUPS) printerFromAttributes(attributes []*C.ipp_attribute_t) (lib.Print
 	}
 
 	return p, nil
-}
-
-// Converts a cups_dest_t to a *lib.Printer.
-func (c *CUPS) destToPrinter(c_dest *C.cups_dest_t) (lib.Printer, error) {
-	name := C.GoString(c_dest.name)
-
-	var info string
-	c_info := C.cupsGetOption(C.PRINTER_INFO, c_dest.num_options, c_dest.options)
-	if c_info != nil {
-		info = C.GoString(c_info)
-	}
-
-	var makeModel string
-	c_makeModel := C.cupsGetOption(C.PRINTER_MAKE_MODEL, c_dest.num_options, c_dest.options)
-	if c_makeModel != nil {
-		makeModel = C.GoString(c_makeModel)
-	}
-
-	acceptingJobs := true
-	c_acceptingJobs := C.cupsGetOption(C.PRINTER_ACCEPTING, c_dest.num_options, c_dest.options)
-	if c_acceptingJobs != nil {
-		acceptingJobs = C.GoString(c_acceptingJobs) != "false"
-	}
-	var status lib.PrinterStatus
-	if acceptingJobs {
-		c_printerState := C.cupsGetOption(C.PRINTER_STATE, c_dest.num_options, c_dest.options)
-		status = lib.PrinterStatusFromString(C.GoString(c_printerState))
-	} else {
-		status = lib.PrinterStopped
-	}
-
-	ppdHash, err := c.pc.getPPDHash(name)
-	if err != nil {
-		return lib.Printer{}, err
-	}
-
-	printer := lib.Printer{
-		Name:        name,
-		Description: makeModel,
-		Status:      status,
-		CapsHash:    ppdHash,
-	}
-	if c.infoToDisplayName {
-		printer.DefaultDisplayName = info
-	}
-	return printer, nil
 }
 
 // Gets the PPD for printer.
