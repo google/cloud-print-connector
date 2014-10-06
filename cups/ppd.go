@@ -30,9 +30,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
-	"reflect"
 	"unsafe"
 )
 
@@ -95,59 +93,22 @@ func (pc *ppdCache) getPPDHash(printerName string) (string, error) {
 	return response.hash, response.err
 }
 
-func (pc *ppdCache) getPrinterNames() ([]string, error) {
-	var c_dests *C.cups_dest_t
-	c_num_dests := C.cupsGetDests2(pc.c_http, &c_dests)
-	if c_num_dests < 0 {
-		text := fmt.Sprintf("CUPS failed to call cupsGetDests2(): %d %s",
-			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
-		return nil, errors.New(text)
-	}
-	defer C.cupsFreeDests(c_num_dests, c_dests)
-
-	num_dests := int(c_num_dests)
-	hdr := reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(c_dests)),
-		Len:  num_dests,
-		Cap:  num_dests,
-	}
-	dests := *(*[]C.cups_dest_t)(unsafe.Pointer(&hdr))
-
-	names := make([]string, 0, num_dests)
-	for _, dest := range dests {
-		names = append(names, C.GoString(dest.name))
-	}
-
-	return names, nil
-}
-
 func (pc *ppdCache) servePPDs() {
-	// Prime the cache.
-	printerNames, err := pc.getPrinterNames()
-	if err != nil {
-		log.Fatal(err)
-	}
-	for _, printerName := range printerNames {
-		pce, err := createPPDCacheEntry(printerName)
-		if err != nil {
-			log.Fatal(err)
-		}
-		pce.refreshPPDCacheEntry(pc.c_http)
-		pc.m[printerName] = pce
-	}
-
 	for {
 		select {
 		case r := <-pc.request:
+			var err error
 			pce, exists := pc.m[r.printerName]
 			if !exists {
 				pce, err = createPPDCacheEntry(r.printerName)
 				if err != nil {
 					r.response <- ppdResponse{"", "", err}
+					continue
 				}
 			}
-			if err := pce.refreshPPDCacheEntry(pc.c_http); err != nil {
+			if err = pce.refreshPPDCacheEntry(pc.c_http); err != nil {
 				r.response <- ppdResponse{"", "", err}
+				continue
 			}
 			r.response <- ppdResponse{C.GoString(pce.buffer), pce.hash, nil}
 
