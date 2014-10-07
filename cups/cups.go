@@ -330,15 +330,25 @@ func (c *CUPS) GetJobs() (map[uint32]lib.JobStatus, error) {
 }
 
 // Calls cupsPrintFile2().
-func (c *CUPS) Print(printerName, fileName, title string) (uint32, error) {
+func (c *CUPS) Print(printerName, fileName, title string, options map[string]string) (uint32, error) {
 	c_printerName := C.CString(printerName)
 	defer C.free(unsafe.Pointer(c_printerName))
 	c_fileName := C.CString(fileName)
 	defer C.free(unsafe.Pointer(c_fileName))
 	c_title := C.CString(title)
 	defer C.free(unsafe.Pointer(c_title))
+	c_numOptions := C.int(0)
+	var c_options *C.cups_option_t = nil
+	defer C.cupsFreeOptions(c_numOptions, c_options)
 
-	c_jobID := C.cupsPrintFile2(c.c_http, c_printerName, c_fileName, c_title, 0, nil)
+	for key, value := range options {
+		c_key, c_value := C.CString(key), C.CString(value)
+		c_numOptions = C.cupsAddOption(c_key, c_value, c_numOptions, &c_options)
+		C.free(unsafe.Pointer(c_key))
+		C.free(unsafe.Pointer(c_value))
+	}
+
+	c_jobID := C.cupsPrintFile2(c.c_http, c_printerName, c_fileName, c_title, c_numOptions, c_options)
 	jobID := uint32(c_jobID)
 	if jobID == 0 {
 		msg := fmt.Sprintf("CUPS failed call cupsPrintFile2(): %d %s",

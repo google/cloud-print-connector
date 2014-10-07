@@ -170,7 +170,7 @@ func (pm *PrinterManager) listenGCPJobs() {
 	for {
 		select {
 		case job := <-ch:
-			go pm.processJob(job.GCPPrinterID, job.GCPJobID, job.FileURL)
+			go pm.processJob(job.GCPPrinterID, job.GCPJobID, job.FileURL, job.TicketURL)
 		case <-pm.gcpJobPollQuit:
 			pm.gcpJobPollQuit <- true
 			return
@@ -178,23 +178,31 @@ func (pm *PrinterManager) listenGCPJobs() {
 	}
 }
 
+// 0) Gets a job's ticket (job options).
 // 1) Downloads a new print job PDF to a temp file.
 // 2) Creates a new job in CUPS.
 // 3) Polls the CUPS job status to update the GCP job status.
 // 4) Returns when the job status is DONE or ERROR.
 // 5) Deletes temp file.
-func (pm *PrinterManager) processJob(gcpPrinterID, gcpJobID, fileURL string) {
+func (pm *PrinterManager) processJob(gcpPrinterID, gcpJobID, fileURL, ticketURL string) {
 	printer, exists := pm.gcpPrintersByGCPID[gcpPrinterID]
 	if !exists {
 		log.Printf("Failed to find printer %s for job %s\n", gcpPrinterID, gcpJobID)
 		fmt.Printf("%+v\n", pm.gcpPrintersByGCPID)
+		// TODO: gcp status=error with gcp.Control
+		return
+	}
+
+	options, err := pm.gcp.Ticket(ticketURL)
+	if err != nil {
+		log.Printf("Failed to get a job ticket: %s\n", err)
 		// TODO: gcp status=error
 		return
 	}
 
 	pdfFile, err := pm.cups.CreateTempFile()
 	if err != nil {
-		log.Printf("Failed to process job: %s\n", err)
+		log.Printf("Failed to create a temporary file for job: %s\n", err)
 		// TODO: gcp status=error
 		return
 	}
@@ -203,7 +211,7 @@ func (pm *PrinterManager) processJob(gcpPrinterID, gcpJobID, fileURL string) {
 	pdfFile.Close()
 	defer os.Remove(pdfFile.Name())
 
-	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), "gcp:"+gcpJobID)
+	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), "gcp:"+gcpJobID, options)
 	if err != nil {
 		log.Printf("Failed to send job %s to CUPS: %s\n", gcpJobID, err)
 		// TODO: gcp status=error

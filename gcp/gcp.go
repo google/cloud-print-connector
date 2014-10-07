@@ -131,8 +131,9 @@ func (gcp *GoogleCloudPrint) Fetch(printerID string) ([]lib.Job, error) {
 
 	var jobsData struct {
 		Jobs []struct {
-			Id      string
-			FileURL string
+			Id        string
+			FileURL   string
+			TicketURL string
 		}
 	}
 	if err = json.Unmarshal(responseBody, &jobsData); err != nil {
@@ -146,6 +147,7 @@ func (gcp *GoogleCloudPrint) Fetch(printerID string) ([]lib.Job, error) {
 			GCPPrinterID: printerID,
 			GCPJobID:     jobData.Id,
 			FileURL:      jobData.FileURL,
+			TicketURL:    jobData.TicketURL,
 		}
 		jobs = append(jobs, job)
 	}
@@ -313,6 +315,36 @@ func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 	}
 
 	return nil
+}
+
+// Gets a ticket (job options), returns it as a map.
+func (gcp *GoogleCloudPrint) Ticket(ticketURL string) (map[string]string, error) {
+	request, err := http.NewRequest("GET", ticketURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	response, err := gcp.transport.RoundTrip(request)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != 200 {
+		text := fmt.Sprintf("Ticket failed: %s %s", ticketURL, response.Status)
+		return nil, errors.New(text)
+	}
+
+	responseBody, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var m map[string]string
+	err = json.Unmarshal(responseBody, &m)
+	if err != nil {
+		return nil, err
+	}
+
+	return m, nil
 }
 
 func (gcp *GoogleCloudPrint) post(method string, form url.Values) ([]byte, error) {
