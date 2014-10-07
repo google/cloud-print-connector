@@ -38,7 +38,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	gcp, err := gcp.NewGoogleCloudPrint(config.RefreshToken, config.XMPPJID, config.Proxy)
+	gcp, err := gcp.NewGoogleCloudPrint(config.XMPPJID, config.RobotRefreshToken, config.UserRefreshToken, config.ShareScope, config.Proxy)
 	if err != nil {
 		log.Fatal(err)
 	}

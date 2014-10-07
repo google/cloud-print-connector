@@ -120,6 +120,13 @@ func (pm *PrinterManager) syncPrinters() {
 				currentPrinters[diff.Printer.GCPID] = diff.Printer
 			}
 
+			if pm.gcp.CanShare() {
+				fmt.Printf("Sharing %s\n", diff.Printer.Name)
+				if err := pm.gcp.Share(diff.Printer.GCPID); err != nil {
+					log.Printf("Failed to share a new printer:\n  %s\n", err)
+				}
+			}
+
 		case lib.UpdatePrinter:
 			fmt.Printf("Updating %s\n", diff.Printer.Name)
 			var ppd string

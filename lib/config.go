@@ -42,11 +42,17 @@ var (
 )
 
 type Config struct {
-	// Associated with robot account. Used for acquiring OAuth access tokens.
-	RefreshToken string `json:"refresh_token,omitempty"`
-
 	// Associated with root account. XMPP credential.
 	XMPPJID string `json:"xmpp_jid"`
+
+	// Associated with robot account. Used for acquiring OAuth access tokens.
+	RobotRefreshToken string `json:"robot_refresh_token"`
+
+	// Associated with user account. Used for sharing GCP printers; may be omitted.
+	UserRefreshToken string `json:"user_refresh_token,omitempty"`
+
+	// User or group email address, or domain name, to share all printers with.
+	ShareScope string `json:"share_scope,omitempty"`
 
 	// User-chosen name of this proxy. Should be unique per Google user account.
 	Proxy string `json:"proxy"`

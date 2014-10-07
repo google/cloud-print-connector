@@ -28,7 +28,7 @@ import (
 	"github.com/golang/oauth2"
 )
 
-func getUserClient() *http.Client {
+func getUserClient() (*http.Client, string, string) {
 	options := oauth2.Options{
 		ClientID:     lib.ClientID,
 		ClientSecret: lib.ClientSecret,
@@ -40,17 +40,12 @@ func getUserClient() *http.Client {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Login to Google as the user that will share printers, then visit this URL:")
+	fmt.Println("Login to Google as the user that will own the printers, then visit this URL:")
 	fmt.Println("")
 	fmt.Println(oauthConfig.AuthCodeURL("", "offline", "auto"))
 	fmt.Println("")
-	fmt.Println("After authenticating, enter the provided code here:")
 
-	var authCode string
-	if _, err = fmt.Scan(&authCode); err != nil {
-		log.Fatal(err)
-	}
-
+	authCode := scanNonEmptyString("After authenticating, enter the provided code here: ")
 	transport, err := oauthConfig.NewTransportWithCode(authCode)
 	if err != nil {
 		log.Fatal(err)
@@ -59,7 +54,15 @@ func getUserClient() *http.Client {
 	fmt.Println("")
 	fmt.Println("Acquired OAuth credentials for user account")
 
-	return &http.Client{Transport: transport}
+	var userRefreshToken, shareScope string
+	if scanYesOrNo("Would you like to retain the user OAuth token to enable automatic sharing? ") {
+		userRefreshToken = transport.Token().RefreshToken
+		shareScope = scanNonEmptyString("User or group email address, or domain name, to share with: ")
+	} else {
+		fmt.Println("The user account OAuth token will be thrown away.")
+	}
+
+	return &http.Client{Transport: transport}, userRefreshToken, shareScope
 }
 
 func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
@@ -93,7 +96,7 @@ func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
 	return robotInit.XMPPJID, robotInit.AuthCode
 }
 
-func verifyRobotAccount(authCode string) *oauth2.Token {
+func verifyRobotAccount(authCode string) string {
 	options := oauth2.Options{
 		ClientID:     lib.ClientID,
 		ClientSecret: lib.ClientSecret,
@@ -110,22 +113,22 @@ func verifyRobotAccount(authCode string) *oauth2.Token {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Acquired OAuth credentials for robot account")
-
-	return token
+	return token.RefreshToken
 }
 
-func createRobotAccount(userClient *http.Client, proxy string) (string, *oauth2.Token) {
+func createRobotAccount(userClient *http.Client, proxy string) (string, string) {
 	xmppJID, authCode := initRobotAccount(userClient, proxy)
 	token := verifyRobotAccount(authCode)
 
 	return xmppJID, token
 }
 
-func createConfigFile(xmppJID string, token *oauth2.Token, proxy string, infoToDisplayName bool) {
+func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxy string, infoToDisplayName bool) {
 	config := lib.Config{
-		RefreshToken:                 token.RefreshToken,
 		XMPPJID:                      xmppJID,
+		RobotRefreshToken:            robotRefreshToken,
+		UserRefreshToken:             userRefreshToken,
+		ShareScope:                   shareScope,
 		Proxy:                        proxy,
 		MaxConcurrentFetch:           lib.DefaultMaxConcurrentFetch,
 		CUPSQueueSize:                lib.DefaultCUPSQueueSize,
@@ -140,28 +143,27 @@ func createConfigFile(xmppJID string, token *oauth2.Token, proxy string, infoToD
 	}
 }
 
-func getProxy() string {
+func scanNonEmptyString(prompt string) string {
 	for {
-		var proxy string
-		fmt.Printf("Proxy name for this CloudPrint-CUPS server: ")
-		if _, err := fmt.Scan(&proxy); err != nil {
+		var answer string
+		fmt.Printf(prompt)
+		if length, err := fmt.Scan(&answer); err != nil {
 			log.Fatal(err)
-		} else if len(proxy) > 0 {
-			return proxy
+		} else if length > 0 {
+			return answer
 		}
 	}
-
 	panic("unreachable")
 }
 
-func getInfoToDisplayName() bool {
+func scanYesOrNo(question string) bool {
 	for {
-		var infoToDisplayName string
-		fmt.Printf("Copy CUPS printer-info attribute to GCP defaultDisplayName? ")
-		if _, err := fmt.Scan(&infoToDisplayName); err != nil {
+		var answer string
+		fmt.Printf(question)
+		if length, err := fmt.Scan(&answer); err != nil {
 			log.Fatal(err)
-		} else if len(infoToDisplayName) > 0 {
-			switch strings.ToLower(infoToDisplayName[0:1]) {
+		} else if length > 0 {
+			switch strings.ToLower(answer[0:1]) {
 			case "y", "t", "1":
 				return true
 			case "n", "f", "0":
@@ -169,20 +171,32 @@ func getInfoToDisplayName() bool {
 			}
 		}
 	}
-
 	panic("unreachable")
+}
+
+func getInfoToDisplayName() bool {
+	return scanYesOrNo("Copy CUPS printer-info attribute to GCP defaultDisplayName? ")
+}
+
+func getProxy() string {
+	return scanNonEmptyString("Proxy name for this CloudPrint-CUPS server: ")
 }
 
 func main() {
 	flag.Parse()
 
-	userClient := getUserClient()
+	userClient, userRefreshToken, shareScope := getUserClient()
 	proxy := getProxy()
 	infoToDisplayName := getInfoToDisplayName()
-	xmppJID, token := createRobotAccount(userClient, proxy)
-	createConfigFile(xmppJID, token, proxy, infoToDisplayName)
-
 	fmt.Println("")
+
+	xmppJID, robotRefreshToken := createRobotAccount(userClient, proxy)
+
+	fmt.Println("Acquired OAuth credentials for robot account")
+	fmt.Println("")
+
+	createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxy, infoToDisplayName)
+
 	fmt.Printf("The config file %s is ready to rock.\n", *lib.ConfigFilename)
 	fmt.Println("Keep it somewhere safe, as it contains an OAuth token.")
 }

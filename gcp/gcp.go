@@ -35,17 +35,41 @@ const baseURL = "https://www.google.com/cloudprint/"
 
 // Interface between Go and the Google Cloud Print API.
 type GoogleCloudPrint struct {
-	transport  *oauth2.Transport
-	xmppClient *xmpp.XMPP
-	proxyName  string
+	xmppClient     *xmpp.XMPP
+	robotTransport *oauth2.Transport
+	userTransport  *oauth2.Transport
+	shareScope     string
+	proxyName      string
 }
 
-func NewGoogleCloudPrint(refreshToken, xmppJID, proxyName string) (*GoogleCloudPrint, error) {
+func NewGoogleCloudPrint(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string) (*GoogleCloudPrint, error) {
+	robotTransport, err := newTransport(robotRefreshToken, lib.ScopeCloudPrint, lib.ScopeGoogleTalk)
+	if err != nil {
+		return nil, err
+	}
+
+	var userTransport *oauth2.Transport
+	if userRefreshToken != "" && shareScope != "" {
+		userTransport, err = newTransport(userRefreshToken, lib.ScopeCloudPrint)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	xmppClient, err := xmpp.NewXMPP(xmppJID, robotTransport.Token().AccessToken)
+	if err != nil {
+		return nil, err
+	}
+
+	return &GoogleCloudPrint{xmppClient, robotTransport, userTransport, shareScope, proxyName}, nil
+}
+
+func newTransport(refreshToken string, scopes ...string) (*oauth2.Transport, error) {
 	options := &oauth2.Options{
 		ClientID:     lib.ClientID,
 		ClientSecret: lib.ClientSecret,
 		RedirectURL:  lib.RedirectURL,
-		Scopes:       []string{lib.ScopeCloudPrint, lib.ScopeGoogleTalk},
+		Scopes:       scopes,
 	}
 	oauthConfig, err := oauth2.NewConfig(options, lib.AuthURL, lib.TokenURL)
 	if err != nil {
@@ -59,12 +83,11 @@ func NewGoogleCloudPrint(refreshToken, xmppJID, proxyName string) (*GoogleCloudP
 		return nil, err
 	}
 
-	xmppClient, err := xmpp.NewXMPP(xmppJID, transport.Token().AccessToken)
-	if err != nil {
-		return nil, err
-	}
+	return transport, nil
+}
 
-	return &GoogleCloudPrint{transport, xmppClient, proxyName}, nil
+func (gcp *GoogleCloudPrint) CanShare() bool {
+	return gcp.userTransport != nil
 }
 
 // Waits for the next batch of jobs from GCP. Blocks until batch arrives.
@@ -85,10 +108,10 @@ func (gcp *GoogleCloudPrint) NextJobBatch() ([]lib.Job, error) {
 }
 
 func (gcp *GoogleCloudPrint) GetAccessToken() string {
-	if gcp.transport.Token().Expired() {
-		gcp.transport.RefreshToken()
+	if gcp.robotTransport.Token().Expired() {
+		gcp.robotTransport.RefreshToken()
 	}
-	return gcp.transport.Token().AccessToken
+	return gcp.robotTransport.Token().AccessToken
 }
 
 // Calls google.com/cloudprint/control.
@@ -98,7 +121,7 @@ func (gcp *GoogleCloudPrint) Control(jobID, status, message string) error {
 	form.Set("status", status)
 	form.Set("message", message)
 
-	if _, err := gcp.post("control", form); err != nil {
+	if _, err := post(gcp.robotTransport, "control", form); err != nil {
 		return err
 	}
 
@@ -106,11 +129,11 @@ func (gcp *GoogleCloudPrint) Control(jobID, status, message string) error {
 }
 
 // Calls google.com/cloudprint/delete.
-func (gcp *GoogleCloudPrint) Delete(id string) error {
+func (gcp *GoogleCloudPrint) Delete(gcpID string) error {
 	form := url.Values{}
-	form.Set("printerid", id)
+	form.Set("printerid", gcpID)
 
-	if _, err := gcp.post("delete", form); err != nil {
+	if _, err := post(gcp.robotTransport, "delete", form); err != nil {
 		return err
 	}
 
@@ -120,18 +143,18 @@ func (gcp *GoogleCloudPrint) Delete(id string) error {
 // Gets the outstanding print jobs for a printer.
 //
 // Calls google.com/cloudprint/fetch.
-func (gcp *GoogleCloudPrint) Fetch(printerID string) ([]lib.Job, error) {
+func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 	form := url.Values{}
-	form.Set("printerid", printerID)
+	form.Set("printerid", gcpID)
 
-	responseBody, err := gcp.post("fetch", form)
+	responseBody, err := post(gcp.robotTransport, "fetch", form)
 	if err != nil {
 		return nil, err
 	}
 
 	var jobsData struct {
 		Jobs []struct {
-			Id        string
+			ID        string
 			FileURL   string
 			TicketURL string
 		}
@@ -144,8 +167,8 @@ func (gcp *GoogleCloudPrint) Fetch(printerID string) ([]lib.Job, error) {
 
 	for _, jobData := range jobsData.Jobs {
 		job := lib.Job{
-			GCPPrinterID: printerID,
-			GCPJobID:     jobData.Id,
+			GCPPrinterID: gcpID,
+			GCPJobID:     jobData.ID,
 			FileURL:      jobData.FileURL,
 			TicketURL:    jobData.TicketURL,
 		}
@@ -162,7 +185,7 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, error) {
 	form := url.Values{}
 	form.Set("proxy", gcp.proxyName)
 
-	responseBody, err := gcp.post("list", form)
+	responseBody, err := post(gcp.robotTransport, "list", form)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +257,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 		form.Add("tag", fmt.Sprintf("cups-%s=%s", key, value))
 	}
 
-	responseBody, err := gcp.post("register", form)
+	responseBody, err := post(gcp.robotTransport, "register", form)
 	if err != nil {
 		return err
 	}
@@ -286,7 +309,28 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 		form.Set("remove_tag", "^cups-.*")
 	}
 
-	if _, err := gcp.post("update", form); err != nil {
+	if _, err := post(gcp.robotTransport, "update", form); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Shares a GCP printer.
+//
+// Calls google.com/cloudprint/share.
+func (gcp *GoogleCloudPrint) Share(gcpID string) error {
+	if gcp.userTransport == nil {
+		return errors.New("Cannot share because user OAuth credentials not provided.")
+	}
+
+	form := url.Values{}
+	form.Set("printerid", gcpID)
+	form.Set("scope", gcp.shareScope)
+	form.Set("role", "USER")
+	form.Set("skip_notification", "true")
+
+	if _, err := post(gcp.userTransport, "share", form); err != nil {
 		return err
 	}
 
@@ -295,18 +339,9 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 
 // Downloads a url (print job) to a Writer.
 func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
-	request, err := http.NewRequest("GET", url, nil)
+	response, err := get(gcp.robotTransport, url)
 	if err != nil {
 		return err
-	}
-
-	response, err := gcp.transport.RoundTrip(request)
-	if err != nil {
-		return err
-	}
-	if response.StatusCode != 200 {
-		text := fmt.Sprintf("Download failed: %s %s", url, response.Status)
-		return errors.New(text)
 	}
 
 	_, err = io.Copy(dst, response.Body)
@@ -319,18 +354,9 @@ func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 
 // Gets a ticket (job options), returns it as a map.
 func (gcp *GoogleCloudPrint) Ticket(ticketURL string) (map[string]string, error) {
-	request, err := http.NewRequest("GET", ticketURL, nil)
+	response, err := get(gcp.robotTransport, ticketURL)
 	if err != nil {
 		return nil, err
-	}
-
-	response, err := gcp.transport.RoundTrip(request)
-	if err != nil {
-		return nil, err
-	}
-	if response.StatusCode != 200 {
-		text := fmt.Sprintf("Ticket failed: %s %s", ticketURL, response.Status)
-		return nil, errors.New(text)
 	}
 
 	responseBody, err := ioutil.ReadAll(response.Body)
@@ -347,7 +373,27 @@ func (gcp *GoogleCloudPrint) Ticket(ticketURL string) (map[string]string, error)
 	return m, nil
 }
 
-func (gcp *GoogleCloudPrint) post(method string, form url.Values) ([]byte, error) {
+// GETs to a URL. Returns the response object, in case the body is very large.
+func get(t *oauth2.Transport, url string) (*http.Response, error) {
+	request, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	response, err := t.RoundTrip(request)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != 200 {
+		text := fmt.Sprintf("Download failed: %s %s", url, response.Status)
+		return nil, errors.New(text)
+	}
+
+	return response, nil
+}
+
+// POSTs to a GCP method. Returns the body of the response.
+func post(t *oauth2.Transport, method string, form url.Values) ([]byte, error) {
 	requestBody := strings.NewReader(form.Encode())
 	request, err := http.NewRequest("POST", baseURL+method, requestBody)
 	if err != nil {
@@ -355,7 +401,7 @@ func (gcp *GoogleCloudPrint) post(method string, form url.Values) ([]byte, error
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	response, err := gcp.transport.RoundTrip(request)
+	response, err := t.RoundTrip(request)
 	if err != nil {
 		return nil, err
 	}
