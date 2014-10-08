@@ -26,6 +26,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 
 	"github.com/golang/oauth2"
@@ -379,6 +380,7 @@ func get(t *oauth2.Transport, url string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	request.Header.Set("X-CloudPrint-Proxy", "cups-cloudprint-"+runtime.GOOS)
 
 	response, err := t.RoundTrip(request)
 	if err != nil {
@@ -400,6 +402,7 @@ func post(t *oauth2.Transport, method string, form url.Values) ([]byte, error) {
 		return nil, err
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("X-CloudPrint-Proxy", "cups-cloudprint-"+runtime.GOOS)
 
 	response, err := t.RoundTrip(request)
 	if err != nil {
