@@ -35,9 +35,10 @@ type PrinterManager struct {
 	jobPollQuit        chan bool
 	gcpJobPollQuit     chan bool
 	printerPollQuit    chan bool
+	downloadSemaphore  *lib.Semaphore
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval, jobPollInterval uint) (*PrinterManager, error) {
+func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval, jobPollInterval, gcpMaxConcurrentDownload uint) (*PrinterManager, error) {
 	gcpPrinters, err := gcp.List()
 	if err != nil {
 		return nil, err
@@ -52,7 +53,9 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 	gcpJobPollQuit := make(chan bool)
 	printerPollQuit := make(chan bool)
 
-	pm := PrinterManager{cups, gcp, gcpPrintersByGCPID, jobStatusRequest, jobPollQuit, gcpJobPollQuit, printerPollQuit}
+	downloadSemaphore := lib.NewSemaphore(gcpMaxConcurrentDownload)
+
+	pm := PrinterManager{cups, gcp, gcpPrintersByGCPID, jobStatusRequest, jobPollQuit, gcpJobPollQuit, printerPollQuit, downloadSemaphore}
 
 	pm.syncPrinters()
 	go pm.syncPrintersPeriodically(printerPollInterval)
@@ -236,7 +239,15 @@ func (pm *PrinterManager) processJob(gcpPrinterID, gcpJobID, fileURL, ticketURL 
 		return
 	}
 
-	pm.gcp.Download(pdfFile, fileURL)
+	pm.downloadSemaphore.Acquire()
+	err = pm.gcp.Download(pdfFile, fileURL)
+	pm.downloadSemaphore.Release()
+	if err != nil {
+		log.Printf("Failed to download a job PDF: %s\n", err)
+		// TODO: gcp status=error
+		return
+	}
+
 	pdfFile.Close()
 	defer os.Remove(pdfFile.Name())
 

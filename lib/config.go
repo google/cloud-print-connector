@@ -22,10 +22,10 @@ import (
 )
 
 const (
-	DefaultMaxConcurrentFetch      = 5
-	DefaultCUPSQueueSize           = 2
-	DefaultCUPSPollIntervalPrinter = 60
-	DefaultCUPSPollIntervalJob     = 5
+	DefaultGCPMaxConcurrentDownloads = 5
+	DefaultCUPSQueueSize             = 2
+	DefaultCUPSPollIntervalPrinter   = 60
+	DefaultCUPSPollIntervalJob       = 5
 )
 
 var (
@@ -57,8 +57,8 @@ type Config struct {
 	// User-chosen name of this proxy. Should be unique per Google user account.
 	Proxy string `json:"proxy"`
 
-	// Maximum quantity of PDFs to fetch concurrently.
-	MaxConcurrentFetch uint `json:"max_concurrent_fetch"`
+	// Maximum quantity of PDFs to download concurrently.
+	GCPMaxConcurrentDownloads uint `json:"gcp_max_concurrent_downloads"`
 
 	// CUPS job queue size.
 	CUPSQueueSize uint `json:"cups_queue_size"`

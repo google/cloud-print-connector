@@ -43,7 +43,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	pm, err := manager.NewPrinterManager(cups, gcp, config.CUPSPollIntervalPrinter, config.CUPSPollIntervalJob)
+	pm, err := manager.NewPrinterManager(cups, gcp, config.CUPSPollIntervalPrinter, config.CUPSPollIntervalJob, config.GCPMaxConcurrentDownloads)
 	if err != nil {
 		log.Fatal(err)
 	}

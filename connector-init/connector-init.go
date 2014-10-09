@@ -125,12 +125,12 @@ func createRobotAccount(userClient *http.Client, proxy string) (string, string) 
 
 func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxy string, infoToDisplayName bool) {
 	config := lib.Config{
-		XMPPJID:                      xmppJID,
-		RobotRefreshToken:            robotRefreshToken,
-		UserRefreshToken:             userRefreshToken,
-		ShareScope:                   shareScope,
-		Proxy:                        proxy,
-		MaxConcurrentFetch:           lib.DefaultMaxConcurrentFetch,
+		XMPPJID:           xmppJID,
+		RobotRefreshToken: robotRefreshToken,
+		UserRefreshToken:  userRefreshToken,
+		ShareScope:        shareScope,
+		Proxy:             proxy,
+		GCPMaxConcurrentDownloads:    lib.DefaultGCPMaxConcurrentDownloads,
 		CUPSQueueSize:                lib.DefaultCUPSQueueSize,
 		CUPSPollIntervalPrinter:      lib.DefaultCUPSPollIntervalPrinter,
 		CUPSPollIntervalJob:          lib.DefaultCUPSPollIntervalJob,
