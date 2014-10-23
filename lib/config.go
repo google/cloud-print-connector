@@ -25,7 +25,7 @@ const (
 	DefaultGCPMaxConcurrentDownloads = 5
 	DefaultCUPSQueueSize             = 2
 	DefaultCUPSPollIntervalPrinter   = 60 // 1 minute
-	DefaultCUPSPollIntervalJob       = 3  // 3 seconds
+	DefaultCUPSPollIntervalJob       = 1  // 1 second
 )
 
 var (

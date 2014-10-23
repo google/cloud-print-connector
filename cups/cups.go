@@ -23,7 +23,11 @@ package cups
 
 const char
     *POST_RESOURCE = "/",
-    *REQUESTED_ATTRIBUTES = "requested-attributes";
+    *REQUESTED_ATTRIBUTES = "requested-attributes",
+		*JOB_URI = "job-uri",
+		*JOB_STATE = "job-state",
+		*JOB_STATE_REASONS = "job-state-reasons",
+		*IPP = "ipp";
 
 // Allocates a new char**, initializes the values to NULL.
 char **newArrayOfStrings(int size) {
@@ -88,7 +92,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"reflect"
 	"strings"
 	"time"
 	"unsafe"
@@ -101,6 +104,7 @@ type CUPS struct {
 	infoToDisplayName     bool
 	c_printerAttributes   **C.char
 	printerAttributesSize int
+	c_jobAttributes       **C.char
 }
 
 // Connects to the CUPS server specified by environment vars, client.conf, etc.
@@ -110,6 +114,10 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) 
 	for i, a := range printerAttributes {
 		C.setStringArrayValue(c_printerAttributes, C.int(i), C.CString(a))
 	}
+
+	c_jobAttributes := C.newArrayOfStrings(C.int(2))
+	C.setStringArrayValue(c_jobAttributes, C.int(0), C.JOB_STATE)
+	C.setStringArrayValue(c_jobAttributes, C.int(1), C.JOB_STATE_REASONS)
 
 	c_host := C.cupsServer()
 	c_port := C.ippPort()
@@ -139,7 +147,7 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) 
 	fmt.Printf("connected to CUPS server %s:%d %s\n", C.GoString(c_host), int(c_port), e)
 
 	pc := newPPDCache(c_http)
-	c := &CUPS{c_http, pc, infoToDisplayName, c_printerAttributes, printerAttributesSize}
+	c := &CUPS{c_http, pc, infoToDisplayName, c_printerAttributes, printerAttributesSize, c_jobAttributes}
 
 	return c, nil
 }
@@ -151,7 +159,7 @@ func (c *CUPS) Quit() {
 
 // Calls cupsDoRequest() with IPP_OP_CUPS_GET_PRINTERS.
 func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
-	// ippNewRequest() returned ipp_t pointer does not need explicit free.
+	// ippNewRequest() returns ipp_t pointer does not need explicit free.
 	c_req := C.ippNewRequest(C.IPP_OP_CUPS_GET_PRINTERS)
 	C.ippAddStrings(c_req, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES,
 		C.int(c.printerAttributesSize), nil, c.c_printerAttributes)
@@ -312,36 +320,45 @@ func (c *CUPS) GetPPDHash(printerName string) (string, error) {
 	return c.pc.getPPDHash(printerName)
 }
 
-// Gets the status of all jobs, jobID:status map.
-//
-// Calls cupsGetJobs2().
-func (c *CUPS) GetJobs() (map[uint32]lib.JobStatus, error) {
-	// TODO: Get status message string like pycups Connection.getJobAttributes().
-	var c_jobs *C.cups_job_t
-	c_numJobs := C.cupsGetJobs2(c.c_http, &c_jobs, nil, 1, C.CUPS_WHICHJOBS_ALL)
-	if c_numJobs < 0 {
-		msg := fmt.Sprintf("CUPS failed to call cupsGetJobs2(): %d %s",
+// Calls cupsDoRequest() with IPP_OP_GET_JOB_ATTRIBUTES
+func (c *CUPS) GetJobStatus(jobID uint32) (lib.JobStatus, string, error) {
+	c_uri, err := createJobURI(jobID)
+	if err != nil {
+		return 0, "", err
+	}
+	defer C.free(unsafe.Pointer(c_uri))
+
+	// ippNewRequest() returns ipp_t pointer does not need explicit free.
+	c_req := C.ippNewRequest(C.IPP_OP_GET_JOB_ATTRIBUTES)
+
+	C.ippAddString(c_req, C.IPP_TAG_OPERATION, C.IPP_TAG_URI, C.JOB_URI, nil, c_uri)
+	C.ippAddStrings(c_req, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES, C.int(0), nil, c.c_jobAttributes)
+
+	c_res := C.cupsDoRequest(c.c_http, c_req, C.POST_RESOURCE)
+	if c_res == nil {
+		msg := fmt.Sprintf("CUPS failed to call cupsDoRequest(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
-		return nil, errors.New(msg)
+		return 0, "", errors.New(msg)
 	}
-	defer C.cupsFreeJobs(c_numJobs, c_jobs)
+	// cupsDoRequest() returned ipp_t pointer needs explicit free.
+	defer C.ippDelete(c_res)
 
-	numJobs := int(c_numJobs)
-	hdr := reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(c_jobs)),
-		Len:  numJobs,
-		Cap:  numJobs,
-	}
-	jobs := *(*[]C.cups_job_t)(unsafe.Pointer(&hdr))
-
-	m := make(map[uint32]lib.JobStatus, numJobs)
-	for i := 0; i < numJobs; i++ {
-		jobID := uint32(jobs[i].id)
-		state := lib.JobStatusFromInt(uint8(jobs[i].state))
-		m[jobID] = state
+	if C.ippGetStatusCode(c_res) != C.IPP_STATUS_OK {
+		msg := fmt.Sprintf("CUPS failed while calling cupsDoRequest(), IPP status code: %d",
+			C.ippGetStatusCode(c_res))
+		return 0, "", errors.New(msg)
 	}
 
-	return m, nil
+	c_status := C.ippFindAttribute(c_res, C.JOB_STATE, C.IPP_TAG_ENUM)
+	status := lib.JobStatusFromInt(uint8(C.ippGetInteger(c_status, C.int(0))))
+
+	c_statusReason := C.ippFindAttribute(c_res, C.JOB_STATE_REASONS, C.IPP_TAG_STRING)
+	var statusReason string
+	if c_statusReason != nil {
+		statusReason = C.GoString(C.ippGetString(c_statusReason, C.int(0), nil))
+	}
+
+	return status, statusReason, nil
 }
 
 // Calls cupsSetUser() and cupsPrintFile2().
@@ -389,4 +406,18 @@ func (c *CUPS) CreateTempFile() (*os.File, error) {
 	c_fd := C.cupsTempFd(c_filename, C.int(c_len))
 
 	return os.NewFile(uintptr(c_fd), C.GoString(c_filename)), nil
+}
+
+func createJobURI(jobID uint32) (*C.char, error) {
+	c_len := C.size_t(200)
+	c_uri := (*C.char)(C.malloc(c_len))
+	if c_uri == nil {
+		return nil, errors.New("Failed to malloc; out of memory?")
+	}
+
+	c_resource := C.CString(fmt.Sprintf("/jobs/%d", jobID))
+	defer C.free(unsafe.Pointer(c_resource))
+	C.httpAssembleURI(C.HTTP_URI_CODING_ALL, c_uri, C.int(c_len), C.IPP, nil, C.cupsServer(), C.ippPort(), c_resource)
+
+	return c_uri, nil
 }

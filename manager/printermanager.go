@@ -19,7 +19,6 @@ import (
 	"cups-connector/cups"
 	"cups-connector/gcp"
 	"cups-connector/lib"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -28,15 +27,13 @@ import (
 
 // Manages all interactions between CUPS and Google Cloud Print.
 type PrinterManager struct {
-	cups                  *cups.CUPS
-	gcp                   *gcp.GoogleCloudPrint
-	gcpPrintersByGCPID    map[string]lib.Printer
-	jobStatusRequest      chan jobStatusRequest
-	jobPollQuit           chan bool
-	gcpJobPollQuit        chan bool
-	printerPollQuit       chan bool
-	downloadSemaphore     *lib.Semaphore
-	jobPollStatusInterval time.Duration
+	cups               *cups.CUPS
+	gcp                *gcp.GoogleCloudPrint
+	gcpPrintersByGCPID map[string]lib.Printer
+	gcpJobPollQuit     chan bool
+	printerPollQuit    chan bool
+	downloadSemaphore  *lib.Semaphore
+	jobPollInterval    time.Duration
 }
 
 func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval, jobPollInterval, gcpMaxConcurrentDownload uint) (*PrinterManager, error) {
@@ -49,21 +46,17 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 		gcpPrintersByGCPID[p.GCPID] = p
 	}
 
-	jobStatusRequest := make(chan jobStatusRequest)
-	jobPollQuit := make(chan bool)
 	gcpJobPollQuit := make(chan bool)
 	printerPollQuit := make(chan bool)
 
 	downloadSemaphore := lib.NewSemaphore(gcpMaxConcurrentDownload)
 
-	jobCacheTimeout := time.Duration(jobPollInterval) * time.Second
-	jobPollStatusInterval := jobCacheTimeout / 2
+	jpi := time.Duration(jobPollInterval) * time.Second
 
-	pm := PrinterManager{cups, gcp, gcpPrintersByGCPID, jobStatusRequest, jobPollQuit, gcpJobPollQuit, printerPollQuit, downloadSemaphore, jobPollStatusInterval}
+	pm := PrinterManager{cups, gcp, gcpPrintersByGCPID, gcpJobPollQuit, printerPollQuit, downloadSemaphore, jpi}
 
 	pm.syncPrinters()
 	go pm.syncPrintersPeriodically(printerPollInterval)
-	go pm.pollCUPSJobs(jobPollInterval)
 	go pm.listenGCPJobs()
 
 	return &pm, nil
@@ -276,8 +269,8 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	status := ""
 	message := ""
 
-	for _ = range time.Tick(pm.jobPollStatusInterval) {
-		latestStatus, latestMessage, err := pm.getCUPSJobStatus(cupsJobID)
+	for _ = range time.Tick(pm.jobPollInterval) {
+		latestStatus, latestMessage, err := pm.cups.GetJobStatus(cupsJobID)
 		if err != nil {
 			msg := fmt.Sprintf("Failed to get status of CUPS job %d: %s", cupsJobID, err)
 			log.Println(msg)
@@ -294,68 +287,6 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 
 		if latestStatus.GCPStatus() != lib.JobInProgress {
 			break
-		}
-	}
-}
-
-type jobStatusRequest struct {
-	jobID    uint32
-	response chan jobStatusResponse
-}
-
-type jobStatusResponse struct {
-	status  lib.JobStatus
-	message string
-	err     error
-}
-
-func (pm *PrinterManager) getCUPSJobStatus(jobID uint32) (lib.JobStatus, string, error) {
-	ch := make(chan jobStatusResponse)
-	request := jobStatusRequest{jobID, ch}
-	pm.jobStatusRequest <- request
-	response := <-ch
-	return response.status, response.message, response.err
-}
-
-// Answers requests to poll jobs on the jobStatusRequest channel.
-// The CUPS API only knows how to poll all jobs, not one job. We need to be
-// able to query one job, so this function caches CUPS API responses.
-func (pm *PrinterManager) pollCUPSJobs(jobPollInterval uint) {
-	maxPoll := time.Duration(jobPollInterval) * time.Second
-	lastPoll := time.Time{}
-	jobs := make(map[uint32]lib.JobStatus, 0)
-
-	for {
-		select {
-		case request := <-pm.jobStatusRequest:
-			status, exists := jobs[request.jobID]
-
-			if time.Since(lastPoll) > maxPoll || !exists {
-				// The jobs map is stale; refresh it.
-				jobs, err := pm.cups.GetJobs()
-				if err != nil {
-					jobs = make(map[uint32]lib.JobStatus, 0)
-					request.response <- jobStatusResponse{0, "", err}
-					continue
-				} else {
-					lastPoll = time.Now()
-				}
-
-				// Now that the jobs map is fresh, query it again.
-				status, exists = jobs[request.jobID]
-			}
-
-			if exists {
-				// TODO: Get status message with status.
-				request.response <- jobStatusResponse{status, "", nil}
-			} else {
-				text := fmt.Sprintf("Job ID %d doesn't exist", request.jobID)
-				request.response <- jobStatusResponse{0, "", errors.New(text)}
-			}
-
-		case <-pm.jobPollQuit:
-			pm.jobPollQuit <- true
-			return
 		}
 	}
 }
