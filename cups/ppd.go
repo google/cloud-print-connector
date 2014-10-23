@@ -155,7 +155,17 @@ func (pce *ppdCacheEntry) free() {
 
 // Calls cupsGetPPD3().
 func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
+	if err := pce.reconnect(c_http); err != nil {
+		return err
+	}
+
 	c_http_status := C.cupsGetPPD3(c_http, pce.name, &pce.modtime, pce.buffer, pce.bufsize)
+
+	if C.cupsLastError() != C.IPP_STATUS_OK {
+		msg := fmt.Sprintf("Failed to call cupsGetPPD3(): %d %s",
+			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
+		return errors.New(msg)
+	}
 
 	switch c_http_status {
 	case C.HTTP_STATUS_NOT_MODIFIED:
@@ -178,6 +188,16 @@ func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
 		return nil
 
 	default:
-		return errors.New(fmt.Sprintf("Failed to get PPD (%s)", int(c_http_status)))
+		return errors.New(fmt.Sprintf("Failed to get PPD; HTTP status: %d", int(c_http_status)))
 	}
+}
+
+// Calls httpReconnect().
+func (pce *ppdCacheEntry) reconnect(c_http *C.http_t) error {
+	success := C.httpReconnect(c_http)
+	if success != C.int(0) || C.cupsLastError() != C.IPP_STATUS_OK {
+		return errors.New(fmt.Sprintf("Failed to call cupsReconnect(): %d %s",
+			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString())))
+	}
+	return nil
 }

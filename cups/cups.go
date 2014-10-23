@@ -109,16 +109,6 @@ type CUPS struct {
 
 // Connects to the CUPS server specified by environment vars, client.conf, etc.
 func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) {
-	printerAttributesSize := len(printerAttributes)
-	c_printerAttributes := C.newArrayOfStrings(C.int(printerAttributesSize))
-	for i, a := range printerAttributes {
-		C.setStringArrayValue(c_printerAttributes, C.int(i), C.CString(a))
-	}
-
-	c_jobAttributes := C.newArrayOfStrings(C.int(2))
-	C.setStringArrayValue(c_jobAttributes, C.int(0), C.JOB_STATE)
-	C.setStringArrayValue(c_jobAttributes, C.int(1), C.JOB_STATE_REASONS)
-
 	c_host := C.cupsServer()
 	c_port := C.ippPort()
 	c_encryption := C.cupsEncryption()
@@ -147,6 +137,17 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) 
 	fmt.Printf("connected to CUPS server %s:%d %s\n", C.GoString(c_host), int(c_port), e)
 
 	pc := newPPDCache(c_http)
+
+	printerAttributesSize := len(printerAttributes)
+	c_printerAttributes := C.newArrayOfStrings(C.int(printerAttributesSize))
+	for i, a := range printerAttributes {
+		C.setStringArrayValue(c_printerAttributes, C.int(i), C.CString(a))
+	}
+
+	c_jobAttributes := C.newArrayOfStrings(C.int(2))
+	C.setStringArrayValue(c_jobAttributes, C.int(0), C.JOB_STATE)
+	C.setStringArrayValue(c_jobAttributes, C.int(1), C.JOB_STATE_REASONS)
+
 	c := &CUPS{c_http, pc, infoToDisplayName, c_printerAttributes, printerAttributesSize, c_jobAttributes}
 
 	return c, nil
@@ -157,6 +158,16 @@ func (c *CUPS) Quit() {
 	C.freeStringArrayAndStrings(c.c_printerAttributes, C.int(c.printerAttributesSize))
 }
 
+// Calls httpReconnect().
+func (c *CUPS) reconnect() error {
+	success := C.httpReconnect(c.c_http)
+	if success != C.int(0) || C.cupsLastError() != C.IPP_STATUS_OK {
+		return errors.New(fmt.Sprintf("Failed to call cupsReconnect(): %d %s",
+			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString())))
+	}
+	return nil
+}
+
 // Calls cupsDoRequest() with IPP_OP_CUPS_GET_PRINTERS.
 func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	// ippNewRequest() returns ipp_t pointer does not need explicit free.
@@ -164,6 +175,9 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	C.ippAddStrings(c_req, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES,
 		C.int(c.printerAttributesSize), nil, c.c_printerAttributes)
 
+	if err := c.reconnect(); err != nil {
+		return nil, err
+	}
 	c_res := C.cupsDoRequest(c.c_http, c_req, C.POST_RESOURCE)
 	if c_res == nil {
 		msg := fmt.Sprintf("CUPS failed to call cupsDoRequest(): %d %s",
@@ -334,6 +348,10 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.JobStatus, string, error) {
 	C.ippAddString(c_req, C.IPP_TAG_OPERATION, C.IPP_TAG_URI, C.JOB_URI, nil, c_uri)
 	C.ippAddStrings(c_req, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES, C.int(0), nil, c.c_jobAttributes)
 
+	if err := c.reconnect(); err != nil {
+		return 0, "", err
+	}
+
 	c_res := C.cupsDoRequest(c.c_http, c_req, C.POST_RESOURCE)
 	if c_res == nil {
 		msg := fmt.Sprintf("CUPS failed to call cupsDoRequest(): %d %s",
@@ -383,6 +401,10 @@ func (c *CUPS) Print(printerName, fileName, title, ownerID string, options map[s
 	c_user := C.CString(ownerID)
 	defer C.free(unsafe.Pointer(c_user))
 
+	if err := c.reconnect(); err != nil {
+		return 0, err
+	}
+
 	c_jobID := C.printFileWrapper(c.c_http, c_printerName, c_fileName, c_title, c_numOptions, c_options, c_user)
 	jobID := uint32(c_jobID)
 	if jobID == 0 {
@@ -404,10 +426,18 @@ func (c *CUPS) CreateTempFile() (*os.File, error) {
 	defer C.free(unsafe.Pointer(c_filename))
 
 	c_fd := C.cupsTempFd(c_filename, C.int(c_len))
+	if C.cupsLastError() != C.IPP_STATUS_OK {
+		msg := fmt.Sprintf("Failed to call cupsTempFd(): %d %s",
+			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
+		return nil, errors.New(msg)
+	}
 
 	return os.NewFile(uintptr(c_fd), C.GoString(c_filename)), nil
 }
 
+// Creates a uri for the job-uri attribute.
+//
+// Calls httpAssembleURI().
 func createJobURI(jobID uint32) (*C.char, error) {
 	c_len := C.size_t(200)
 	c_uri := (*C.char)(C.malloc(c_len))
