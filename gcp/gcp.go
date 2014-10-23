@@ -158,6 +158,7 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 			ID        string
 			FileURL   string
 			TicketURL string
+			OwnerID   string
 		}
 	}
 	if err = json.Unmarshal(responseBody, &jobsData); err != nil {
@@ -172,6 +173,7 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 			GCPJobID:     jobData.ID,
 			FileURL:      jobData.FileURL,
 			TicketURL:    jobData.TicketURL,
+			OwnerID:      jobData.OwnerID,
 		}
 		jobs = append(jobs, job)
 	}

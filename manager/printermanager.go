@@ -202,7 +202,7 @@ func (pm *PrinterManager) listenGCPJobs() {
 	for {
 		select {
 		case job := <-ch:
-			go pm.processJob(job.GCPPrinterID, job.GCPJobID, job.FileURL, job.TicketURL)
+			go pm.processJob(job)
 		case <-pm.gcpJobPollQuit:
 			pm.gcpJobPollQuit <- true
 			return
@@ -216,16 +216,16 @@ func (pm *PrinterManager) listenGCPJobs() {
 // 3) Polls the CUPS job status to update the GCP job status.
 // 4) Returns when the job status is DONE or ERROR.
 // 5) Deletes temp file.
-func (pm *PrinterManager) processJob(gcpPrinterID, gcpJobID, fileURL, ticketURL string) {
-	printer, exists := pm.gcpPrintersByGCPID[gcpPrinterID]
+func (pm *PrinterManager) processJob(job *lib.Job) {
+	printer, exists := pm.gcpPrintersByGCPID[job.GCPPrinterID]
 	if !exists {
-		log.Printf("Failed to find printer %s for job %s\n", gcpPrinterID, gcpJobID)
+		log.Printf("Failed to find printer %s for job %s\n", job.GCPPrinterID, job.GCPJobID)
 		fmt.Printf("%+v\n", pm.gcpPrintersByGCPID)
 		// TODO: gcp status=error with gcp.Control
 		return
 	}
 
-	options, err := pm.gcp.Ticket(ticketURL)
+	options, err := pm.gcp.Ticket(job.TicketURL)
 	if err != nil {
 		log.Printf("Failed to get a job ticket: %s\n", err)
 		// TODO: gcp status=error
@@ -240,7 +240,7 @@ func (pm *PrinterManager) processJob(gcpPrinterID, gcpJobID, fileURL, ticketURL 
 	}
 
 	pm.downloadSemaphore.Acquire()
-	err = pm.gcp.Download(pdfFile, fileURL)
+	err = pm.gcp.Download(pdfFile, job.FileURL)
 	pm.downloadSemaphore.Release()
 	if err != nil {
 		log.Printf("Failed to download a job PDF: %s\n", err)
@@ -251,9 +251,9 @@ func (pm *PrinterManager) processJob(gcpPrinterID, gcpJobID, fileURL, ticketURL 
 	pdfFile.Close()
 	defer os.Remove(pdfFile.Name())
 
-	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), "gcp:"+gcpJobID, options)
+	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), "gcp:"+job.GCPJobID, job.OwnerID, options)
 	if err != nil {
-		log.Printf("Failed to send job %s to CUPS: %s\n", gcpJobID, err)
+		log.Printf("Failed to send job %s to CUPS: %s\n", job.GCPJobID, err)
 		// TODO: gcp status=error
 		return
 	}
@@ -272,7 +272,7 @@ func (pm *PrinterManager) processJob(gcpPrinterID, gcpJobID, fileURL, ticketURL 
 		if latestStatus.GCPStatus() != status || latestMessage != message {
 			status = latestStatus.GCPStatus()
 			message = latestMessage
-			pm.gcp.Control(gcpJobID, status, message)
+			pm.gcp.Control(job.GCPJobID, status, message)
 		}
 
 		if latestStatus.GCPStatus() != "IN_PROGRESS" {

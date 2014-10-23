@@ -66,6 +66,21 @@ void parseDate(ipp_uchar_t *ipp_date, unsigned short *year, unsigned char *month
 	*utcHours = ipp_date[9];
 	*utcMinutes = ipp_date[10];
 }
+
+// Calls cupsSetUser() and cupsPrintFile2() within a single C function. This
+// prevents the runtime from moving the current goroutine to another system
+// thread, which would effectively change the CUPS_USER environment variable
+// before cupsPrintFile2() is called.
+//
+// The same effect can be created with a call to golang's
+// runtime.LockOSThread(), but this is (probably) cheaper.
+//
+// Returns the job ID or 0 on error (i.e. whatever cupsPrintFile2() returns).
+int printFileWrapper(http_t *http, const char *name, const char *filename, const char *title,
+		int num_options, cups_option_t *options, const char *user) {
+	cupsSetUser(user);
+	return cupsPrintFile2(http, name, filename, title, num_options, options);
+}
 */
 import "C"
 import (
@@ -329,8 +344,8 @@ func (c *CUPS) GetJobs() (map[uint32]lib.JobStatus, error) {
 	return m, nil
 }
 
-// Calls cupsPrintFile2().
-func (c *CUPS) Print(printerName, fileName, title string, options map[string]string) (uint32, error) {
+// Calls cupsSetUser() and cupsPrintFile2().
+func (c *CUPS) Print(printerName, fileName, title, ownerID string, options map[string]string) (uint32, error) {
 	c_printerName := C.CString(printerName)
 	defer C.free(unsafe.Pointer(c_printerName))
 	c_fileName := C.CString(fileName)
@@ -348,10 +363,13 @@ func (c *CUPS) Print(printerName, fileName, title string, options map[string]str
 		C.free(unsafe.Pointer(c_value))
 	}
 
-	c_jobID := C.cupsPrintFile2(c.c_http, c_printerName, c_fileName, c_title, c_numOptions, c_options)
+	c_user := C.CString(ownerID)
+	defer C.free(unsafe.Pointer(c_user))
+
+	c_jobID := C.printFileWrapper(c.c_http, c_printerName, c_fileName, c_title, c_numOptions, c_options, c_user)
 	jobID := uint32(c_jobID)
 	if jobID == 0 {
-		msg := fmt.Sprintf("CUPS failed call cupsPrintFile2(): %d %s",
+		msg := fmt.Sprintf("CUPS failed to call cupsPrintFile2(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 		return 0, errors.New(msg)
 	}

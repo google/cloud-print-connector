@@ -67,4 +67,5 @@ type Job struct {
 	GCPJobID     string
 	FileURL      string
 	TicketURL    string
+	OwnerID      string
 }
