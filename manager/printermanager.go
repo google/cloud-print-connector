@@ -219,23 +219,25 @@ func (pm *PrinterManager) listenGCPJobs() {
 func (pm *PrinterManager) processJob(job *lib.Job) {
 	printer, exists := pm.gcpPrintersByGCPID[job.GCPPrinterID]
 	if !exists {
-		log.Printf("Failed to find printer %s for job %s\n", job.GCPPrinterID, job.GCPJobID)
-		fmt.Printf("%+v\n", pm.gcpPrintersByGCPID)
-		// TODO: gcp status=error with gcp.Control
+		msg := fmt.Sprintf("Failed to find printer %s for job %s", job.GCPPrinterID, job.GCPJobID)
+		log.Println(msg)
+		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 		return
 	}
 
 	options, err := pm.gcp.Ticket(job.TicketURL)
 	if err != nil {
-		log.Printf("Failed to get a job ticket: %s\n", err)
-		// TODO: gcp status=error
+		msg := fmt.Sprintf("Failed to get a job ticket: %s", err)
+		log.Println(msg)
+		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 		return
 	}
 
 	pdfFile, err := pm.cups.CreateTempFile()
 	if err != nil {
-		log.Printf("Failed to create a temporary file for job: %s\n", err)
-		// TODO: gcp status=error
+		msg := fmt.Sprintf("Failed to create a temporary file for job: %s", err)
+		log.Println(msg)
+		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 		return
 	}
 
@@ -243,8 +245,9 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	err = pm.gcp.Download(pdfFile, job.FileURL)
 	pm.downloadSemaphore.Release()
 	if err != nil {
-		log.Printf("Failed to download a job PDF: %s\n", err)
-		// TODO: gcp status=error
+		msg := fmt.Sprintf("Failed to download a job PDF: %s", err)
+		log.Println(msg)
+		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 		return
 	}
 
@@ -253,8 +256,9 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 
 	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), "gcp:"+job.GCPJobID, job.OwnerID, options)
 	if err != nil {
-		log.Printf("Failed to send job %s to CUPS: %s\n", job.GCPJobID, err)
-		// TODO: gcp status=error
+		msg := fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)
+		log.Println(msg)
+		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 		return
 	}
 
@@ -264,8 +268,9 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	for _ = range time.Tick(time.Second * 5) {
 		latestStatus, latestMessage, err := pm.getCUPSJobStatus(cupsJobID)
 		if err != nil {
-			log.Printf("Failed to get status of CUPS job %d\n", cupsJobID)
-			// TODO: gcp status=error
+			msg := fmt.Sprintf("Failed to get status of CUPS job %d", cupsJobID)
+			log.Println(msg)
+			pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 			return
 		}
 

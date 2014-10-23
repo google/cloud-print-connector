@@ -41,11 +41,11 @@ func JobStatusFromInt(si uint8) JobStatus {
 func (js JobStatus) GCPStatus() string {
 	switch js {
 	case 3, 4, 5:
-		return "IN_PROGRESS"
+		return JobInProgress
 	case 6, 7, 8:
-		return "ERROR"
+		return JobError
 	case 9:
-		return "DONE"
+		return JobDone
 	default:
 		panic("unreachable")
 	}
@@ -60,6 +60,10 @@ const (
 	JobCanceled   JobStatus = 7 // CUPS: IPP_JSTATE_CANCELED;   GCP: ERROR
 	JobAborted    JobStatus = 8 // CUPS: IPP_JSTATE_ABORTED;    GCP: ERROR
 	JobCompleted  JobStatus = 9 // CUPS: IPP_JSTATE_COMPLETED;  GCP: DONE
+
+	JobInProgress = "IN_PROGRESS"
+	JobError      = "ERROR"
+	JobDone       = "DONE"
 )
 
 type Job struct {
