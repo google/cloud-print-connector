@@ -28,14 +28,15 @@ import (
 
 // Manages all interactions between CUPS and Google Cloud Print.
 type PrinterManager struct {
-	cups               *cups.CUPS
-	gcp                *gcp.GoogleCloudPrint
-	gcpPrintersByGCPID map[string]lib.Printer
-	jobStatusRequest   chan jobStatusRequest
-	jobPollQuit        chan bool
-	gcpJobPollQuit     chan bool
-	printerPollQuit    chan bool
-	downloadSemaphore  *lib.Semaphore
+	cups                  *cups.CUPS
+	gcp                   *gcp.GoogleCloudPrint
+	gcpPrintersByGCPID    map[string]lib.Printer
+	jobStatusRequest      chan jobStatusRequest
+	jobPollQuit           chan bool
+	gcpJobPollQuit        chan bool
+	printerPollQuit       chan bool
+	downloadSemaphore     *lib.Semaphore
+	jobPollStatusInterval time.Duration
 }
 
 func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval, jobPollInterval, gcpMaxConcurrentDownload uint) (*PrinterManager, error) {
@@ -55,7 +56,10 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 
 	downloadSemaphore := lib.NewSemaphore(gcpMaxConcurrentDownload)
 
-	pm := PrinterManager{cups, gcp, gcpPrintersByGCPID, jobStatusRequest, jobPollQuit, gcpJobPollQuit, printerPollQuit, downloadSemaphore}
+	jobCacheTimeout := time.Duration(jobPollInterval) * time.Second
+	jobPollStatusInterval := jobCacheTimeout / 2
+
+	pm := PrinterManager{cups, gcp, gcpPrintersByGCPID, jobStatusRequest, jobPollQuit, gcpJobPollQuit, printerPollQuit, downloadSemaphore, jobPollStatusInterval}
 
 	pm.syncPrinters()
 	go pm.syncPrintersPeriodically(printerPollInterval)
@@ -217,6 +221,8 @@ func (pm *PrinterManager) listenGCPJobs() {
 // 4) Returns when the job status is DONE or ERROR.
 // 5) Deletes temp file.
 func (pm *PrinterManager) processJob(job *lib.Job) {
+	fmt.Printf("Received job %s\n", job.GCPJobID)
+
 	printer, exists := pm.gcpPrintersByGCPID[job.GCPPrinterID]
 	if !exists {
 		msg := fmt.Sprintf("Failed to find printer %s for job %s", job.GCPPrinterID, job.GCPJobID)
@@ -242,7 +248,9 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	}
 
 	pm.downloadSemaphore.Acquire()
+	t := time.Now()
 	err = pm.gcp.Download(pdfFile, job.FileURL)
+	dt := time.Now().Sub(t)
 	pm.downloadSemaphore.Release()
 	if err != nil {
 		msg := fmt.Sprintf("Failed to download a job PDF: %s", err)
@@ -251,6 +259,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		return
 	}
 
+	fmt.Printf("Downloaded job %s in %s\n", job.GCPJobID, dt.String())
 	pdfFile.Close()
 	defer os.Remove(pdfFile.Name())
 
@@ -262,13 +271,15 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		return
 	}
 
+	fmt.Printf("Submitted GCP job %s as CUPS job %d\n", job.GCPJobID, cupsJobID)
+
 	status := ""
 	message := ""
 
-	for _ = range time.Tick(time.Second * 5) {
+	for _ = range time.Tick(pm.jobPollStatusInterval) {
 		latestStatus, latestMessage, err := pm.getCUPSJobStatus(cupsJobID)
 		if err != nil {
-			msg := fmt.Sprintf("Failed to get status of CUPS job %d", cupsJobID)
+			msg := fmt.Sprintf("Failed to get status of CUPS job %d: %s", cupsJobID, err)
 			log.Println(msg)
 			pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 			return
@@ -278,9 +289,10 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 			status = latestStatus.GCPStatus()
 			message = latestMessage
 			pm.gcp.Control(job.GCPJobID, status, message)
+			fmt.Printf("Job %s status: %s\n", job.GCPJobID, status)
 		}
 
-		if latestStatus.GCPStatus() != "IN_PROGRESS" {
+		if latestStatus.GCPStatus() != lib.JobInProgress {
 			break
 		}
 	}
@@ -320,7 +332,6 @@ func (pm *PrinterManager) pollCUPSJobs(jobPollInterval uint) {
 
 			if time.Since(lastPoll) > maxPoll || !exists {
 				// The jobs map is stale; refresh it.
-				fmt.Println("polling jobs")
 				jobs, err := pm.cups.GetJobs()
 				if err != nil {
 					jobs = make(map[uint32]lib.JobStatus, 0)
