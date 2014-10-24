@@ -122,7 +122,7 @@ func (gcp *GoogleCloudPrint) Control(jobID, status, message string) error {
 	form.Set("status", status)
 	form.Set("message", message)
 
-	if _, err := post(gcp.robotTransport, "control", form); err != nil {
+	if _, _, err := post(gcp.robotTransport, "control", form); err != nil {
 		return err
 	}
 
@@ -134,7 +134,7 @@ func (gcp *GoogleCloudPrint) Delete(gcpID string) error {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
 
-	if _, err := post(gcp.robotTransport, "delete", form); err != nil {
+	if _, _, err := post(gcp.robotTransport, "delete", form); err != nil {
 		return err
 	}
 
@@ -148,8 +148,12 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
 
-	responseBody, err := post(gcp.robotTransport, "fetch", form)
+	responseBody, errorCode, err := post(gcp.robotTransport, "fetch", form)
 	if err != nil {
+		if errorCode == 413 {
+			// 413 means "Zero print jobs returned", which isn't really an error.
+			return []lib.Job{}, nil
+		}
 		return nil, err
 	}
 
@@ -188,7 +192,7 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, error) {
 	form := url.Values{}
 	form.Set("proxy", gcp.proxyName)
 
-	responseBody, err := post(gcp.robotTransport, "list", form)
+	responseBody, _, err := post(gcp.robotTransport, "list", form)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +264,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 		form.Add("tag", fmt.Sprintf("cups-%s=%s", key, value))
 	}
 
-	responseBody, err := post(gcp.robotTransport, "register", form)
+	responseBody, _, err := post(gcp.robotTransport, "register", form)
 	if err != nil {
 		return err
 	}
@@ -312,7 +316,7 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 		form.Set("remove_tag", "^cups-.*")
 	}
 
-	if _, err := post(gcp.robotTransport, "update", form); err != nil {
+	if _, _, err := post(gcp.robotTransport, "update", form); err != nil {
 		return err
 	}
 
@@ -333,7 +337,7 @@ func (gcp *GoogleCloudPrint) Share(gcpID string) error {
 	form.Set("role", "USER")
 	form.Set("skip_notification", "true")
 
-	if _, err := post(gcp.userTransport, "share", form); err != nil {
+	if _, _, err := post(gcp.userTransport, "share", form); err != nil {
 		return err
 	}
 
@@ -397,40 +401,43 @@ func get(t *oauth2.Transport, url string) (*http.Response, error) {
 }
 
 // POSTs to a GCP method. Returns the body of the response.
-func post(t *oauth2.Transport, method string, form url.Values) ([]byte, error) {
+//
+// On error, the last two return values are non-zero values.
+func post(t *oauth2.Transport, method string, form url.Values) ([]byte, uint, error) {
 	requestBody := strings.NewReader(form.Encode())
 	request, err := http.NewRequest("POST", baseURL+method, requestBody)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("X-CloudPrint-Proxy", "cups-cloudprint-"+runtime.GOOS)
 
 	response, err := t.RoundTrip(request)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if response.StatusCode != 200 {
 		text := fmt.Sprintf("/%s HTTP request failed with %s", method, response.Status)
-		return nil, errors.New(text)
+		return nil, 0, errors.New(text)
 	}
 
 	responseBody, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	var responseStatus struct {
-		Success bool
-		Message string
+		Success   bool
+		Message   string
+		ErrorCode uint
 	}
 	if err = json.Unmarshal(responseBody, &responseStatus); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if !responseStatus.Success {
 		text := fmt.Sprintf("/%s RPC call failed with %s", method, responseStatus.Message)
-		return nil, errors.New(text)
+		return nil, responseStatus.ErrorCode, errors.New(text)
 	}
 
-	return responseBody, nil
+	return responseBody, 0, nil
 }
