@@ -135,6 +135,7 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		CUPSPollIntervalPrinter:      lib.DefaultCUPSPollIntervalPrinter,
 		CUPSPollIntervalJob:          lib.DefaultCUPSPollIntervalJob,
 		CUPSPrinterAttributes:        lib.DefaultPrinterAttributes,
+		CUPSJobFullUsername:          lib.DefaultCUPSJobFullUsername,
 		CopyPrinterInfoToDisplayName: infoToDisplayName,
 	}
 

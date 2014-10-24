@@ -26,6 +26,7 @@ const (
 	DefaultCUPSQueueSize             = 2
 	DefaultCUPSPollIntervalPrinter   = 60 // 1 minute
 	DefaultCUPSPollIntervalJob       = 1  // 1 second
+	DefaultCUPSJobFullUsername       = false
 )
 
 var (
@@ -71,6 +72,9 @@ type Config struct {
 
 	// CUPS printer attributes to copy to GCP.
 	CUPSPrinterAttributes []string `json:"cups_printer_attributes"`
+
+	// Whether to use the full username (joe@example.com) in CUPS jobs.
+	CUPSJobFullUsername bool `json:"cups_job_full_username"`
 
 	// Copy CUPS printer-info attribute to GCP defaultDisplayName field.
 	CopyPrinterInfoToDisplayName bool `json:"copy_printer_info"`

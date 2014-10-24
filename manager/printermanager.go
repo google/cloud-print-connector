@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -34,9 +35,10 @@ type PrinterManager struct {
 	printerPollQuit    chan bool
 	downloadSemaphore  *lib.Semaphore
 	jobPollInterval    time.Duration
+	jobFullUsername    bool
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval, jobPollInterval, gcpMaxConcurrentDownload uint) (*PrinterManager, error) {
+func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval, jobPollInterval, gcpMaxConcurrentDownload uint, jobFullUsername bool) (*PrinterManager, error) {
 	gcpPrinters, err := gcp.List()
 	if err != nil {
 		return nil, err
@@ -53,7 +55,8 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 
 	jpi := time.Duration(jobPollInterval) * time.Second
 
-	pm := PrinterManager{cups, gcp, gcpPrintersByGCPID, gcpJobPollQuit, printerPollQuit, downloadSemaphore, jpi}
+	pm := PrinterManager{cups, gcp, gcpPrintersByGCPID, gcpJobPollQuit, printerPollQuit,
+		downloadSemaphore, jpi, jobFullUsername}
 
 	pm.syncPrinters()
 	go pm.syncPrintersPeriodically(printerPollInterval)
@@ -258,7 +261,12 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	pdfFile.Close()
 	defer os.Remove(pdfFile.Name())
 
-	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), "gcp:"+job.GCPJobID, job.OwnerID, options)
+	ownerID := job.OwnerID
+	if !pm.jobFullUsername {
+		ownerID = strings.Split(ownerID, "@")[0]
+	}
+
+	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), "gcp:"+job.GCPJobID, ownerID, options)
 	if err != nil {
 		msg := fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)
 		log.Println(msg)
