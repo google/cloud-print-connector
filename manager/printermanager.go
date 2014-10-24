@@ -101,7 +101,7 @@ func (pm *PrinterManager) syncPrinters() {
 	diffs := lib.DiffPrinters(cupsPrinters, printerMapToSlice(pm.gcpPrintersByGCPID))
 
 	if diffs == nil {
-		fmt.Println("Printers are already in sync")
+		fmt.Printf("Printers are already in sync; there are %d\n", len(cupsPrinters))
 		return
 	}
 
@@ -119,7 +119,7 @@ func (pm *PrinterManager) syncPrinters() {
 
 	pm.gcpPrintersByGCPID = currentPrinters
 
-	fmt.Println("Finished synchronizing printers")
+	fmt.Printf("Finished synchronizing %d printers\n", len(currentPrinters))
 }
 
 func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer) {
