@@ -97,6 +97,7 @@ func (pm *PrinterManager) syncPrinters() {
 	cupsPrinters, err := pm.cups.GetPrinters()
 	if err != nil {
 		log.Printf("Sync failed while calling GetPrinters():\n  %s\n", err)
+		return
 	}
 	diffs := lib.DiffPrinters(cupsPrinters, printerMapToSlice(pm.gcpPrintersByGCPID))
 
