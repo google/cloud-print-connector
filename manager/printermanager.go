@@ -89,17 +89,16 @@ func printerMapToSlice(m map[string]lib.Printer) []lib.Printer {
 }
 
 func (pm *PrinterManager) syncPrinters() {
-	fmt.Println("Starting syncPrinters")
+	fmt.Println("Synchronizing printers, stand by")
 
 	cupsPrinters, err := pm.cups.GetPrinters()
 	if err != nil {
-		log.Printf("Failed to call GetPrinters():\n  %s\n", err)
+		log.Printf("Sync failed while calling GetPrinters():\n  %s\n", err)
 	}
 	diffs := lib.DiffPrinters(cupsPrinters, printerMapToSlice(pm.gcpPrintersByGCPID))
 
 	if diffs == nil {
-		// Nothing to do
-		fmt.Println("Nothing to sync")
+		fmt.Println("Printers are already in sync")
 		return
 	}
 
@@ -117,28 +116,29 @@ func (pm *PrinterManager) syncPrinters() {
 
 	pm.gcpPrintersByGCPID = currentPrinters
 
-	fmt.Println("Finished syncPrinters")
+	fmt.Println("Finished synchronizing printers")
 }
 
 func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer) {
 	switch diff.Operation {
 	case lib.RegisterPrinter:
-		fmt.Printf("Registering %s\n", diff.Printer.Name)
 		ppd, err := pm.cups.GetPPD(diff.Printer.Name)
 		if err != nil {
-			log.Printf("Failed to call GetPPD():\n  %s\n", err)
+			log.Printf("Failed to call GetPPD() while registering printer %s:\n  %s\n",
+				diff.Printer.Name, err)
 			break
 		}
 		if err := pm.gcp.Register(&diff.Printer, ppd); err != nil {
-			log.Printf("Failed to register a new printer:\n  %s\n", err)
+			log.Printf("Failed to register printer %s:\n  %s\n", diff.Printer.Name, err)
 			break
 		}
+		fmt.Printf("Registered %s\n", diff.Printer.Name)
 
 		if pm.gcp.CanShare() {
-			fmt.Printf("Sharing %s\n", diff.Printer.Name)
 			if err := pm.gcp.Share(diff.Printer.GCPID); err != nil {
-				log.Printf("Failed to share a new printer:\n  %s\n", err)
-				break
+				log.Printf("Failed to share printer %s:\n  %s\n", diff.Printer.Name, err)
+			} else {
+				fmt.Printf("Shared %s\n", diff.Printer.Name)
 			}
 		}
 
@@ -146,35 +146,37 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		return
 
 	case lib.UpdatePrinter:
-		fmt.Printf("Updating %s\n", diff.Printer.Name)
-
 		var ppd string
 		if diff.CapsHashChanged {
 			var err error
 			ppd, err = pm.cups.GetPPD(diff.Printer.Name)
 			if err != nil {
-				log.Printf("Failed to call GetPPD():\n  %s\n", err)
-				break
+				log.Printf("Failed to call GetPPD() while updating printer %s:\n  %s\n",
+					diff.Printer.Name, err)
+				ch <- diff.Printer
+				return
 			}
 		}
 
 		if err := pm.gcp.Update(diff, ppd); err != nil {
 			log.Printf("Failed to update a printer:\n  %s\n", err)
-			break
+		} else {
+			fmt.Printf("Updated %s\n", diff.Printer.Name)
 		}
 
 		ch <- diff.Printer
 		return
 
 	case lib.DeletePrinter:
-		fmt.Printf("Deleting %s\n", diff.Printer.Name)
 		if err := pm.gcp.Delete(diff.Printer.GCPID); err != nil {
 			log.Printf("Failed to delete a printer %s:\n  %s\n", diff.Printer.GCPID, err)
 			break
 		}
+		fmt.Printf("Deleted %s\n", diff.Printer.Name)
 
 	case lib.LeavePrinter:
-		fmt.Printf("Leaving %s\n", diff.Printer.Name)
+		// TODO(jacobmarble): When proper logging, this is DEBUG.
+		fmt.Printf("No change to %s\n", diff.Printer.Name)
 		ch <- diff.Printer
 		return
 	}
