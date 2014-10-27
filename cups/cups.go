@@ -70,21 +70,6 @@ void parseDate(ipp_uchar_t *ipp_date, unsigned short *year, unsigned char *month
 	*utcHours = ipp_date[9];
 	*utcMinutes = ipp_date[10];
 }
-
-// Calls cupsSetUser() and cupsPrintFile2() within a single C function. This
-// prevents the runtime from moving the current goroutine to another system
-// thread, which would effectively change the CUPS_USER environment variable
-// before cupsPrintFile2() is called.
-//
-// The same effect can be created with a call to golang's
-// runtime.LockOSThread(), but this is (probably) cheaper.
-//
-// Returns the job ID or 0 on error (i.e. whatever cupsPrintFile2() returns).
-int printFileWrapper(http_t *http, const char *name, const char *filename, const char *title,
-		int num_options, cups_option_t *options, const char *user) {
-	cupsSetUser(user);
-	return cupsPrintFile2(http, name, filename, title, num_options, options);
-}
 */
 import "C"
 import (
@@ -92,6 +77,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 	"unsafe"
@@ -160,10 +146,13 @@ func (c *CUPS) Quit() {
 
 // Calls httpReconnect().
 func (c *CUPS) reconnect() error {
-	success := C.httpReconnect(c.c_http)
-	if success != C.int(0) || C.cupsLastError() != C.IPP_STATUS_OK {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	c_ippStatus := C.httpReconnect(c.c_http)
+	if c_ippStatus != C.IPP_STATUS_OK {
 		return errors.New(fmt.Sprintf("Failed to call cupsReconnect(): %d %s",
-			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString())))
+			int(c_ippStatus), C.GoString(C.cupsLastErrorString())))
 	}
 	return nil
 }
@@ -178,16 +167,26 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	if err := c.reconnect(); err != nil {
 		return nil, err
 	}
+
+	runtime.LockOSThread()
+
 	c_res := C.cupsDoRequest(c.c_http, c_req, C.POST_RESOURCE)
 	if c_res == nil {
 		msg := fmt.Sprintf("CUPS failed to call cupsDoRequest(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
+		runtime.UnlockOSThread()
 		return nil, errors.New(msg)
 	}
+	runtime.UnlockOSThread()
+
 	// cupsDoRequest() returned ipp_t pointer needs explicit free.
 	defer C.ippDelete(c_res)
 
-	if C.ippGetStatusCode(c_res) != C.IPP_STATUS_OK {
+	if C.ippGetStatusCode(c_res) == C.IPP_STATUS_ERROR_NOT_FOUND {
+		fmt.Println("no printers found")
+		// Normal error when there are no printers.
+		return make([]lib.Printer, 0), nil
+	} else if C.ippGetStatusCode(c_res) != C.IPP_STATUS_OK {
 		msg := fmt.Sprintf("CUPS failed while calling cupsDoRequest(), IPP status code: %d",
 			C.ippGetStatusCode(c_res))
 		return nil, errors.New(msg)
@@ -352,12 +351,17 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.JobStatus, string, error) {
 		return 0, "", err
 	}
 
+	runtime.LockOSThread()
+
 	c_res := C.cupsDoRequest(c.c_http, c_req, C.POST_RESOURCE)
 	if c_res == nil {
 		msg := fmt.Sprintf("CUPS failed to call cupsDoRequest(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
+		runtime.UnlockOSThread()
 		return 0, "", errors.New(msg)
 	}
+	runtime.UnlockOSThread()
+
 	// cupsDoRequest() returned ipp_t pointer needs explicit free.
 	defer C.ippDelete(c_res)
 
@@ -405,7 +409,11 @@ func (c *CUPS) Print(printerName, fileName, title, ownerID string, options map[s
 		return 0, err
 	}
 
-	c_jobID := C.printFileWrapper(c.c_http, c_printerName, c_fileName, c_title, c_numOptions, c_options, c_user)
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	C.cupsSetUser(c_user)
+	c_jobID := C.cupsPrintFile2(c.c_http, c_printerName, c_fileName, c_title, c_numOptions, c_options)
 	jobID := uint32(c_jobID)
 	if jobID == 0 {
 		msg := fmt.Sprintf("CUPS failed to call cupsPrintFile2(): %d %s",
@@ -425,12 +433,17 @@ func (c *CUPS) CreateTempFile() (*os.File, error) {
 	}
 	defer C.free(unsafe.Pointer(c_filename))
 
+	runtime.LockOSThread()
+
 	c_fd := C.cupsTempFd(c_filename, C.int(c_len))
-	if C.cupsLastError() != C.IPP_STATUS_OK {
+	if c_fd == C.int(-1) {
 		msg := fmt.Sprintf("Failed to call cupsTempFd(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
+		runtime.UnlockOSThread()
 		return nil, errors.New(msg)
 	}
+
+	runtime.UnlockOSThread()
 
 	return os.NewFile(uintptr(c_fd), C.GoString(c_filename)), nil
 }

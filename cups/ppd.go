@@ -31,6 +31,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"unsafe"
 )
 
@@ -159,19 +160,20 @@ func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
 		return err
 	}
 
-	c_http_status := C.cupsGetPPD3(c_http, pce.name, &pce.modtime, pce.buffer, pce.bufsize)
+	runtime.LockOSThread()
 
-	if C.cupsLastError() != C.IPP_STATUS_OK {
-		msg := fmt.Sprintf("Failed to call cupsGetPPD3(): %d %s",
-			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
-		return errors.New(msg)
-	}
+	c_http_status := C.cupsGetPPD3(c_http, pce.name, &pce.modtime, pce.buffer, pce.bufsize)
 
 	switch c_http_status {
 	case C.HTTP_STATUS_NOT_MODIFIED:
+		// Cache hit.
+		runtime.UnlockOSThread()
 		return nil
 
 	case C.HTTP_STATUS_OK:
+		// Cache miss.
+		runtime.UnlockOSThread()
+
 		ppd, err := os.Open(C.GoString(pce.buffer))
 		if err != nil {
 			return err
@@ -188,14 +190,24 @@ func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
 		return nil
 
 	default:
+		if C.cupsLastError() != C.IPP_STATUS_OK {
+			msg := fmt.Sprintf("Failed to call cupsGetPPD3(): %d %s",
+				int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
+			runtime.UnlockOSThread()
+			return errors.New(msg)
+		}
+
 		return errors.New(fmt.Sprintf("Failed to get PPD; HTTP status: %d", int(c_http_status)))
 	}
 }
 
 // Calls httpReconnect().
 func (pce *ppdCacheEntry) reconnect(c_http *C.http_t) error {
-	success := C.httpReconnect(c_http)
-	if success != C.int(0) || C.cupsLastError() != C.IPP_STATUS_OK {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	c_ippStatus := C.httpReconnect(c_http)
+	if c_ippStatus != C.IPP_STATUS_OK {
 		return errors.New(fmt.Sprintf("Failed to call cupsReconnect(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString())))
 	}
