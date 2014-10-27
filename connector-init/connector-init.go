@@ -28,6 +28,16 @@ import (
 	"github.com/golang/oauth2"
 )
 
+var (
+	retainUserOAuthTokenFlag = flag.String("retain-user-oauth-token", "",
+		"Whether to retain the user's OAuth token to enable automatic sharing")
+	shareScopeFlag = flag.String("share-scope", "",
+		"Scope (user, group, domain) to share printers with")
+	proxyNameFlag       = flag.String("proxy-name", "", "GCP proxy name of this Connector")
+	copyPrinterInfoFlag = flag.String("copy-printer-info-to-display-name", "",
+		"Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName")
+)
+
 func getUserClient() (*http.Client, string, string) {
 	options := oauth2.Options{
 		ClientID:     lib.ClientID,
@@ -55,11 +65,24 @@ func getUserClient() (*http.Client, string, string) {
 	fmt.Println("Acquired OAuth credentials for user account")
 
 	var userRefreshToken, shareScope string
-	if scanYesOrNo("Would you like to retain the user OAuth token to enable automatic sharing? ") {
+	if parsed, value := stringToBool(*retainUserOAuthTokenFlag); parsed {
+		if value {
+			userRefreshToken = transport.Token().RefreshToken
+		} else {
+			fmt.Println("The user account OAuth token will be thrown away.")
+		}
+	} else if scanYesOrNo("Would you like to retain the user OAuth token to enable automatic sharing? ") {
 		userRefreshToken = transport.Token().RefreshToken
-		shareScope = scanNonEmptyString("User or group email address, or domain name, to share with: ")
 	} else {
 		fmt.Println("The user account OAuth token will be thrown away.")
+	}
+
+	if len(userRefreshToken) > 0 {
+		if len(*shareScopeFlag) > 0 {
+			shareScope = *shareScopeFlag
+		} else {
+			shareScope = scanNonEmptyString("User or group email address, or domain name, to share with: ")
+		}
 	}
 
 	return &http.Client{Transport: transport}, userRefreshToken, shareScope
@@ -161,25 +184,42 @@ func scanYesOrNo(question string) bool {
 	for {
 		var answer string
 		fmt.Printf(question)
-		if length, err := fmt.Scan(&answer); err != nil {
+		if _, err := fmt.Scan(&answer); err != nil {
 			log.Fatal(err)
-		} else if length > 0 {
-			switch strings.ToLower(answer[0:1]) {
-			case "y", "t", "1":
-				return true
-			case "n", "f", "0":
-				return false
-			}
+		} else if parsed, value := stringToBool(answer); parsed {
+			return value
 		}
 	}
 	panic("unreachable")
 }
 
+// The first return value is true if a boolean value could be parsed.
+// The second return value is the parsed boolean value if the first return value is true.
+func stringToBool(val string) (bool, bool) {
+	if len(val) > 0 {
+		switch strings.ToLower(val[0:1]) {
+		case "y", "t", "1":
+			return true, true
+		case "n", "f", "0":
+			return true, false
+		default:
+			return false, true
+		}
+	}
+	return false, false
+}
+
 func getInfoToDisplayName() bool {
+	if parsed, value := stringToBool(*copyPrinterInfoFlag); parsed {
+		return value
+	}
 	return scanYesOrNo("Copy CUPS printer-info attribute to GCP defaultDisplayName? ")
 }
 
 func getProxy() string {
+	if len(*proxyNameFlag) > 0 {
+		return *proxyNameFlag
+	}
 	return scanNonEmptyString("Proxy name for this CloudPrint-CUPS server: ")
 }
 
