@@ -13,9 +13,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strings"
+
+	"github.com/golang/glog"
 )
 
 const (
@@ -274,7 +275,7 @@ func nextStart(p *xml.Decoder) (xml.StartElement, error) {
 	for {
 		t, err := p.Token()
 		if err != nil {
-			log.Fatal("token", err)
+			glog.Fatal("token", err)
 		}
 		switch t := t.(type) {
 		case xml.StartElement:

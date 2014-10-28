@@ -81,6 +81,8 @@ import (
 	"strings"
 	"time"
 	"unsafe"
+
+	"github.com/golang/glog"
 )
 
 // Interface between Go and the CUPS API.
@@ -120,7 +122,7 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) 
 		e = "encrypting IF REQUESTED"
 	}
 
-	fmt.Printf("connected to CUPS server %s:%d %s\n", C.GoString(c_host), int(c_port), e)
+	glog.Infof("connected to CUPS server %s:%d %s\n", C.GoString(c_host), int(c_port), e)
 
 	pc := newPPDCache(c_http)
 
@@ -172,7 +174,8 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 
 	c_res := C.cupsDoRequest(c.c_http, c_req, C.POST_RESOURCE)
 	if c_res == nil {
-		msg := fmt.Sprintf("CUPS failed to call cupsDoRequest(): %d %s",
+		msg := fmt.Sprintf(
+			"Failed to call cupsDoRequest() [IPP_OP_CUPS_GET_PRINTERS]: %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 		runtime.UnlockOSThread()
 		return nil, errors.New(msg)
@@ -183,11 +186,11 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	defer C.ippDelete(c_res)
 
 	if C.ippGetStatusCode(c_res) == C.IPP_STATUS_ERROR_NOT_FOUND {
-		fmt.Println("no printers found")
 		// Normal error when there are no printers.
 		return make([]lib.Printer, 0), nil
 	} else if C.ippGetStatusCode(c_res) != C.IPP_STATUS_OK {
-		msg := fmt.Sprintf("CUPS failed while calling cupsDoRequest(), IPP status code: %d",
+		msg := fmt.Sprintf(
+			"Failed to call cupsDoRequest() [IPP_OP_CUPS_GET_PRINTERS], IPP status code: %d",
 			C.ippGetStatusCode(c_res))
 		return nil, errors.New(msg)
 	}
@@ -345,7 +348,8 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.JobStatus, string, error) {
 	c_req := C.ippNewRequest(C.IPP_OP_GET_JOB_ATTRIBUTES)
 
 	C.ippAddString(c_req, C.IPP_TAG_OPERATION, C.IPP_TAG_URI, C.JOB_URI, nil, c_uri)
-	C.ippAddStrings(c_req, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES, C.int(0), nil, c.c_jobAttributes)
+	C.ippAddStrings(c_req, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES,
+		C.int(0), nil, c.c_jobAttributes)
 
 	if err := c.reconnect(); err != nil {
 		return 0, "", err
@@ -355,7 +359,7 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.JobStatus, string, error) {
 
 	c_res := C.cupsDoRequest(c.c_http, c_req, C.POST_RESOURCE)
 	if c_res == nil {
-		msg := fmt.Sprintf("CUPS failed to call cupsDoRequest(): %d %s",
+		msg := fmt.Sprintf("Failed to call cupsDoRequest() [IPP_OP_GET_JOB_ATTRIBUTES]: %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 		runtime.UnlockOSThread()
 		return 0, "", errors.New(msg)
@@ -366,7 +370,8 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.JobStatus, string, error) {
 	defer C.ippDelete(c_res)
 
 	if C.ippGetStatusCode(c_res) != C.IPP_STATUS_OK {
-		msg := fmt.Sprintf("CUPS failed while calling cupsDoRequest(), IPP status code: %d",
+		msg := fmt.Sprintf(
+			"Failed to call cupsDoRequest() [IPP_OP_GET_JOB_ATTRIBUTES], IPP status code: %d",
 			C.ippGetStatusCode(c_res))
 		return 0, "", errors.New(msg)
 	}
@@ -416,7 +421,7 @@ func (c *CUPS) Print(printerName, fileName, title, ownerID string, options map[s
 	c_jobID := C.cupsPrintFile2(c.c_http, c_printerName, c_fileName, c_title, c_numOptions, c_options)
 	jobID := uint32(c_jobID)
 	if jobID == 0 {
-		msg := fmt.Sprintf("CUPS failed to call cupsPrintFile2(): %d %s",
+		msg := fmt.Sprintf("Failed to call cupsPrintFile2(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 		return 0, errors.New(msg)
 	}
@@ -429,7 +434,7 @@ func (c *CUPS) CreateTempFile() (*os.File, error) {
 	c_len := C.size_t(200)
 	c_filename := (*C.char)(C.malloc(c_len))
 	if c_filename == nil {
-		return nil, errors.New("Failed to malloc; out of memory?")
+		return nil, errors.New("Failed to malloc(); out of memory?")
 	}
 	defer C.free(unsafe.Pointer(c_filename))
 

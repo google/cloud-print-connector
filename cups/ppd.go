@@ -197,7 +197,7 @@ func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
 			return errors.New(msg)
 		}
 
-		return errors.New(fmt.Sprintf("Failed to get PPD; HTTP status: %d", int(c_http_status)))
+		return errors.New(fmt.Sprintf("Failed to call cupsGetPPD3(); HTTP status: %d", int(c_http_status)))
 	}
 }
 

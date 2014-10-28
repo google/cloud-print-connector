@@ -21,32 +21,33 @@ import (
 	"cups-connector/lib"
 	"cups-connector/manager"
 	"fmt"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/golang/glog"
 )
 
 func main() {
 	config, err := lib.ConfigFromFile()
 	if err != nil {
-		log.Fatal(err)
+		glog.Fatal(err)
 	}
 
 	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes)
 	if err != nil {
-		log.Fatal(err)
+		glog.Fatal(err)
 	}
 
 	gcp, err := gcp.NewGoogleCloudPrint(config.XMPPJID, config.RobotRefreshToken, config.UserRefreshToken, config.ShareScope, config.Proxy)
 	if err != nil {
-		log.Fatal(err)
+		glog.Fatal(err)
 	}
 
 	pm, err := manager.NewPrinterManager(cups, gcp, config.CUPSPollIntervalPrinter,
 		config.CUPSPollIntervalJob, config.GCPMaxConcurrentDownloads, config.CUPSJobFullUsername)
 	if err != nil {
-		log.Fatal(err)
+		glog.Fatal(err)
 	}
 
 	fmt.Printf("Google Cloud Print CUPS Connector ready to rock as proxy '%s'\n", config.Proxy)
@@ -58,6 +59,7 @@ func main() {
 
 	pm.Quit()
 	cups.Quit()
+	glog.Flush()
 }
 
 // Blocks until Ctrl-C or SIGTERM.

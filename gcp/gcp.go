@@ -393,7 +393,7 @@ func get(t *oauth2.Transport, url string) (*http.Response, error) {
 		return nil, err
 	}
 	if response.StatusCode != 200 {
-		text := fmt.Sprintf("Download failed: %s %s", url, response.Status)
+		text := fmt.Sprintf("GET failed: %s %s", url, response.Status)
 		return nil, errors.New(text)
 	}
 
@@ -417,7 +417,7 @@ func post(t *oauth2.Transport, method string, form url.Values) ([]byte, uint, er
 		return nil, 0, err
 	}
 	if response.StatusCode != 200 {
-		text := fmt.Sprintf("/%s HTTP request failed with %s", method, response.Status)
+		text := fmt.Sprintf("/%s call failed: %s", method, response.Status)
 		return nil, 0, errors.New(text)
 	}
 
@@ -435,7 +435,7 @@ func post(t *oauth2.Transport, method string, form url.Values) ([]byte, uint, er
 		return nil, 0, err
 	}
 	if !responseStatus.Success {
-		text := fmt.Sprintf("/%s RPC call failed with %s", method, responseStatus.Message)
+		text := fmt.Sprintf("/%s call failed: %s", method, responseStatus.Message)
 		return nil, responseStatus.ErrorCode, errors.New(text)
 	}
 

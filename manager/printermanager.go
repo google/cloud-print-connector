@@ -20,10 +20,11 @@ import (
 	"cups-connector/gcp"
 	"cups-connector/lib"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 // Manages all interactions between CUPS and Google Cloud Print.
@@ -92,17 +93,17 @@ func printerMapToSlice(m map[string]lib.Printer) []lib.Printer {
 }
 
 func (pm *PrinterManager) syncPrinters() {
-	fmt.Println("Synchronizing printers, stand by")
+	glog.Info("Synchronizing printers, stand by")
 
 	cupsPrinters, err := pm.cups.GetPrinters()
 	if err != nil {
-		log.Printf("Sync failed while calling GetPrinters():\n  %s\n", err)
+		glog.Errorf("Sync failed while calling GetPrinters(): %s", err)
 		return
 	}
 	diffs := lib.DiffPrinters(cupsPrinters, printerMapToSlice(pm.gcpPrintersByGCPID))
 
 	if diffs == nil {
-		fmt.Printf("Printers are already in sync; there are %d\n", len(cupsPrinters))
+		glog.Infof("Printers are already in sync; there are %d", len(cupsPrinters))
 		return
 	}
 
@@ -120,7 +121,7 @@ func (pm *PrinterManager) syncPrinters() {
 
 	pm.gcpPrintersByGCPID = currentPrinters
 
-	fmt.Printf("Finished synchronizing %d printers\n", len(currentPrinters))
+	glog.Infof("Finished synchronizing %d printers", len(currentPrinters))
 }
 
 func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer) {
@@ -128,21 +129,21 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 	case lib.RegisterPrinter:
 		ppd, err := pm.cups.GetPPD(diff.Printer.Name)
 		if err != nil {
-			log.Printf("Failed to call GetPPD() while registering printer %s:\n  %s\n",
+			glog.Errorf("Failed to call GetPPD() while registering printer %s: %s",
 				diff.Printer.Name, err)
 			break
 		}
 		if err := pm.gcp.Register(&diff.Printer, ppd); err != nil {
-			log.Printf("Failed to register printer %s:\n  %s\n", diff.Printer.Name, err)
+			glog.Errorf("Failed to register printer %s: %s", diff.Printer.Name, err)
 			break
 		}
-		fmt.Printf("Registered %s\n", diff.Printer.Name)
+		glog.Infof("Registered %s", diff.Printer.Name)
 
 		if pm.gcp.CanShare() {
 			if err := pm.gcp.Share(diff.Printer.GCPID); err != nil {
-				log.Printf("Failed to share printer %s:\n  %s\n", diff.Printer.Name, err)
+				glog.Errorf("Failed to share printer %s: %s", diff.Printer.Name, err)
 			} else {
-				fmt.Printf("Shared %s\n", diff.Printer.Name)
+				glog.Infof("Shared %s", diff.Printer.Name)
 			}
 		}
 
@@ -155,7 +156,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 			var err error
 			ppd, err = pm.cups.GetPPD(diff.Printer.Name)
 			if err != nil {
-				log.Printf("Failed to call GetPPD() while updating printer %s:\n  %s\n",
+				glog.Errorf("Failed to call GetPPD() while updating printer %s: %s",
 					diff.Printer.Name, err)
 				ch <- diff.Printer
 				return
@@ -163,9 +164,9 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		}
 
 		if err := pm.gcp.Update(diff, ppd); err != nil {
-			log.Printf("Failed to update a printer:\n  %s\n", err)
+			glog.Errorf("Failed to update a printer: %s", err)
 		} else {
-			fmt.Printf("Updated %s\n", diff.Printer.Name)
+			glog.Infof("Updated %s", diff.Printer.Name)
 		}
 
 		ch <- diff.Printer
@@ -173,14 +174,13 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 
 	case lib.DeletePrinter:
 		if err := pm.gcp.Delete(diff.Printer.GCPID); err != nil {
-			log.Printf("Failed to delete a printer %s:\n  %s\n", diff.Printer.GCPID, err)
+			glog.Errorf("Failed to delete a printer %s: %s", diff.Printer.GCPID, err)
 			break
 		}
-		fmt.Printf("Deleted %s\n", diff.Printer.Name)
+		glog.Infof("Deleted %s", diff.Printer.Name)
 
 	case lib.LeavePrinter:
-		// TODO(jacobmarble): When proper logging, this is DEBUG.
-		fmt.Printf("No change to %s\n", diff.Printer.Name)
+		glog.Infof("No change to %s", diff.Printer.Name)
 		ch <- diff.Printer
 		return
 	}
@@ -194,7 +194,7 @@ func (pm *PrinterManager) listenGCPJobs() {
 		for {
 			jobs, err := pm.gcp.NextJobBatch()
 			if err != nil {
-				log.Printf("Error waiting for next printer: %s", err)
+				glog.Warningf("Error waiting for next printer: %s", err)
 			}
 			for _, job := range jobs {
 				ch <- &job
@@ -220,28 +220,28 @@ func (pm *PrinterManager) listenGCPJobs() {
 // 4) Returns when the job status is DONE or ERROR.
 // 5) Deletes temp file.
 func (pm *PrinterManager) processJob(job *lib.Job) {
-	fmt.Printf("Received job %s\n", job.GCPJobID)
+	glog.Infof("Received job %s", job.GCPJobID)
 
 	printer, exists := pm.gcpPrintersByGCPID[job.GCPPrinterID]
 	if !exists {
-		msg := fmt.Sprintf("Failed to find printer %s for job %s", job.GCPPrinterID, job.GCPJobID)
-		log.Println(msg)
+		msg := fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID)
+		glog.Error(msg)
 		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 		return
 	}
 
 	options, err := pm.gcp.Ticket(job.TicketURL)
 	if err != nil {
-		msg := fmt.Sprintf("Failed to get a job ticket: %s", err)
-		log.Println(msg)
+		msg := fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err)
+		glog.Error(msg)
 		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 		return
 	}
 
 	pdfFile, err := pm.cups.CreateTempFile()
 	if err != nil {
-		msg := fmt.Sprintf("Failed to create a temporary file for job: %s", err)
-		log.Println(msg)
+		msg := fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err)
+		glog.Error(msg)
 		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 		return
 	}
@@ -252,13 +252,13 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	dt := time.Now().Sub(t)
 	pm.downloadSemaphore.Release()
 	if err != nil {
-		msg := fmt.Sprintf("Failed to download a job PDF: %s", err)
-		log.Println(msg)
+		msg := fmt.Sprintf("Failed to download PDF for job %s: %s", job.GCPJobID, err)
+		glog.Error(msg)
 		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 		return
 	}
 
-	fmt.Printf("Downloaded job %s in %s\n", job.GCPJobID, dt.String())
+	glog.Infof("Downloaded job %s in %s", job.GCPJobID, dt.String())
 	pdfFile.Close()
 	defer os.Remove(pdfFile.Name())
 
@@ -270,12 +270,12 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), "gcp:"+job.GCPJobID, ownerID, options)
 	if err != nil {
 		msg := fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)
-		log.Println(msg)
+		glog.Error(msg)
 		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 		return
 	}
 
-	fmt.Printf("Submitted GCP job %s as CUPS job %d\n", job.GCPJobID, cupsJobID)
+	glog.Infof("Submitted GCP job %s as CUPS job %d", job.GCPJobID, cupsJobID)
 
 	status := ""
 	message := ""
@@ -284,7 +284,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		latestStatus, latestMessage, err := pm.cups.GetJobStatus(cupsJobID)
 		if err != nil {
 			msg := fmt.Sprintf("Failed to get status of CUPS job %d: %s", cupsJobID, err)
-			log.Println(msg)
+			glog.Error(msg)
 			pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
 			return
 		}
@@ -293,7 +293,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 			status = latestStatus.GCPStatus()
 			message = latestMessage
 			pm.gcp.Control(job.GCPJobID, status, message)
-			fmt.Printf("Job %s status: %s\n", job.GCPJobID, status)
+			glog.Infof("Job %s status is now: %s", job.GCPJobID, status)
 		}
 
 		if latestStatus.GCPStatus() != lib.JobInProgress {
