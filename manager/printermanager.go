@@ -35,11 +35,12 @@ type PrinterManager struct {
 	gcpJobPollQuit     chan bool
 	printerPollQuit    chan bool
 	downloadSemaphore  *lib.Semaphore
+	cupsQueueSize      uint
 	jobPollInterval    time.Duration
 	jobFullUsername    bool
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval, jobPollInterval, gcpMaxConcurrentDownload uint, jobFullUsername bool) (*PrinterManager, error) {
+func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval, jobPollInterval, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername bool) (*PrinterManager, error) {
 	gcpPrinters, err := gcp.List()
 	if err != nil {
 		return nil, err
@@ -57,7 +58,7 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 	jpi := time.Duration(jobPollInterval) * time.Second
 
 	pm := PrinterManager{cups, gcp, gcpPrintersByGCPID, gcpJobPollQuit, printerPollQuit,
-		downloadSemaphore, jpi, jobFullUsername}
+		downloadSemaphore, cupsQueueSize, jpi, jobFullUsername}
 
 	pm.syncPrinters()
 	go pm.syncPrintersPeriodically(printerPollInterval)
@@ -146,6 +147,8 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 				glog.Infof("Shared %s", diff.Printer.Name)
 			}
 		}
+
+		diff.Printer.CUPSJobSemaphore = lib.NewSemaphore(pm.cupsQueueSize)
 
 		ch <- diff.Printer
 		return

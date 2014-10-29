@@ -45,7 +45,8 @@ func main() {
 	}
 
 	pm, err := manager.NewPrinterManager(cups, gcp, config.CUPSPollIntervalPrinter,
-		config.CUPSPollIntervalJob, config.GCPMaxConcurrentDownloads, config.CUPSJobFullUsername)
+		config.CUPSPollIntervalJob, config.GCPMaxConcurrentDownloads, config.CUPSQueueSize,
+		config.CUPSJobFullUsername)
 	if err != nil {
 		glog.Fatal(err)
 	}

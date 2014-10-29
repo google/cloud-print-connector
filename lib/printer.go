@@ -51,6 +51,7 @@ type Printer struct {
 	Status             PrinterStatus     // CUPS: printer-state;               GCP: status field
 	CapsHash           string            // CUPS: hash of PPD;                 GCP: capsHash field
 	Tags               map[string]string // CUPS: all printer attributes;      GCP: repeated tag field
+	CUPSJobSemaphore   *Semaphore
 }
 
 type PrinterDiffOperation int8
@@ -140,6 +141,9 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 		Operation: UpdatePrinter,
 		Printer:   *pc,
 	}
+
+	// Do not lose track of this semaphore.
+	d.Printer.CUPSJobSemaphore = pg.CUPSJobSemaphore
 
 	if pg.DefaultDisplayName != pc.DefaultDisplayName {
 		d.DefaultDisplayNameChanged = true
