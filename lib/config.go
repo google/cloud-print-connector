@@ -27,7 +27,6 @@ const (
 	DefaultGCPMaxConcurrentDownloads = 5
 	DefaultCUPSQueueSize             = 2
 	DefaultCUPSPollIntervalPrinter   = 60 // 1 minute
-	DefaultCUPSPollIntervalJob       = 1  // 1 second
 	DefaultCUPSJobFullUsername       = false
 )
 
@@ -68,9 +67,6 @@ type Config struct {
 
 	// Interval, in seconds, between CUPS printer status polls.
 	CUPSPollIntervalPrinter uint `json:"cups_poll_interval_printer"`
-
-	// Maximum interval, in seconds, between CUPS job status polls.
-	CUPSPollIntervalJob uint `json:"cups_poll_interval_job"`
 
 	// CUPS printer attributes to copy to GCP.
 	CUPSPrinterAttributes []string `json:"cups_printer_attributes"`

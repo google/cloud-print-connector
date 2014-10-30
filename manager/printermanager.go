@@ -39,11 +39,10 @@ type PrinterManager struct {
 	jobsDone           uint
 	jobsError          uint
 	cupsQueueSize      uint
-	jobPollInterval    time.Duration
 	jobFullUsername    bool
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval, jobPollInterval, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername bool) (*PrinterManager, error) {
+func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername bool) (*PrinterManager, error) {
 	gcpPrinters, err := gcp.List()
 	if err != nil {
 		return nil, err
@@ -60,10 +59,8 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 	downloadSemaphore := lib.NewSemaphore(gcpMaxConcurrentDownload)
 	jobStatsSemaphore := lib.NewSemaphore(1)
 
-	jpi := time.Duration(jobPollInterval) * time.Second
-
 	pm := PrinterManager{cups, gcp, gcpPrintersByGCPID, gcpJobPollQuit, printerPollQuit,
-		downloadSemaphore, jobStatsSemaphore, 0, 0, cupsQueueSize, jpi, jobFullUsername}
+		downloadSemaphore, jobStatsSemaphore, 0, 0, cupsQueueSize, jobFullUsername}
 
 	pm.syncPrinters()
 	go pm.syncPrintersPeriodically(printerPollInterval)
@@ -307,7 +304,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	status := ""
 	message := ""
 
-	for _ = range time.Tick(pm.jobPollInterval) {
+	for _ = range time.Tick(time.Second) {
 		latestStatus, latestMessage, err := pm.cups.GetJobStatus(cupsJobID)
 		if err != nil {
 			msg := fmt.Sprintf("Failed to get status of CUPS job %d: %s", cupsJobID, err)
