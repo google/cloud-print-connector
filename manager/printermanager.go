@@ -35,6 +35,9 @@ type PrinterManager struct {
 	gcpJobPollQuit     chan bool
 	printerPollQuit    chan bool
 	downloadSemaphore  *lib.Semaphore
+	jobStatsSemaphore  *lib.Semaphore
+	jobsDone           uint
+	jobsError          uint
 	cupsQueueSize      uint
 	jobPollInterval    time.Duration
 	jobFullUsername    bool
@@ -54,11 +57,12 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 	printerPollQuit := make(chan bool)
 
 	downloadSemaphore := lib.NewSemaphore(gcpMaxConcurrentDownload)
+	jobStatsSemaphore := lib.NewSemaphore(1)
 
 	jpi := time.Duration(jobPollInterval) * time.Second
 
 	pm := PrinterManager{cups, gcp, gcpPrintersByGCPID, gcpJobPollQuit, printerPollQuit,
-		downloadSemaphore, cupsQueueSize, jpi, jobFullUsername}
+		downloadSemaphore, jobStatsSemaphore, 0, 0, cupsQueueSize, jpi, jobFullUsername}
 
 	pm.syncPrinters()
 	go pm.syncPrintersPeriodically(printerPollInterval)
@@ -216,6 +220,17 @@ func (pm *PrinterManager) listenGCPJobs() {
 	}
 }
 
+func (pm *PrinterManager) incrementJobsProcessed(success bool) {
+	pm.jobStatsSemaphore.Acquire()
+	defer pm.jobStatsSemaphore.Release()
+
+	if success {
+		pm.jobsDone += 1
+	} else {
+		pm.jobsError += 1
+	}
+}
+
 // 0) Gets a job's ticket (job options).
 // 1) Downloads a new print job PDF to a temp file.
 // 2) Creates a new job in CUPS.
@@ -230,6 +245,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		msg := fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID)
 		glog.Error(msg)
 		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
+		pm.incrementJobsProcessed(false)
 		return
 	}
 
@@ -238,6 +254,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		msg := fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err)
 		glog.Error(msg)
 		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
+		pm.incrementJobsProcessed(false)
 		return
 	}
 
@@ -246,6 +263,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		msg := fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err)
 		glog.Error(msg)
 		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
+		pm.incrementJobsProcessed(false)
 		return
 	}
 
@@ -258,6 +276,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		msg := fmt.Sprintf("Failed to download PDF for job %s: %s", job.GCPJobID, err)
 		glog.Error(msg)
 		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
+		pm.incrementJobsProcessed(false)
 		return
 	}
 
@@ -275,6 +294,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		msg := fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)
 		glog.Error(msg)
 		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
+		pm.incrementJobsProcessed(false)
 		return
 	}
 
@@ -289,6 +309,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 			msg := fmt.Sprintf("Failed to get status of CUPS job %d: %s", cupsJobID, err)
 			glog.Error(msg)
 			pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
+			pm.incrementJobsProcessed(false)
 			return
 		}
 
@@ -300,7 +321,22 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		}
 
 		if latestStatus.GCPStatus() != lib.JobInProgress {
-			break
+			if latestStatus.GCPStatus() == lib.JobDone {
+				pm.incrementJobsProcessed(true)
+			} else {
+				pm.incrementJobsProcessed(false)
+			}
+			return
 		}
 	}
+}
+
+func (pm *PrinterManager) GetJobStats() (uint, uint, error) {
+	var processed, processing uint
+
+	for _, printer := range pm.gcpPrintersByGCPID {
+		processing += printer.CUPSJobSemaphore.Count()
+	}
+
+	return processed, processing, nil
 }

@@ -32,3 +32,7 @@ func (s *Semaphore) Acquire() {
 func (s *Semaphore) Release() {
 	<-s.ch
 }
+
+func (s *Semaphore) Count() uint {
+	return uint(len(s.ch))
+}

@@ -22,6 +22,8 @@ import (
 )
 
 const (
+	DefaultConfigFilename            = "cups-connector.oauth.json"
+	DefaultSocketFilename            = "/var/run/cups-connector"
 	DefaultGCPMaxConcurrentDownloads = 5
 	DefaultCUPSQueueSize             = 2
 	DefaultCUPSPollIntervalPrinter   = 60 // 1 minute
@@ -30,7 +32,7 @@ const (
 )
 
 var (
-	ConfigFilename           = flag.String("config-filename", "cups-connector.oauth.json", "Name of config file")
+	ConfigFilename           = flag.String("config-filename", DefaultConfigFilename, "Name of config file")
 	DefaultPrinterAttributes = []string{
 		"printer-name",
 		"printer-info",
@@ -78,6 +80,9 @@ type Config struct {
 
 	// Copy CUPS printer-info attribute to GCP defaultDisplayName field.
 	CopyPrinterInfoToDisplayName bool `json:"copy_printer_info"`
+
+	// Filename of unix socket for connector-check to talk to connector.
+	SocketFilename string `json:"socket_filename"`
 }
 
 func ConfigFromFile() (*Config, error) {

@@ -20,6 +20,7 @@ import (
 	"cups-connector/gcp"
 	"cups-connector/lib"
 	"cups-connector/manager"
+	"cups-connector/monitor"
 	"fmt"
 	"os"
 	"os/signal"
@@ -51,6 +52,11 @@ func main() {
 		glog.Fatal(err)
 	}
 
+	m, err := monitor.NewMonitor(cups, gcp, pm, config.SocketFilename)
+	if err != nil {
+		glog.Fatal(err)
+	}
+
 	fmt.Printf("Google Cloud Print CUPS Connector ready to rock as proxy '%s'\n", config.Proxy)
 
 	waitIndefinitely()
@@ -58,6 +64,7 @@ func main() {
 	fmt.Println("")
 	fmt.Println("shutting down normally")
 
+	m.Quit()
 	pm.Quit()
 	cups.Quit()
 	glog.Flush()

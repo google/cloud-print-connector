@@ -148,18 +148,19 @@ func createRobotAccount(userClient *http.Client, proxy string) (string, string) 
 
 func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxy string, infoToDisplayName bool) {
 	config := lib.Config{
-		XMPPJID:           xmppJID,
-		RobotRefreshToken: robotRefreshToken,
-		UserRefreshToken:  userRefreshToken,
-		ShareScope:        shareScope,
-		Proxy:             proxy,
-		GCPMaxConcurrentDownloads:    lib.DefaultGCPMaxConcurrentDownloads,
-		CUPSQueueSize:                lib.DefaultCUPSQueueSize,
-		CUPSPollIntervalPrinter:      lib.DefaultCUPSPollIntervalPrinter,
-		CUPSPollIntervalJob:          lib.DefaultCUPSPollIntervalJob,
-		CUPSPrinterAttributes:        lib.DefaultPrinterAttributes,
-		CUPSJobFullUsername:          lib.DefaultCUPSJobFullUsername,
-		CopyPrinterInfoToDisplayName: infoToDisplayName,
+		xmppJID,
+		robotRefreshToken,
+		userRefreshToken,
+		shareScope,
+		proxy,
+		lib.DefaultGCPMaxConcurrentDownloads,
+		lib.DefaultCUPSQueueSize,
+		lib.DefaultCUPSPollIntervalPrinter,
+		lib.DefaultCUPSPollIntervalJob,
+		lib.DefaultPrinterAttributes,
+		lib.DefaultCUPSJobFullUsername,
+		infoToDisplayName,
+		lib.DefaultSocketFilename,
 	}
 
 	if err := config.ToFile(); err != nil {

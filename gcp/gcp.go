@@ -15,6 +15,8 @@ limitations under the License.
 */
 package gcp
 
+// TODO(jacobmarble): Implement Quit() function that causes XMPP to stop receiving jobs.
+
 import (
 	"cups-connector/gcp/xmpp"
 	"cups-connector/lib"
