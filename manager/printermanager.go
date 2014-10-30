@@ -211,14 +211,14 @@ func (pm *PrinterManager) listenGCPJobs() {
 		select {
 		case job := <-ch:
 			go func() {
-				gcpJobID, msg := pm.processJob(job)
-				if msg == "" {
+				gcpJobID, gcpStatus, cupsStatus, message := pm.processJob(job)
+				if gcpStatus == lib.JobDone {
 					pm.incrementJobsProcessed(true)
 				} else {
-					glog.Error(msg)
-					pm.gcp.Control(gcpJobID, lib.JobError, msg)
+					glog.Error(message)
 					pm.incrementJobsProcessed(false)
 				}
+				pm.gcp.Control(gcpJobID, gcpStatus, string(cupsStatus), message)
 			}()
 		case <-pm.gcpJobPollQuit:
 			pm.gcpJobPollQuit <- true
@@ -245,25 +245,25 @@ func (pm *PrinterManager) incrementJobsProcessed(success bool) {
 // 4) Returns when the job status is DONE or ERROR.
 // 5) Deletes temp file.
 //
-// Returns the GCPJobID and an error, or nothing if no error.
-func (pm *PrinterManager) processJob(job *lib.Job) (string, string) {
+// Returns GCP jobID, GCP status, CUPS status, and an error message (or "").
+func (pm *PrinterManager) processJob(job *lib.Job) (string, lib.GCPJobStatus, lib.CUPSJobStatus, string) {
 	glog.Infof("Received job %s", job.GCPJobID)
 
 	printer, exists := pm.gcpPrintersByGCPID[job.GCPPrinterID]
 	if !exists {
-		return job.GCPJobID,
+		return job.GCPJobID, lib.JobError, "NONE",
 			fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID)
 	}
 
 	options, err := pm.gcp.Ticket(job.TicketURL)
 	if err != nil {
-		return job.GCPJobID,
+		return job.GCPJobID, lib.JobError, "NONE",
 			fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err)
 	}
 
 	pdfFile, err := pm.cups.CreateTempFile()
 	if err != nil {
-		return job.GCPJobID,
+		return job.GCPJobID, lib.JobError, "NONE",
 			fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err)
 	}
 
@@ -273,7 +273,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) (string, string) {
 	dt := time.Now().Sub(t)
 	pm.downloadSemaphore.Release()
 	if err != nil {
-		return job.GCPJobID,
+		return job.GCPJobID, lib.JobError, "NONE",
 			fmt.Sprintf("Failed to download PDF for job %s: %s", job.GCPJobID, err)
 	}
 
@@ -291,34 +291,36 @@ func (pm *PrinterManager) processJob(job *lib.Job) (string, string) {
 
 	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), "gcp:"+job.GCPJobID, ownerID, options)
 	if err != nil {
-		return job.GCPJobID,
+		return job.GCPJobID, lib.JobError, "NONE",
 			fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)
 	}
 
 	glog.Infof("Submitted GCP job %s as CUPS job %d", job.GCPJobID, cupsJobID)
 
-	status := ""
+	var cupsStatus lib.CUPSJobStatus
+	var gcpStatus lib.GCPJobStatus
 	message := ""
 
 	for _ = range time.Tick(time.Second) {
-		latestStatus, latestMessage, err := pm.cups.GetJobStatus(cupsJobID)
+		latestCUPSStatus, latestMessage, err := pm.cups.GetJobStatus(cupsJobID)
 		if err != nil {
-			return job.GCPJobID,
-				fmt.Sprintf("Failed to get status of CUPS job %d: %s", cupsJobID, err)
+			return job.GCPJobID, lib.JobError, "UNKNOWN",
+				fmt.Sprintf("Failed to get gcpStatus of CUPS job %d: %s", cupsJobID, err)
 		}
 
-		if latestStatus.GCPStatus() != status || latestMessage != message {
-			status = latestStatus.GCPStatus()
+		if latestCUPSStatus != cupsStatus || latestMessage != message {
+			cupsStatus = latestCUPSStatus
+			gcpStatus = latestCUPSStatus.GCPJobStatus()
 			message = latestMessage
-			pm.gcp.Control(job.GCPJobID, status, message)
-			glog.Infof("Job %s status is now: %s", job.GCPJobID, status)
+			pm.gcp.Control(job.GCPJobID, gcpStatus, string(cupsStatus), message)
+			glog.Infof("Job %s gcpStatus is now: %s", job.GCPJobID, gcpStatus)
 		}
 
-		if status != lib.JobInProgress {
-			if status == lib.JobDone {
-				return job.GCPJobID, ""
+		if gcpStatus != lib.JobInProgress {
+			if gcpStatus == lib.JobDone {
+				return job.GCPJobID, lib.JobDone, cupsStatus, ""
 			} else {
-				return job.GCPJobID, fmt.Sprintf("Print job %s failed: %s", job.GCPJobID, message)
+				return job.GCPJobID, lib.JobError, cupsStatus, fmt.Sprintf("Print job %s failed: %s", job.GCPJobID, message)
 			}
 		}
 	}

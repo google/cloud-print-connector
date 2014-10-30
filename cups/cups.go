@@ -335,10 +335,10 @@ func (c *CUPS) GetPPDHash(printerName string) (string, error) {
 }
 
 // Calls cupsDoRequest() with IPP_OP_GET_JOB_ATTRIBUTES
-func (c *CUPS) GetJobStatus(jobID uint32) (lib.JobStatus, string, error) {
+func (c *CUPS) GetJobStatus(jobID uint32) (lib.CUPSJobStatus, string, error) {
 	c_uri, err := createJobURI(jobID)
 	if err != nil {
-		return 0, "", err
+		return "", "", err
 	}
 	defer C.free(unsafe.Pointer(c_uri))
 
@@ -350,7 +350,7 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.JobStatus, string, error) {
 		C.int(0), nil, c.c_jobAttributes)
 
 	if err := c.reconnect(); err != nil {
-		return 0, "", err
+		return "", "", err
 	}
 
 	runtime.LockOSThread()
@@ -360,7 +360,7 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.JobStatus, string, error) {
 		err := fmt.Errorf("Failed to call cupsDoRequest() [IPP_OP_GET_JOB_ATTRIBUTES]: %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 		runtime.UnlockOSThread()
-		return 0, "", err
+		return "", "", err
 	}
 	runtime.UnlockOSThread()
 
@@ -368,13 +368,13 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.JobStatus, string, error) {
 	defer C.ippDelete(c_res)
 
 	if C.ippGetStatusCode(c_res) != C.IPP_STATUS_OK {
-		return 0, "", fmt.Errorf(
+		return "", "", fmt.Errorf(
 			"Failed to call cupsDoRequest() [IPP_OP_GET_JOB_ATTRIBUTES], IPP status code: %d",
 			C.ippGetStatusCode(c_res))
 	}
 
 	c_status := C.ippFindAttribute(c_res, C.JOB_STATE, C.IPP_TAG_ENUM)
-	status := lib.JobStatusFromInt(uint8(C.ippGetInteger(c_status, C.int(0))))
+	status := lib.CUPSJobStatusFromInt(uint8(C.ippGetInteger(c_status, C.int(0))))
 
 	c_statusReason := C.ippFindAttribute(c_res, C.JOB_STATE_REASONS, C.IPP_TAG_STRING)
 	var statusReason string

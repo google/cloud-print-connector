@@ -15,9 +15,10 @@ limitations under the License.
 */
 package lib
 
-type JobStatus uint8
+type GCPJobStatus string
+type CUPSJobStatus string
 
-func JobStatusFromInt(si uint8) JobStatus {
+func CUPSJobStatusFromInt(si uint8) CUPSJobStatus {
 	switch si {
 	case 3:
 		return JobPending
@@ -38,13 +39,13 @@ func JobStatusFromInt(si uint8) JobStatus {
 	}
 }
 
-func (js JobStatus) GCPStatus() string {
+func (js CUPSJobStatus) GCPJobStatus() GCPJobStatus {
 	switch js {
-	case 3, 4, 5:
+	case JobPending, JobHeld, JobProcessing:
 		return JobInProgress
-	case 6, 7, 8:
+	case JobStopped, JobCanceled, JobAborted:
 		return JobError
-	case 9:
+	case JobCompleted:
 		return JobDone
 	default:
 		panic("unreachable")
@@ -53,17 +54,17 @@ func (js JobStatus) GCPStatus() string {
 
 // CUPS: ipp_jstate_t; GCP: Legacy Job Status; not 1:1
 const (
-	JobPending    JobStatus = 3 // CUPS: IPP_JSTATE_PENDING;    GCP: IN_PROGRESS
-	JobHeld       JobStatus = 4 // CUPS: IPP_JSTATE_HELD;       GCP: IN_PROGRESS
-	JobProcessing JobStatus = 5 // CUPS: IPP_JSTATE_PROCESSING; GCP: IN_PROGRESS
-	JobStopped    JobStatus = 6 // CUPS: IPP_JSTATE_STOPPED;    GCP: ERROR
-	JobCanceled   JobStatus = 7 // CUPS: IPP_JSTATE_CANCELED;   GCP: ERROR
-	JobAborted    JobStatus = 8 // CUPS: IPP_JSTATE_ABORTED;    GCP: ERROR
-	JobCompleted  JobStatus = 9 // CUPS: IPP_JSTATE_COMPLETED;  GCP: DONE
+	JobPending    CUPSJobStatus = "PENDING"    // CUPS: IPP_JSTATE_PENDING;    GCP: IN_PROGRESS
+	JobHeld       CUPSJobStatus = "HELD"       // CUPS: IPP_JSTATE_HELD;       GCP: IN_PROGRESS
+	JobProcessing CUPSJobStatus = "PROCESSING" // CUPS: IPP_JSTATE_PROCESSING; GCP: IN_PROGRESS
+	JobStopped    CUPSJobStatus = "STOPPED"    // CUPS: IPP_JSTATE_STOPPED;    GCP: ERROR
+	JobCanceled   CUPSJobStatus = "CANCELED"   // CUPS: IPP_JSTATE_CANCELED;   GCP: ERROR
+	JobAborted    CUPSJobStatus = "ABORTED"    // CUPS: IPP_JSTATE_ABORTED;    GCP: ERROR
+	JobCompleted  CUPSJobStatus = "COMPLETED"  // CUPS: IPP_JSTATE_COMPLETED;  GCP: DONE
 
-	JobInProgress = "IN_PROGRESS"
-	JobError      = "ERROR"
-	JobDone       = "DONE"
+	JobInProgress GCPJobStatus = "IN_PROGRESS"
+	JobError      GCPJobStatus = "ERROR"
+	JobDone       GCPJobStatus = "DONE"
 )
 
 type Job struct {

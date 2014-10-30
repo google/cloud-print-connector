@@ -118,10 +118,11 @@ func (gcp *GoogleCloudPrint) GetAccessToken() string {
 }
 
 // Calls google.com/cloudprint/control.
-func (gcp *GoogleCloudPrint) Control(jobID, status, message string) error {
+func (gcp *GoogleCloudPrint) Control(jobID string, status lib.GCPJobStatus, code, message string) error {
 	form := url.Values{}
 	form.Set("jobid", jobID)
-	form.Set("status", status)
+	form.Set("status", string(status))
+	form.Set("code", code)
 	form.Set("message", message)
 
 	if _, _, err := post(gcp.robotTransport, "control", form); err != nil {
