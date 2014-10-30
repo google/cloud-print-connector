@@ -104,6 +104,8 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 
 			if cupsPrinter, exists := cupsPrintersByName[gcpPrinter.Name]; exists {
 				cupsPrinter.GCPID = gcpPrinter.GCPID
+				cupsPrinter.CUPSJobSemaphore = gcpPrinter.CUPSJobSemaphore
+
 				if reflect.DeepEqual(cupsPrinter, gcpPrinter) {
 					diffs = append(diffs, PrinterDiff{Operation: LeavePrinter, Printer: gcpPrinter})
 
