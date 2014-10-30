@@ -210,7 +210,16 @@ func (pm *PrinterManager) listenGCPJobs() {
 	for {
 		select {
 		case job := <-ch:
-			go pm.processJob(job)
+			go func() {
+				gcpJobID, msg := pm.processJob(job)
+				if msg == "" {
+					pm.incrementJobsProcessed(true)
+				} else {
+					glog.Error(msg)
+					pm.gcp.Control(gcpJobID, lib.JobError, msg)
+					pm.incrementJobsProcessed(false)
+				}
+			}()
 		case <-pm.gcpJobPollQuit:
 			pm.gcpJobPollQuit <- true
 			return
@@ -235,34 +244,27 @@ func (pm *PrinterManager) incrementJobsProcessed(success bool) {
 // 3) Polls the CUPS job status to update the GCP job status.
 // 4) Returns when the job status is DONE or ERROR.
 // 5) Deletes temp file.
-func (pm *PrinterManager) processJob(job *lib.Job) {
+//
+// Returns the GCPJobID and an error, or nothing if no error.
+func (pm *PrinterManager) processJob(job *lib.Job) (string, string) {
 	glog.Infof("Received job %s", job.GCPJobID)
 
 	printer, exists := pm.gcpPrintersByGCPID[job.GCPPrinterID]
 	if !exists {
-		msg := fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID)
-		glog.Error(msg)
-		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
-		pm.incrementJobsProcessed(false)
-		return
+		return job.GCPJobID,
+			fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID)
 	}
 
 	options, err := pm.gcp.Ticket(job.TicketURL)
 	if err != nil {
-		msg := fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err)
-		glog.Error(msg)
-		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
-		pm.incrementJobsProcessed(false)
-		return
+		return job.GCPJobID,
+			fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err)
 	}
 
 	pdfFile, err := pm.cups.CreateTempFile()
 	if err != nil {
-		msg := fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err)
-		glog.Error(msg)
-		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
-		pm.incrementJobsProcessed(false)
-		return
+		return job.GCPJobID,
+			fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err)
 	}
 
 	pm.downloadSemaphore.Acquire()
@@ -271,11 +273,8 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	dt := time.Now().Sub(t)
 	pm.downloadSemaphore.Release()
 	if err != nil {
-		msg := fmt.Sprintf("Failed to download PDF for job %s: %s", job.GCPJobID, err)
-		glog.Error(msg)
-		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
-		pm.incrementJobsProcessed(false)
-		return
+		return job.GCPJobID,
+			fmt.Sprintf("Failed to download PDF for job %s: %s", job.GCPJobID, err)
 	}
 
 	glog.Infof("Downloaded job %s in %s", job.GCPJobID, dt.String())
@@ -292,11 +291,8 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 
 	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), "gcp:"+job.GCPJobID, ownerID, options)
 	if err != nil {
-		msg := fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)
-		glog.Error(msg)
-		pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
-		pm.incrementJobsProcessed(false)
-		return
+		return job.GCPJobID,
+			fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)
 	}
 
 	glog.Infof("Submitted GCP job %s as CUPS job %d", job.GCPJobID, cupsJobID)
@@ -307,11 +303,8 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	for _ = range time.Tick(time.Second) {
 		latestStatus, latestMessage, err := pm.cups.GetJobStatus(cupsJobID)
 		if err != nil {
-			msg := fmt.Sprintf("Failed to get status of CUPS job %d: %s", cupsJobID, err)
-			glog.Error(msg)
-			pm.gcp.Control(job.GCPJobID, lib.JobError, msg)
-			pm.incrementJobsProcessed(false)
-			return
+			return job.GCPJobID,
+				fmt.Sprintf("Failed to get status of CUPS job %d: %s", cupsJobID, err)
 		}
 
 		if latestStatus.GCPStatus() != status || latestMessage != message {
@@ -321,15 +314,15 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 			glog.Infof("Job %s status is now: %s", job.GCPJobID, status)
 		}
 
-		if latestStatus.GCPStatus() != lib.JobInProgress {
-			if latestStatus.GCPStatus() == lib.JobDone {
-				pm.incrementJobsProcessed(true)
+		if status != lib.JobInProgress {
+			if status == lib.JobDone {
+				return job.GCPJobID, ""
 			} else {
-				pm.incrementJobsProcessed(false)
+				return job.GCPJobID, fmt.Sprintf("Print job %s failed: %s", job.GCPJobID, message)
 			}
-			return
 		}
 	}
+	panic("unreachable")
 }
 
 func (pm *PrinterManager) GetJobStats() (uint, uint, uint, error) {

@@ -395,8 +395,7 @@ func get(t *oauth2.Transport, url string) (*http.Response, error) {
 		return nil, err
 	}
 	if response.StatusCode != 200 {
-		text := fmt.Sprintf("GET failed: %s %s", url, response.Status)
-		return nil, errors.New(text)
+		return nil, fmt.Errorf("GET failed: %s %s", url, response.Status)
 	}
 
 	return response, nil
@@ -419,8 +418,7 @@ func post(t *oauth2.Transport, method string, form url.Values) ([]byte, uint, er
 		return nil, 0, err
 	}
 	if response.StatusCode != 200 {
-		text := fmt.Sprintf("/%s call failed: %s", method, response.Status)
-		return nil, 0, errors.New(text)
+		return nil, 0, fmt.Errorf("/%s call failed: %s", method, response.Status)
 	}
 
 	responseBody, err := ioutil.ReadAll(response.Body)
@@ -437,8 +435,8 @@ func post(t *oauth2.Transport, method string, form url.Values) ([]byte, uint, er
 		return nil, 0, err
 	}
 	if !responseStatus.Success {
-		text := fmt.Sprintf("/%s call failed: %s", method, responseStatus.Message)
-		return nil, responseStatus.ErrorCode, errors.New(text)
+		return nil, responseStatus.ErrorCode, fmt.Errorf(
+			"/%s call failed: %s", method, responseStatus.Message)
 	}
 
 	return responseBody, 0, nil

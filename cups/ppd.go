@@ -191,13 +191,13 @@ func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
 
 	default:
 		if C.cupsLastError() != C.IPP_STATUS_OK {
-			msg := fmt.Sprintf("Failed to call cupsGetPPD3(): %d %s",
+			err := fmt.Errorf("Failed to call cupsGetPPD3(): %d %s",
 				int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 			runtime.UnlockOSThread()
-			return errors.New(msg)
+			return err
 		}
 
-		return errors.New(fmt.Sprintf("Failed to call cupsGetPPD3(); HTTP status: %d", int(c_http_status)))
+		return fmt.Errorf("Failed to call cupsGetPPD3(); HTTP status: %d", int(c_http_status))
 	}
 }
 
@@ -208,8 +208,8 @@ func (pce *ppdCacheEntry) reconnect(c_http *C.http_t) error {
 
 	c_ippStatus := C.httpReconnect(c_http)
 	if c_ippStatus != C.IPP_STATUS_OK {
-		return errors.New(fmt.Sprintf("Failed to call cupsReconnect(): %d %s",
-			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString())))
+		return fmt.Errorf("Failed to call cupsReconnect(): %d %s",
+			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 	}
 	return nil
 }

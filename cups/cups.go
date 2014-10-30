@@ -103,8 +103,7 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) 
 
 	c_http := C.httpConnectEncrypt(c_host, c_port, c_encryption)
 	if c_http == nil {
-		msg := fmt.Sprintf("Failed to connect to %s:%d", C.GoString(c_host), int(c_port))
-		return nil, errors.New(msg)
+		return nil, fmt.Errorf("Failed to connect to %s:%d", C.GoString(c_host), int(c_port))
 	}
 
 	var e string
@@ -153,8 +152,8 @@ func (c *CUPS) reconnect() error {
 
 	c_ippStatus := C.httpReconnect(c.c_http)
 	if c_ippStatus != C.IPP_STATUS_OK {
-		return errors.New(fmt.Sprintf("Failed to call cupsReconnect(): %d %s",
-			int(c_ippStatus), C.GoString(C.cupsLastErrorString())))
+		return fmt.Errorf("Failed to call cupsReconnect(): %d %s",
+			int(c_ippStatus), C.GoString(C.cupsLastErrorString()))
 	}
 	return nil
 }
@@ -174,11 +173,11 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 
 	c_res := C.cupsDoRequest(c.c_http, c_req, C.POST_RESOURCE)
 	if c_res == nil {
-		msg := fmt.Sprintf(
+		err := fmt.Errorf(
 			"Failed to call cupsDoRequest() [IPP_OP_CUPS_GET_PRINTERS]: %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 		runtime.UnlockOSThread()
-		return nil, errors.New(msg)
+		return nil, err
 	}
 	runtime.UnlockOSThread()
 
@@ -189,10 +188,9 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 		// Normal error when there are no printers.
 		return make([]lib.Printer, 0), nil
 	} else if C.ippGetStatusCode(c_res) != C.IPP_STATUS_OK {
-		msg := fmt.Sprintf(
+		return nil, fmt.Errorf(
 			"Failed to call cupsDoRequest() [IPP_OP_CUPS_GET_PRINTERS], IPP status code: %d",
 			C.ippGetStatusCode(c_res))
-		return nil, errors.New(msg)
 	}
 
 	printers := make([]lib.Printer, 0, 1)
@@ -359,10 +357,10 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.JobStatus, string, error) {
 
 	c_res := C.cupsDoRequest(c.c_http, c_req, C.POST_RESOURCE)
 	if c_res == nil {
-		msg := fmt.Sprintf("Failed to call cupsDoRequest() [IPP_OP_GET_JOB_ATTRIBUTES]: %d %s",
+		err := fmt.Errorf("Failed to call cupsDoRequest() [IPP_OP_GET_JOB_ATTRIBUTES]: %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 		runtime.UnlockOSThread()
-		return 0, "", errors.New(msg)
+		return 0, "", err
 	}
 	runtime.UnlockOSThread()
 
@@ -370,10 +368,9 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.JobStatus, string, error) {
 	defer C.ippDelete(c_res)
 
 	if C.ippGetStatusCode(c_res) != C.IPP_STATUS_OK {
-		msg := fmt.Sprintf(
+		return 0, "", fmt.Errorf(
 			"Failed to call cupsDoRequest() [IPP_OP_GET_JOB_ATTRIBUTES], IPP status code: %d",
 			C.ippGetStatusCode(c_res))
-		return 0, "", errors.New(msg)
 	}
 
 	c_status := C.ippFindAttribute(c_res, C.JOB_STATE, C.IPP_TAG_ENUM)
@@ -421,9 +418,8 @@ func (c *CUPS) Print(printerName, fileName, title, ownerID string, options map[s
 	c_jobID := C.cupsPrintFile2(c.c_http, c_printerName, c_fileName, c_title, c_numOptions, c_options)
 	jobID := uint32(c_jobID)
 	if jobID == 0 {
-		msg := fmt.Sprintf("Failed to call cupsPrintFile2(): %d %s",
+		return 0, fmt.Errorf("Failed to call cupsPrintFile2(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
-		return 0, errors.New(msg)
 	}
 
 	return jobID, nil
@@ -442,10 +438,10 @@ func (c *CUPS) CreateTempFile() (*os.File, error) {
 
 	c_fd := C.cupsTempFd(c_filename, C.int(c_len))
 	if c_fd == C.int(-1) {
-		msg := fmt.Sprintf("Failed to call cupsTempFd(): %d %s",
+		err := fmt.Errorf("Failed to call cupsTempFd(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 		runtime.UnlockOSThread()
-		return nil, errors.New(msg)
+		return nil, err
 	}
 
 	runtime.UnlockOSThread()
