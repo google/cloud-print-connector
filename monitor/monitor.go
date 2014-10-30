@@ -29,7 +29,8 @@ import (
 const monitorFormat = `cups-printers=%d
 gcp-printers=%d
 jobs-processed=%d
-jobs-processing=%d`
+jobs-processing=%d
+`
 
 type Monitor struct {
 	cups         *cups.CUPS
@@ -53,14 +54,16 @@ func NewMonitor(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, pm *manager.PrinterM
 
 func (m *Monitor) listen(listener net.Listener) {
 	ch := make(chan net.Conn)
+	quitReq := make(chan bool, 1)
+	quitAck := make(chan bool)
 
 	go func() {
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
 				select {
-				case <-m.listenerQuit:
-					m.listenerQuit <- true
+				case <-quitReq:
+					quitAck <- true
 					return
 				}
 				glog.Errorf("Error listening to monitor socket: %s", err)
@@ -73,13 +76,20 @@ func (m *Monitor) listen(listener net.Listener) {
 	for {
 		select {
 		case conn := <-ch:
-			fmt.Println("conn")
-			// TODO
-			//stats := fmt.Sprintf(
-			// conn.Write(blah)
+			glog.Info("Received monitor request")
+			stats, err := m.getStats()
+			if err != nil {
+				glog.Warningf("Monitor request failed: %s", err)
+				conn.Write([]byte("error"))
+			} else {
+				conn.Write([]byte(stats))
+			}
 			conn.Close()
+
 		case <-m.listenerQuit:
+			quitReq <- true
 			listener.Close()
+			<-quitAck
 			m.listenerQuit <- true
 			return
 		}
@@ -88,8 +98,6 @@ func (m *Monitor) listen(listener net.Listener) {
 
 func (m *Monitor) Quit() {
 	m.listenerQuit <- true
-	m.listenerQuit <- true
-	<-m.listenerQuit
 	<-m.listenerQuit
 }
 

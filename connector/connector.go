@@ -29,6 +29,8 @@ import (
 	"github.com/golang/glog"
 )
 
+// TODO(jacobmarble): Better socket-already-exists detection. Flag to remove on start.
+
 func main() {
 	config, err := lib.ConfigFromFile()
 	if err != nil {
@@ -72,6 +74,7 @@ func main() {
 
 // Blocks until Ctrl-C or SIGTERM.
 func waitIndefinitely() {
+	// TODO(jacobmarble): Second signal forces quit.
 	ch := make(chan os.Signal)
 	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 	<-ch

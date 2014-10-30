@@ -50,6 +50,7 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 	}
 	gcpPrintersByGCPID := make(map[string]lib.Printer, len(gcpPrinters))
 	for _, p := range gcpPrinters {
+		p.CUPSJobSemaphore = lib.NewSemaphore(cupsQueueSize)
 		gcpPrintersByGCPID[p.GCPID] = p
 	}
 
