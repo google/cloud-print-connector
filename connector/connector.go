@@ -29,12 +29,19 @@ import (
 	"github.com/golang/glog"
 )
 
-// TODO(jacobmarble): Better socket-already-exists detection. Flag to remove on start.
-
 func main() {
 	config, err := lib.ConfigFromFile()
 	if err != nil {
 		glog.Fatal(err)
+	}
+
+	if _, err := os.Stat(config.SocketFilename); !os.IsNotExist(err) {
+		if err != nil {
+			glog.Fatal(err)
+		}
+		glog.Errorf(
+			"A connector is already running, or the monitoring socket %s wasn't cleaned up properly",
+			config.SocketFilename)
 	}
 
 	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes)
