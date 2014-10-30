@@ -28,8 +28,9 @@ import (
 
 const monitorFormat = `cups-printers=%d
 gcp-printers=%d
-jobs-processed=%d
-jobs-processing=%d
+jobs-done=%d
+jobs-error=%d
+jobs-in-progress=%d
 `
 
 type Monitor struct {
@@ -114,13 +115,13 @@ func (m *Monitor) getStats() (string, error) {
 	}
 	gcpPrinterQuantity := len(gcpPrinters)
 
-	jobsProcessed, jobsProcessing, err := m.pm.GetJobStats()
+	jobsDone, jobsError, jobsProcessing, err := m.pm.GetJobStats()
 	if err != nil {
 		return "", err
 	}
 
 	stats := fmt.Sprintf(
-		monitorFormat, cupsPrinterQuantity, gcpPrinterQuantity, jobsProcessed, jobsProcessing)
+		monitorFormat, cupsPrinterQuantity, gcpPrinterQuantity, jobsDone, jobsError, jobsProcessing)
 
 	return stats, nil
 }

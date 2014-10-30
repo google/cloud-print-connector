@@ -290,6 +290,9 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		ownerID = strings.Split(ownerID, "@")[0]
 	}
 
+	printer.CUPSJobSemaphore.Acquire()
+	defer printer.CUPSJobSemaphore.Release()
+
 	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), "gcp:"+job.GCPJobID, ownerID, options)
 	if err != nil {
 		msg := fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)
@@ -332,12 +335,15 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	}
 }
 
-func (pm *PrinterManager) GetJobStats() (uint, uint, error) {
-	var processed, processing uint
+func (pm *PrinterManager) GetJobStats() (uint, uint, uint, error) {
+	var processing uint
 
 	for _, printer := range pm.gcpPrintersByGCPID {
 		processing += printer.CUPSJobSemaphore.Count()
 	}
 
-	return processed, processing, nil
+	pm.jobStatsSemaphore.Acquire()
+	defer pm.jobStatsSemaphore.Release()
+
+	return pm.jobsDone, pm.jobsError, processing, nil
 }
