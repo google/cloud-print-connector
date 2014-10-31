@@ -21,17 +21,9 @@ import (
 	"io/ioutil"
 )
 
-const (
-	DefaultConfigFilename            = "cups-connector.oauth.json"
-	DefaultSocketFilename            = "/var/run/cups-connector"
-	DefaultGCPMaxConcurrentDownloads = 5
-	DefaultCUPSQueueSize             = 2
-	DefaultCUPSPollIntervalPrinter   = 60 // 1 minute
-	DefaultCUPSJobFullUsername       = false
-)
-
 var (
-	ConfigFilename           = flag.String("config-filename", DefaultConfigFilename, "Name of config file")
+	ConfigFilename = flag.String(
+		"config-filename", "cups-connector.oauth.json", "Name of config file")
 	DefaultPrinterAttributes = []string{
 		"printer-name",
 		"printer-info",
@@ -53,20 +45,20 @@ type Config struct {
 	// Associated with user account. Used for sharing GCP printers; may be omitted.
 	UserRefreshToken string `json:"user_refresh_token,omitempty"`
 
-	// User or group email address, or domain name, to share all printers with.
+	// Scope (user, group, domain) to share printers with.
 	ShareScope string `json:"share_scope,omitempty"`
 
 	// User-chosen name of this proxy. Should be unique per Google user account.
-	Proxy string `json:"proxy"`
+	ProxyName string `json:"proxy_name"`
 
 	// Maximum quantity of PDFs to download concurrently.
 	GCPMaxConcurrentDownloads uint `json:"gcp_max_concurrent_downloads"`
 
 	// CUPS job queue size.
-	CUPSQueueSize uint `json:"cups_queue_size"`
+	CUPSJobQueueSize uint `json:"cups_job_queue_size"`
 
-	// Interval, in seconds, between CUPS printer status polls.
-	CUPSPollIntervalPrinter uint `json:"cups_poll_interval_printer"`
+	// Interval (eg 10s, 1m) between CUPS printer status polls.
+	CUPSPrinterPollInterval string `json:"cups_printer_poll_interval"`
 
 	// CUPS printer attributes to copy to GCP.
 	CUPSPrinterAttributes []string `json:"cups_printer_attributes"`
@@ -74,11 +66,11 @@ type Config struct {
 	// Whether to use the full username (joe@example.com) in CUPS jobs.
 	CUPSJobFullUsername bool `json:"cups_job_full_username"`
 
-	// Copy CUPS printer-info attribute to GCP defaultDisplayName field.
-	CopyPrinterInfoToDisplayName bool `json:"copy_printer_info"`
+	// Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName.
+	CopyPrinterInfoToDisplayName bool `json:"copy_printer_info_to_display_name"`
 
 	// Filename of unix socket for connector-check to talk to connector.
-	SocketFilename string `json:"socket_filename"`
+	MonitorSocketFilename string `json:"monitor_socket_filename"`
 }
 
 func ConfigFromFile() (*Config, error) {

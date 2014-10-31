@@ -35,13 +35,13 @@ func main() {
 		glog.Fatal(err)
 	}
 
-	if _, err := os.Stat(config.SocketFilename); !os.IsNotExist(err) {
+	if _, err := os.Stat(config.MonitorSocketFilename); !os.IsNotExist(err) {
 		if err != nil {
 			glog.Fatal(err)
 		}
 		glog.Errorf(
 			"A connector is already running, or the monitoring socket %s wasn't cleaned up properly",
-			config.SocketFilename)
+			config.MonitorSocketFilename)
 	}
 
 	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes)
@@ -49,23 +49,24 @@ func main() {
 		glog.Fatal(err)
 	}
 
-	gcp, err := gcp.NewGoogleCloudPrint(config.XMPPJID, config.RobotRefreshToken, config.UserRefreshToken, config.ShareScope, config.Proxy)
+	gcp, err := gcp.NewGoogleCloudPrint(config.XMPPJID, config.RobotRefreshToken,
+		config.UserRefreshToken, config.ShareScope, config.ProxyName)
 	if err != nil {
 		glog.Fatal(err)
 	}
 
-	pm, err := manager.NewPrinterManager(cups, gcp, config.CUPSPollIntervalPrinter,
-		config.GCPMaxConcurrentDownloads, config.CUPSQueueSize, config.CUPSJobFullUsername)
+	pm, err := manager.NewPrinterManager(cups, gcp, config.CUPSPrinterPollInterval,
+		config.GCPMaxConcurrentDownloads, config.CUPSJobQueueSize, config.CUPSJobFullUsername)
 	if err != nil {
 		glog.Fatal(err)
 	}
 
-	m, err := monitor.NewMonitor(cups, gcp, pm, config.SocketFilename)
+	m, err := monitor.NewMonitor(cups, gcp, pm, config.MonitorSocketFilename)
 	if err != nil {
 		glog.Fatal(err)
 	}
 
-	fmt.Printf("Google Cloud Print CUPS Connector ready to rock as proxy '%s'\n", config.Proxy)
+	fmt.Printf("Google Cloud Print CUPS Connector ready to rock as proxy '%s'\n", config.ProxyName)
 
 	waitIndefinitely()
 

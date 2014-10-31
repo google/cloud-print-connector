@@ -42,7 +42,7 @@ type PrinterManager struct {
 	jobFullUsername    bool
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername bool) (*PrinterManager, error) {
+func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername bool) (*PrinterManager, error) {
 	gcpPrinters, err := gcp.List()
 	if err != nil {
 		return nil, err
@@ -59,11 +59,19 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 	downloadSemaphore := lib.NewSemaphore(gcpMaxConcurrentDownload)
 	jobStatsSemaphore := lib.NewSemaphore(1)
 
-	pm := PrinterManager{cups, gcp, gcpPrintersByGCPID, gcpJobPollQuit, printerPollQuit,
+	ppi, err := time.ParseDuration(printerPollInterval)
+	if err != nil {
+		return nil, err
+	}
+
+	pm := PrinterManager{
+		cups, gcp,
+		gcpPrintersByGCPID,
+		gcpJobPollQuit, printerPollQuit,
 		downloadSemaphore, jobStatsSemaphore, 0, 0, cupsQueueSize, jobFullUsername}
 
 	pm.syncPrinters()
-	go pm.syncPrintersPeriodically(printerPollInterval)
+	go pm.syncPrintersPeriodically(ppi)
 	go pm.listenGCPJobs()
 
 	return &pm, nil
@@ -74,8 +82,7 @@ func (pm *PrinterManager) Quit() {
 	<-pm.printerPollQuit
 }
 
-func (pm *PrinterManager) syncPrintersPeriodically(printerPollInterval uint) {
-	interval := time.Duration(printerPollInterval) * time.Second
+func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 	for {
 		select {
 		case <-time.After(interval):

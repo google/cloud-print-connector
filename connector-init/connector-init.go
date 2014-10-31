@@ -23,22 +23,45 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/golang/oauth2"
 )
 
 var (
-	retainUserOAuthTokenFlag = flag.String("retain-user-oauth-token", "",
-		"Whether to retain the user's OAuth token to enable automatic sharing")
-	shareScopeFlag = flag.String("share-scope", "",
+	retainUserOauthTokenFlag = flag.String(
+		"retain-user-oauth-token", "",
+		"Whether to retain the user's OAuth token to enable automatic sharing (true/false)")
+	shareScopeFlag = flag.String(
+		"share-scope", "",
 		"Scope (user, group, domain) to share printers with")
-	proxyNameFlag       = flag.String("proxy-name", "", "GCP proxy name of this Connector")
-	copyPrinterInfoFlag = flag.String("copy-printer-info-to-display-name", "",
+	proxyNameFlag = flag.String(
+		"proxy-name", "",
+		"User-chosen name of this proxy. Should be unique per Google user account")
+	gcpMaxConcurrentDownloadsFlag = flag.Uint(
+		"gcp-max-concurrent-downloads", 5,
+		"Maximum quantity of PDFs to download concurrently")
+	cupsJobQueueSizeFlag = flag.Uint(
+		"cups-job-queue-size", 3,
+		"CUPS job queue size")
+	cupsPrinterPollIntervalFlag = flag.Duration(
+		"cups-printer-poll-interval", time.Minute,
+		"Interval, in seconds, between CUPS printer status polls")
+	cupsJobFullUsernameFlag = flag.Bool(
+		"cups-job-full-username", false,
+		"Whether to use the full username (joe@example.com) in CUPS jobs")
+	copyPrinterInfoToDisplayNameFlag = flag.Bool(
+		"copy-printer-info-to-display-name", true,
 		"Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName")
+	monitorSocketFilenameFlag = flag.String(
+		"socket-filename", "/var/run/cups-connector/monitor.sock",
+		"Filename of unix socket for connector-check to talk to connector")
 )
 
-func getUserClient() (*http.Client, string, string) {
+func getUserClient(retainUserOauthToken bool) (*http.Client, string) {
 	options := oauth2.Options{
 		ClientID:     lib.ClientID,
 		ClientSecret: lib.ClientSecret,
@@ -64,28 +87,12 @@ func getUserClient() (*http.Client, string, string) {
 	fmt.Println("")
 	fmt.Println("Acquired OAuth credentials for user account")
 
-	var userRefreshToken, shareScope string
-	if parsed, value := stringToBool(*retainUserOAuthTokenFlag); parsed {
-		if value {
-			userRefreshToken = transport.Token().RefreshToken
-		} else {
-			fmt.Println("The user account OAuth token will be thrown away.")
-		}
-	} else if scanYesOrNo("Would you like to retain the user OAuth token to enable automatic sharing? ") {
+	var userRefreshToken string
+	if retainUserOauthToken {
 		userRefreshToken = transport.Token().RefreshToken
-	} else {
-		fmt.Println("The user account OAuth token will be thrown away.")
 	}
 
-	if len(userRefreshToken) > 0 {
-		if len(*shareScopeFlag) > 0 {
-			shareScope = *shareScopeFlag
-		} else {
-			shareScope = scanNonEmptyString("User or group email address, or domain name, to share with: ")
-		}
-	}
-
-	return &http.Client{Transport: transport}, userRefreshToken, shareScope
+	return &http.Client{Transport: transport}, userRefreshToken
 }
 
 func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
@@ -146,20 +153,20 @@ func createRobotAccount(userClient *http.Client, proxy string) (string, string) 
 	return xmppJID, token
 }
 
-func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxy string, infoToDisplayName bool) {
+func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxy string) {
 	config := lib.Config{
 		xmppJID,
 		robotRefreshToken,
 		userRefreshToken,
 		shareScope,
 		proxy,
-		lib.DefaultGCPMaxConcurrentDownloads,
-		lib.DefaultCUPSQueueSize,
-		lib.DefaultCUPSPollIntervalPrinter,
+		*gcpMaxConcurrentDownloadsFlag,
+		*cupsJobQueueSizeFlag,
+		cupsPrinterPollIntervalFlag.String(),
 		lib.DefaultPrinterAttributes,
-		lib.DefaultCUPSJobFullUsername,
-		infoToDisplayName,
-		lib.DefaultSocketFilename,
+		*cupsJobFullUsernameFlag,
+		*copyPrinterInfoToDisplayNameFlag,
+		*monitorSocketFilenameFlag,
 	}
 
 	if err := config.ToFile(); err != nil {
@@ -209,35 +216,49 @@ func stringToBool(val string) (bool, bool) {
 	return false, false
 }
 
-func getInfoToDisplayName() bool {
-	if parsed, value := stringToBool(*copyPrinterInfoFlag); parsed {
-		return value
-	}
-	return scanYesOrNo("Copy CUPS printer-info attribute to GCP defaultDisplayName? ")
-}
-
-func getProxy() string {
-	if len(*proxyNameFlag) > 0 {
-		return *proxyNameFlag
-	}
-	return scanNonEmptyString("Proxy name for this CloudPrint-CUPS server: ")
-}
-
 func main() {
 	flag.Parse()
 
-	userClient, userRefreshToken, shareScope := getUserClient()
-	proxy := getProxy()
-	infoToDisplayName := getInfoToDisplayName()
+	var parsed bool
+
+	var retainUserOauthToken bool
+	if parsed, retainUserOauthToken = stringToBool(*retainUserOauthTokenFlag); !parsed {
+		retainUserOauthToken = scanYesOrNo(
+			"Would you like to retain the user OAuth token to enable automatic sharing? ")
+	}
+
+	var shareScope string
+	if retainUserOauthToken {
+		if len(*shareScopeFlag) > 0 {
+			shareScope = *shareScopeFlag
+		} else {
+			shareScope = scanNonEmptyString("User or group email address, or domain name, to share with: ")
+		}
+	} else {
+		fmt.Println(
+			"The user account OAuth token will be thrown away; printers will not be shared automatically.")
+	}
+
+	proxyName := *proxyNameFlag
+	if len(proxyName) < 1 {
+		proxyName = scanNonEmptyString("Proxy name for this CloudPrint-CUPS server: ")
+	}
+
+	userClient, userRefreshToken := getUserClient(retainUserOauthToken)
 	fmt.Println("")
 
-	xmppJID, robotRefreshToken := createRobotAccount(userClient, proxy)
+	xmppJID, robotRefreshToken := createRobotAccount(userClient, proxyName)
 
 	fmt.Println("Acquired OAuth credentials for robot account")
 	fmt.Println("")
 
-	createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxy, infoToDisplayName)
-
+	createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName)
 	fmt.Printf("The config file %s is ready to rock.\n", *lib.ConfigFilename)
 	fmt.Println("Keep it somewhere safe, as it contains an OAuth token.")
+
+	socketDirectory := filepath.Dir(*monitorSocketFilenameFlag)
+	if _, err := os.Stat(socketDirectory); os.IsNotExist(err) {
+		fmt.Println("")
+		fmt.Printf("When the connector runs, be sure the socket directory %s exists.\n", socketDirectory)
+	}
 }

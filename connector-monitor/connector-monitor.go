@@ -31,16 +31,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if _, err := os.Stat(config.SocketFilename); err != nil {
+	if _, err := os.Stat(config.MonitorSocketFilename); err != nil {
 		if !os.IsNotExist(err) {
 			log.Fatal(err)
 		}
 		log.Fatal(fmt.Sprintf(
 			"No connector is running, or the monitoring socket %s is mis-configured",
-			config.SocketFilename))
+			config.MonitorSocketFilename))
 	}
 
-	conn, err := net.DialTimeout("unix", config.SocketFilename, time.Second)
+	conn, err := net.DialTimeout("unix", config.MonitorSocketFilename, time.Second)
 	if err != nil {
 		log.Fatal(err)
 	}
