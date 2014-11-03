@@ -44,8 +44,7 @@ func main() {
 			config.MonitorSocketFilename)
 	}
 
-	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSIgnoreRawPrinters,
-		config.CUPSPrinterAttributes)
+	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes)
 	if err != nil {
 		glog.Fatal(err)
 	}
@@ -57,7 +56,8 @@ func main() {
 	}
 
 	pm, err := manager.NewPrinterManager(cups, gcp, config.CUPSPrinterPollInterval,
-		config.GCPMaxConcurrentDownloads, config.CUPSJobQueueSize, config.CUPSJobFullUsername)
+		config.GCPMaxConcurrentDownloads, config.CUPSJobQueueSize, config.CUPSJobFullUsername,
+		config.CUPSIgnoreRawPrinters)
 	if err != nil {
 		glog.Fatal(err)
 	}

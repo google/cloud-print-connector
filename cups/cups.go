@@ -97,14 +97,13 @@ type CUPS struct {
 	c_http                *C.http_t
 	pc                    *ppdCache
 	infoToDisplayName     bool
-	ignoreRawPrinters     bool
 	c_printerAttributes   **C.char
 	printerAttributesSize int
 	c_jobAttributes       **C.char
 }
 
 // Connects to the CUPS server specified by environment vars, client.conf, etc.
-func NewCUPS(infoToDisplayName, ignoreRawPrinters bool, printerAttributes []string) (*CUPS, error) {
+func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) {
 	for requiredAttribute := range requiredPrinterAttributes {
 		found := false
 		for attribute := range printerAttributes {
@@ -158,8 +157,7 @@ func NewCUPS(infoToDisplayName, ignoreRawPrinters bool, printerAttributes []stri
 
 	c := &CUPS{
 		c_http, pc,
-		infoToDisplayName, ignoreRawPrinters,
-		c_printerAttributes, printerAttributesSize, c_jobAttributes}
+		infoToDisplayName, c_printerAttributes, printerAttributesSize, c_jobAttributes}
 
 	return c, nil
 }
@@ -231,15 +229,6 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 		}
 
 		tags := attributesToTags(attributes)
-		if c.ignoreRawPrinters {
-			printerMakeModel, exists := tags["printer-make-and-model"]
-			if !exists {
-				glog.Error("printer-make-model tag missing; did you remove it from the config file?")
-			} else if printerMakeModel == "Local Raw Printer" {
-				continue
-			}
-		}
-
 		printer, err := c.tagsToPrinter(tags)
 		if err != nil {
 			glog.Error(err)
@@ -333,14 +322,13 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string]string {
 
 // Converts slice of attributes to a Printer.
 func (c *CUPS) tagsToPrinter(tags map[string]string) (lib.Printer, error) {
-	printerName, exists := tags["printer-name"]
-	if !exists {
-		return lib.Printer{},
-			errors.New("printer-name tag missing; did you remove it from the config file?")
-	}
-	ppdHash, err := c.pc.getPPDHash(printerName)
-	if err != nil {
-		return lib.Printer{}, err
+	var ppdHash string
+	if tags["printer-make-and-model"] != "Local Raw Printer" {
+		var err error
+		ppdHash, err = c.pc.getPPDHash(tags["printer-name"])
+		if err != nil {
+			return lib.Printer{}, err
+		}
 	}
 
 	p := lib.Printer{

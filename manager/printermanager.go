@@ -40,9 +40,10 @@ type PrinterManager struct {
 	jobsError          uint
 	cupsQueueSize      uint
 	jobFullUsername    bool
+	ignoreRawPrinters  bool
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername bool) (*PrinterManager, error) {
+func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool) (*PrinterManager, error) {
 	gcpPrinters, err := gcp.List()
 	if err != nil {
 		return nil, err
@@ -68,7 +69,8 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 		cups, gcp,
 		gcpPrintersByGCPID,
 		gcpJobPollQuit, printerPollQuit,
-		downloadSemaphore, jobStatsSemaphore, 0, 0, cupsQueueSize, jobFullUsername}
+		downloadSemaphore, jobStatsSemaphore, 0, 0, cupsQueueSize,
+		jobFullUsername, ignoreRawPrinters}
 
 	pm.syncPrinters()
 	go pm.syncPrintersPeriodically(ppi)
@@ -110,6 +112,10 @@ func (pm *PrinterManager) syncPrinters() {
 		glog.Errorf("Sync failed while calling GetPrinters(): %s", err)
 		return
 	}
+	if pm.ignoreRawPrinters {
+		cupsPrinters, _ = lib.FilterRawPrinters(cupsPrinters)
+	}
+
 	diffs := lib.DiffPrinters(cupsPrinters, printerMapToSlice(pm.gcpPrintersByGCPID))
 
 	if diffs == nil {

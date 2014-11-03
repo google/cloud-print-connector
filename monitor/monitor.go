@@ -19,6 +19,7 @@ package monitor
 import (
 	"cups-connector/cups"
 	"cups-connector/gcp"
+	"cups-connector/lib"
 	"cups-connector/manager"
 	"fmt"
 	"net"
@@ -27,6 +28,7 @@ import (
 )
 
 const monitorFormat = `cups-printers=%d
+cups-raw-printers=%d
 gcp-printers=%d
 jobs-done=%d
 jobs-error=%d
@@ -103,17 +105,21 @@ func (m *Monitor) Quit() {
 }
 
 func (m *Monitor) getStats() (string, error) {
-	cupsPrinters, err := m.cups.GetPrinters()
-	if err != nil {
-		return "", err
-	}
-	cupsPrinterQuantity := len(cupsPrinters)
+	var cupsPrinterQuantity, rawPrinterQuantity, gcpPrinterQuantity int
 
-	gcpPrinters, err := m.gcp.List()
-	if err != nil {
+	if cupsPrinters, err := m.cups.GetPrinters(); err != nil {
 		return "", err
+	} else {
+		cupsPrinterQuantity = len(cupsPrinters)
+		_, rawPrinters := lib.FilterRawPrinters(cupsPrinters)
+		rawPrinterQuantity = len(rawPrinters)
 	}
-	gcpPrinterQuantity := len(gcpPrinters)
+
+	if gcpPrinters, err := m.gcp.List(); err != nil {
+		return "", err
+	} else {
+		gcpPrinterQuantity = len(gcpPrinters)
+	}
 
 	jobsDone, jobsError, jobsProcessing, err := m.pm.GetJobStats()
 	if err != nil {
@@ -121,7 +127,9 @@ func (m *Monitor) getStats() (string, error) {
 	}
 
 	stats := fmt.Sprintf(
-		monitorFormat, cupsPrinterQuantity, gcpPrinterQuantity, jobsDone, jobsError, jobsProcessing)
+		monitorFormat,
+		cupsPrinterQuantity, rawPrinterQuantity, gcpPrinterQuantity,
+		jobsDone, jobsError, jobsProcessing)
 
 	return stats, nil
 }

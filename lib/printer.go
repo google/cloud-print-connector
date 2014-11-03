@@ -165,3 +165,16 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 
 	return d
 }
+
+// Split a slice of printers into non-raw and raw.
+func FilterRawPrinters(printers []Printer) ([]Printer, []Printer) {
+	notRaw, raw := make([]Printer, 0, len(printers)), make([]Printer, 0, 0)
+	for _, printer := range printers {
+		if printer.Description != "Local Raw Printer" {
+			notRaw = append(notRaw, printer)
+		} else {
+			raw = append(raw, printer)
+		}
+	}
+	return notRaw, raw
+}
