@@ -225,7 +225,9 @@ func (pm *PrinterManager) listenGCPJobs() {
 					glog.Error(message)
 					pm.incrementJobsProcessed(false)
 				}
-				pm.gcp.Control(gcpJobID, gcpStatus, string(cupsStatus), message)
+				if err := pm.gcp.Control(gcpJobID, gcpStatus, string(cupsStatus), message); err != nil {
+					glog.Error(err)
+				}
 			}()
 		case <-pm.gcpJobPollQuit:
 			pm.gcpJobPollQuit <- true
@@ -319,7 +321,9 @@ func (pm *PrinterManager) processJob(job *lib.Job) (string, lib.GCPJobStatus, li
 			cupsStatus = latestCUPSStatus
 			gcpStatus = latestCUPSStatus.GCPJobStatus()
 			message = latestMessage
-			pm.gcp.Control(job.GCPJobID, gcpStatus, string(cupsStatus), message)
+			if err = pm.gcp.Control(job.GCPJobID, gcpStatus, string(cupsStatus), message); err != nil {
+				glog.Error(err)
+			}
 			glog.Infof("Job %s gcpStatus is now: %s", job.GCPJobID, gcpStatus)
 		}
 
