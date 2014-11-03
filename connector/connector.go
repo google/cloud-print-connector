@@ -39,7 +39,7 @@ func main() {
 		if err != nil {
 			glog.Fatal(err)
 		}
-		glog.Errorf(
+		glog.Fatalf(
 			"A connector is already running, or the monitoring socket %s wasn't cleaned up properly",
 			config.MonitorSocketFilename)
 	}
