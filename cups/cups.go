@@ -85,18 +85,49 @@ import (
 	"github.com/golang/glog"
 )
 
+var requiredPrinterAttributes []string = []string{
+	"printer-name",
+	"printer-info",
+	"printer-make-and-model",
+	"printer-state",
+}
+
 // Interface between Go and the CUPS API.
 type CUPS struct {
 	c_http                *C.http_t
 	pc                    *ppdCache
 	infoToDisplayName     bool
+	ignoreRawPrinters     bool
 	c_printerAttributes   **C.char
 	printerAttributesSize int
 	c_jobAttributes       **C.char
 }
 
 // Connects to the CUPS server specified by environment vars, client.conf, etc.
-func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) {
+func NewCUPS(infoToDisplayName, ignoreRawPrinters bool, printerAttributes []string) (*CUPS, error) {
+	for requiredAttribute := range requiredPrinterAttributes {
+		found := false
+		for attribute := range printerAttributes {
+			if attribute == requiredAttribute {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("Attribute %s missing from config file", requiredAttribute)
+		}
+	}
+
+	printerAttributesSize := len(printerAttributes)
+	c_printerAttributes := C.newArrayOfStrings(C.int(printerAttributesSize))
+	for i, a := range printerAttributes {
+		C.setStringArrayValue(c_printerAttributes, C.int(i), C.CString(a))
+	}
+
+	c_jobAttributes := C.newArrayOfStrings(C.int(2))
+	C.setStringArrayValue(c_jobAttributes, C.int(0), C.JOB_STATE)
+	C.setStringArrayValue(c_jobAttributes, C.int(1), C.JOB_STATE_REASONS)
+
 	c_host := C.cupsServer()
 	c_port := C.ippPort()
 	c_encryption := C.cupsEncryption()
@@ -125,17 +156,10 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) 
 
 	pc := newPPDCache(c_http)
 
-	printerAttributesSize := len(printerAttributes)
-	c_printerAttributes := C.newArrayOfStrings(C.int(printerAttributesSize))
-	for i, a := range printerAttributes {
-		C.setStringArrayValue(c_printerAttributes, C.int(i), C.CString(a))
-	}
-
-	c_jobAttributes := C.newArrayOfStrings(C.int(2))
-	C.setStringArrayValue(c_jobAttributes, C.int(0), C.JOB_STATE)
-	C.setStringArrayValue(c_jobAttributes, C.int(1), C.JOB_STATE_REASONS)
-
-	c := &CUPS{c_http, pc, infoToDisplayName, c_printerAttributes, printerAttributesSize, c_jobAttributes}
+	c := &CUPS{
+		c_http, pc,
+		infoToDisplayName, ignoreRawPrinters,
+		c_printerAttributes, printerAttributesSize, c_jobAttributes}
 
 	return c, nil
 }
@@ -206,22 +230,29 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 			attributes = append(attributes, a)
 		}
 
-		printer, err := c.printerFromAttributes(attributes)
+		tags := attributesToTags(attributes)
+		if c.ignoreRawPrinters {
+			printerMakeModel, exists := tags["printer-make-and-model"]
+			if !exists {
+				glog.Error("printer-make-model tag missing; did you remove it from the config file?")
+			} else if printerMakeModel == "Local Raw Printer" {
+				continue
+			}
+		}
+
+		printer, err := c.tagsToPrinter(tags)
 		if err != nil {
-			return nil, err
+			glog.Error(err)
+			continue
 		}
 		printers = append(printers, printer)
-
-		if a == nil {
-			break
-		}
 	}
 
 	return printers, nil
 }
 
-// Converts slice of attributes to a Printer.
-func (c *CUPS) printerFromAttributes(attributes []*C.ipp_attribute_t) (lib.Printer, error) {
+// Converts a slice of C.ipp_attribute_t to a string:string "tag" map.
+func attributesToTags(attributes []*C.ipp_attribute_t) map[string]string {
 	tags := make(map[string]string)
 
 	for _, a := range attributes {
@@ -297,9 +328,15 @@ func (c *CUPS) printerFromAttributes(attributes []*C.ipp_attribute_t) (lib.Print
 		tags[key] = value
 	}
 
+	return tags
+}
+
+// Converts slice of attributes to a Printer.
+func (c *CUPS) tagsToPrinter(tags map[string]string) (lib.Printer, error) {
 	printerName, exists := tags["printer-name"]
 	if !exists {
-		return lib.Printer{}, errors.New("printer-name tag missing; did you remove it from the config file?")
+		return lib.Printer{},
+			errors.New("printer-name tag missing; did you remove it from the config file?")
 	}
 	ppdHash, err := c.pc.getPPDHash(printerName)
 	if err != nil {

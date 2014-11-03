@@ -44,7 +44,8 @@ func main() {
 			config.MonitorSocketFilename)
 	}
 
-	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes)
+	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSIgnoreRawPrinters,
+		config.CUPSPrinterAttributes)
 	if err != nil {
 		glog.Fatal(err)
 	}

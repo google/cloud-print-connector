@@ -53,6 +53,9 @@ var (
 	cupsJobFullUsernameFlag = flag.Bool(
 		"cups-job-full-username", false,
 		"Whether to use the full username (joe@example.com) in CUPS jobs")
+	cupsIgnoreRawPrintersFlag = flag.Bool(
+		"cups-ignore-raw-printers", true,
+		"Whether to ignore printers with make/model 'Local Raw Printer'")
 	copyPrinterInfoToDisplayNameFlag = flag.Bool(
 		"copy-printer-info-to-display-name", true,
 		"Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName")
@@ -165,6 +168,7 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		cupsPrinterPollIntervalFlag.String(),
 		lib.DefaultPrinterAttributes,
 		*cupsJobFullUsernameFlag,
+		*cupsIgnoreRawPrintersFlag,
 		*copyPrinterInfoToDisplayNameFlag,
 		*monitorSocketFilenameFlag,
 	}

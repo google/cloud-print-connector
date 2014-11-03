@@ -66,6 +66,9 @@ type Config struct {
 	// Whether to use the full username (joe@example.com) in CUPS jobs.
 	CUPSJobFullUsername bool `json:"cups_job_full_username"`
 
+	// Whether to ignore printers with make/model 'Local Raw Printer'.
+	CUPSIgnoreRawPrinters bool `json:"cups_ignore_raw_printers"`
+
 	// Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName.
 	CopyPrinterInfoToDisplayName bool `json:"copy_printer_info_to_display_name"`
 
