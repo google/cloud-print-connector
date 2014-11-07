@@ -35,21 +35,37 @@ func main() {
 		if !os.IsNotExist(err) {
 			log.Fatal(err)
 		}
-		log.Fatal(fmt.Sprintf(
+		log.Fatal(fmt.Errorf(
 			"No connector is running, or the monitoring socket %s is mis-configured",
 			config.MonitorSocketFilename))
 	}
 
-	conn, err := net.DialTimeout("unix", config.MonitorSocketFilename, time.Second)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
+	ch := make(chan bool)
 
-	buf, err := ioutil.ReadAll(conn)
-	if err != nil {
-		log.Fatal(err)
-	}
+	go func() {
+		conn, err := net.DialTimeout("unix", config.MonitorSocketFilename, time.Second)
+		if err != nil {
+			log.Fatal(fmt.Errorf(
+				"No connector is running, or it is not listening to socket %s",
+				config.MonitorSocketFilename))
+		}
+		defer conn.Close()
 
-	fmt.Printf(string(buf))
+		buf, err := ioutil.ReadAll(conn)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		ch <- true
+		fmt.Printf(string(buf))
+		<-ch
+	}()
+
+	select {
+	case <-ch:
+		ch <- true
+		return
+	case <-time.After(time.Second * 3):
+		log.Fatal("timeout")
+	}
 }
