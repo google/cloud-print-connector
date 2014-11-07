@@ -40,32 +40,25 @@ func main() {
 			config.MonitorSocketFilename))
 	}
 
-	ch := make(chan bool)
-
-	go func() {
-		conn, err := net.DialTimeout("unix", config.MonitorSocketFilename, time.Second)
-		if err != nil {
-			log.Fatal(fmt.Errorf(
-				"No connector is running, or it is not listening to socket %s",
-				config.MonitorSocketFilename))
-		}
-		defer conn.Close()
-
-		buf, err := ioutil.ReadAll(conn)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		ch <- true
-		fmt.Printf(string(buf))
-		<-ch
-	}()
-
-	select {
-	case <-ch:
-		ch <- true
-		return
-	case <-time.After(time.Second * 3):
+	timer := time.AfterFunc(time.Second*3, func() {
 		log.Fatal("timeout")
+		return
+	})
+
+	conn, err := net.DialTimeout("unix", config.MonitorSocketFilename, time.Second)
+	if err != nil {
+		log.Fatal(fmt.Errorf(
+			"No connector is running, or it is not listening to socket %s",
+			config.MonitorSocketFilename))
 	}
+	defer conn.Close()
+
+	buf, err := ioutil.ReadAll(conn)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	timer.Stop()
+
+	fmt.Printf(string(buf))
 }
