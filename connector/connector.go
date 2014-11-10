@@ -75,6 +75,7 @@ func main() {
 	fmt.Println("shutting down normally")
 
 	m.Quit()
+	gcp.Quit()
 	pm.Quit()
 	cups.Quit()
 	glog.Flush()

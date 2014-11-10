@@ -15,10 +15,7 @@ limitations under the License.
 */
 package gcp
 
-// TODO(jacobmarble): Implement Quit() function that causes XMPP to stop receiving jobs.
-
 import (
-	"cups-connector/gcp/xmpp"
 	"cups-connector/lib"
 	"encoding/base64"
 	"encoding/json"
@@ -38,7 +35,7 @@ const baseURL = "https://www.google.com/cloudprint/"
 
 // Interface between Go and the Google Cloud Print API.
 type GoogleCloudPrint struct {
-	xmppClient     *xmpp.XMPP
+	xmppClient     *gcpXMPP
 	robotTransport *oauth2.Transport
 	userTransport  *oauth2.Transport
 	shareScope     string
@@ -59,7 +56,7 @@ func NewGoogleCloudPrint(xmppJID, robotRefreshToken, userRefreshToken, shareScop
 		}
 	}
 
-	xmppClient, err := xmpp.NewXMPP(xmppJID, robotTransport.Token().AccessToken)
+	xmppClient, err := newXMPP(xmppJID, robotTransport.Token().AccessToken, proxyName)
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +86,10 @@ func newTransport(refreshToken string, scopes ...string) (*oauth2.Transport, err
 	return transport, nil
 }
 
+func (gcp *GoogleCloudPrint) Quit() {
+	gcp.xmppClient.quit()
+}
+
 func (gcp *GoogleCloudPrint) CanShare() bool {
 	return gcp.userTransport != nil
 }
@@ -97,7 +98,7 @@ func (gcp *GoogleCloudPrint) CanShare() bool {
 //
 // Calls google.com/cloudprint/fetch.
 func (gcp *GoogleCloudPrint) NextJobBatch() ([]lib.Job, error) {
-	printerIDb64, err := gcp.xmppClient.NextWaitingPrinter()
+	printerIDb64, err := gcp.xmppClient.nextWaitingPrinter()
 	if err != nil {
 		return nil, err
 	}
