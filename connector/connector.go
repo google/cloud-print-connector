@@ -50,14 +50,14 @@ func main() {
 	}
 
 	gcp, err := gcp.NewGoogleCloudPrint(config.XMPPJID, config.RobotRefreshToken,
-		config.UserRefreshToken, config.ShareScope, config.ProxyName)
+		config.UserRefreshToken, config.ProxyName)
 	if err != nil {
 		glog.Fatal(err)
 	}
 
 	pm, err := manager.NewPrinterManager(cups, gcp, config.CUPSPrinterPollInterval,
 		config.GCPMaxConcurrentDownloads, config.CUPSJobQueueSize, config.CUPSJobFullUsername,
-		config.CUPSIgnoreRawPrinters)
+		config.CUPSIgnoreRawPrinters, config.ShareScope)
 	if err != nil {
 		glog.Fatal(err)
 	}

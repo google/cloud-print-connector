@@ -38,18 +38,17 @@ type GoogleCloudPrint struct {
 	xmppClient     *gcpXMPP
 	robotTransport *oauth2.Transport
 	userTransport  *oauth2.Transport
-	shareScope     string
 	proxyName      string
 }
 
-func NewGoogleCloudPrint(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string) (*GoogleCloudPrint, error) {
+func NewGoogleCloudPrint(xmppJID, robotRefreshToken, userRefreshToken, proxyName string) (*GoogleCloudPrint, error) {
 	robotTransport, err := newTransport(robotRefreshToken, lib.ScopeCloudPrint, lib.ScopeGoogleTalk)
 	if err != nil {
 		return nil, err
 	}
 
 	var userTransport *oauth2.Transport
-	if userRefreshToken != "" && shareScope != "" {
+	if userRefreshToken != "" {
 		userTransport, err = newTransport(userRefreshToken, lib.ScopeCloudPrint)
 		if err != nil {
 			return nil, err
@@ -61,7 +60,7 @@ func NewGoogleCloudPrint(xmppJID, robotRefreshToken, userRefreshToken, shareScop
 		return nil, err
 	}
 
-	return &GoogleCloudPrint{xmppClient, robotTransport, userTransport, shareScope, proxyName}, nil
+	return &GoogleCloudPrint{xmppClient, robotTransport, userTransport, proxyName}, nil
 }
 
 func newTransport(refreshToken string, scopes ...string) (*oauth2.Transport, error) {
@@ -109,13 +108,6 @@ func (gcp *GoogleCloudPrint) NextJobBatch() ([]lib.Job, error) {
 	}
 
 	return gcp.Fetch(string(printerIDbyte))
-}
-
-func (gcp *GoogleCloudPrint) GetAccessToken() string {
-	if gcp.robotTransport.Token().Expired() {
-		gcp.robotTransport.RefreshToken()
-	}
-	return gcp.robotTransport.Token().AccessToken
 }
 
 // Calls google.com/cloudprint/control.
@@ -330,14 +322,14 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 // Shares a GCP printer.
 //
 // Calls google.com/cloudprint/share.
-func (gcp *GoogleCloudPrint) Share(gcpID string) error {
+func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string) error {
 	if gcp.userTransport == nil {
 		return errors.New("Cannot share because user OAuth credentials not provided.")
 	}
 
 	form := url.Values{}
 	form.Set("printerid", gcpID)
-	form.Set("scope", gcp.shareScope)
+	form.Set("scope", shareScope)
 	form.Set("role", "USER")
 	form.Set("skip_notification", "true")
 

@@ -41,9 +41,10 @@ type PrinterManager struct {
 	cupsQueueSize      uint
 	jobFullUsername    bool
 	ignoreRawPrinters  bool
+	shareScope         string
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool) (*PrinterManager, error) {
+func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string) (*PrinterManager, error) {
 	gcpPrinters, err := gcp.List()
 	if err != nil {
 		return nil, err
@@ -70,7 +71,8 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 		gcpPrintersByGCPID,
 		gcpJobPollQuit, printerPollQuit,
 		downloadSemaphore, jobStatsSemaphore, 0, 0, cupsQueueSize,
-		jobFullUsername, ignoreRawPrinters}
+		jobFullUsername, ignoreRawPrinters,
+		shareScope}
 
 	pm.syncPrinters()
 	go pm.syncPrintersPeriodically(ppi)
@@ -156,7 +158,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		glog.Infof("Registered %s", diff.Printer.Name)
 
 		if pm.gcp.CanShare() {
-			if err := pm.gcp.Share(diff.Printer.GCPID); err != nil {
+			if err := pm.gcp.Share(diff.Printer.GCPID, pm.shareScope); err != nil {
 				glog.Errorf("Failed to share printer %s: %s", diff.Printer.Name, err)
 			} else {
 				glog.Infof("Shared %s", diff.Printer.Name)
