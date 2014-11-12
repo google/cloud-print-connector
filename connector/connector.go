@@ -83,8 +83,14 @@ func main() {
 
 // Blocks until Ctrl-C or SIGTERM.
 func waitIndefinitely() {
-	// TODO(jacobmarble): Second signal forces quit.
 	ch := make(chan os.Signal)
 	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 	<-ch
+
+	go func() {
+		// In case the process doesn't die very quickly, wait for a second termination request.
+		<-ch
+		fmt.Println("Second termination request received")
+		os.Exit(1)
+	}()
 }
