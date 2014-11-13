@@ -25,6 +25,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 // Dump XMPP XMP conversation to stdout.
@@ -52,9 +54,20 @@ func newXMPP(xmppJID, accessToken, proxyName string) (*gcpXMPP, error) {
 	}
 
 	// Anyone home?
-	conn, xmlEncoder, xmlDecoder, err := dial()
+	conn, err := dial()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to dial XMPP service: %s", err)
+	}
+
+	var xmlEncoder *xml.Encoder
+	var xmlDecoder *xml.Decoder
+	if debug {
+		t := &tee{conn, conn}
+		xmlEncoder = xml.NewEncoder(t)
+		xmlDecoder = xml.NewDecoder(t)
+	} else {
+		xmlEncoder = xml.NewEncoder(conn)
+		xmlDecoder = xml.NewDecoder(conn)
 	}
 
 	// SASL
@@ -74,7 +87,7 @@ func newXMPP(xmppJID, accessToken, proxyName string) (*gcpXMPP, error) {
 	}
 
 	x := gcpXMPP{conn, make(chan nextPrinterResponse), make(chan bool)}
-	go x.pollPrinters(xmlDecoder)
+	go x.pollPrinters()
 
 	return &x, nil
 }
@@ -86,7 +99,13 @@ func (x *gcpXMPP) nextWaitingPrinter() (string, error) {
 }
 
 // Waits for printers from GCP, puts them into a channel. Call as goroutine.
-func (x *gcpXMPP) pollPrinters(xmlDecoder *xml.Decoder) {
+func (x *gcpXMPP) pollPrinters() {
+	var xmlDecoder *xml.Decoder
+	if debug {
+		xmlDecoder = xml.NewDecoder(&tee{nil, x.conn})
+	} else {
+		xmlDecoder = xml.NewDecoder(x.conn)
+	}
 	var message struct {
 		XMLName xml.Name `xml:"jabber:client message"`
 		Data    string   `xml:"push>data"`
@@ -94,11 +113,17 @@ func (x *gcpXMPP) pollPrinters(xmlDecoder *xml.Decoder) {
 
 	for {
 		if err := xmlDecoder.Decode(&message); err != nil {
+			glog.Errorf("Error while waiting for print jobs via XMPP: %s", err)
 			if strings.Contains(err.Error(), "use of closed network connection") {
+				// Connection was closed.
 				x.q <- true
 				return
+			} else {
+				// Some other error; try re-starting the XML parser.
+				glog.Errorf("Re-starting XMPP XML parser")
+				go x.pollPrinters()
+				return
 			}
-			x.nextPrinter <- nextPrinterResponse{"", err}
 		} else {
 			x.nextPrinter <- nextPrinterResponse{message.Data, nil}
 		}
@@ -110,7 +135,7 @@ func (x *gcpXMPP) quit() {
 	<-x.q
 }
 
-func dial() (*tls.Conn, *xml.Encoder, *xml.Decoder, error) {
+func dial() (*tls.Conn, error) {
 	tlsConfig := &tls.Config{
 		ServerName: "talk.google.com",
 	}
@@ -120,24 +145,13 @@ func dial() (*tls.Conn, *xml.Encoder, *xml.Decoder, error) {
 	}
 	conn, err := tls.DialWithDialer(netDialer, "tcp", "talk.google.com:443", tlsConfig)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("Failed to connect to XMPP server: %s", err)
+		return nil, fmt.Errorf("Failed to connect to XMPP server: %s", err)
 	}
 	if err = conn.VerifyHostname("talk.google.com"); err != nil {
-		return nil, nil, nil, fmt.Errorf("Failed to verify hostname of XMPP server: %s", err)
+		return nil, fmt.Errorf("Failed to verify hostname of XMPP server: %s", err)
 	}
 
-	var xmlEncoder *xml.Encoder
-	var xmlDecoder *xml.Decoder
-	if debug {
-		t := &tee{conn, conn}
-		xmlEncoder = xml.NewEncoder(t)
-		xmlDecoder = xml.NewDecoder(t)
-	} else {
-		xmlEncoder = xml.NewEncoder(conn)
-		xmlDecoder = xml.NewDecoder(conn)
-	}
-
-	return conn, xmlEncoder, xmlDecoder, nil
+	return conn, nil
 }
 
 func saslHandshake(xmlEncoder *xml.Encoder, xmlDecoder *xml.Decoder, domain, user, accessToken string) error {
