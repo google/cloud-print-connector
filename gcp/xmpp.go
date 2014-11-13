@@ -107,19 +107,19 @@ func (x *gcpXMPP) pollPrinters() {
 		xmlDecoder = xml.NewDecoder(x.conn)
 	}
 	var message struct {
-		XMLName xml.Name `xml:"jabber:client message"`
+		XMLName xml.Name `xml:"message"`
 		Data    string   `xml:"push>data"`
 	}
 
 	for {
 		if err := xmlDecoder.Decode(&message); err != nil {
-			glog.Errorf("Error while waiting for print jobs via XMPP: %s", err)
 			if strings.Contains(err.Error(), "use of closed network connection") {
 				// Connection was closed.
 				x.q <- true
 				return
 			} else {
 				// Some other error; try re-starting the XML parser.
+				glog.Errorf("Error while waiting for print jobs via XMPP: %s", err)
 				glog.Errorf("Re-starting XMPP XML parser")
 				go x.pollPrinters()
 				return
