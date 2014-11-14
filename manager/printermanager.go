@@ -335,7 +335,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) (string, lib.GCPJobStatus, li
 			if err = pm.gcp.Control(job.GCPJobID, gcpStatus, string(cupsStatus), message); err != nil {
 				glog.Error(err)
 			}
-			glog.Infof("Job %s gcpStatus is now: %s", job.GCPJobID, gcpStatus)
+			glog.Infof("Job %s status is now: %s/%s", job.GCPJobID, cupsStatus, gcpStatus)
 		}
 
 		if gcpStatus != lib.JobInProgress {
