@@ -104,9 +104,9 @@ type CUPS struct {
 
 // Connects to the CUPS server specified by environment vars, client.conf, etc.
 func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) {
-	for requiredAttribute := range requiredPrinterAttributes {
+	for _, requiredAttribute := range requiredPrinterAttributes {
 		found := false
-		for attribute := range printerAttributes {
+		for _, attribute := range printerAttributes {
 			if attribute == requiredAttribute {
 				found = true
 				break

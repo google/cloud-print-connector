@@ -50,9 +50,9 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 		return nil, err
 	}
 	gcpPrintersByGCPID := make(map[string]lib.Printer, len(gcpPrinters))
-	for _, p := range gcpPrinters {
-		p.CUPSJobSemaphore = lib.NewSemaphore(cupsQueueSize)
-		gcpPrintersByGCPID[p.GCPID] = p
+	for i := range gcpPrinters {
+		gcpPrinters[i].CUPSJobSemaphore = lib.NewSemaphore(cupsQueueSize)
+		gcpPrintersByGCPID[gcpPrinters[i].GCPID] = gcpPrinters[i]
 	}
 
 	gcpJobPollQuit := make(chan bool)
@@ -100,8 +100,8 @@ func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 
 func printerMapToSlice(m map[string]lib.Printer) []lib.Printer {
 	s := make([]lib.Printer, 0, len(m))
-	for _, p := range m {
-		s = append(s, p)
+	for k := range m {
+		s = append(s, m[k])
 	}
 	return s
 }
@@ -219,8 +219,8 @@ func (pm *PrinterManager) listenGCPJobs() {
 				}
 				glog.Warningf("Error waiting for next printer: %s", err)
 			}
-			for _, job := range jobs {
-				ch <- &job
+			for i := range jobs {
+				ch <- &jobs[i]
 			}
 		}
 	}()

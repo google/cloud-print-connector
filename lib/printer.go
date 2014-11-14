@@ -77,8 +77,8 @@ type PrinterDiff struct {
 
 func printerSliceToMapByName(s []Printer) map[string]Printer {
 	m := make(map[string]Printer, len(s))
-	for _, p := range s {
-		m[p.Name] = p
+	for i := range s {
+		m[s[i].Name] = s[i]
 	}
 	return m
 }
@@ -93,37 +93,37 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 	printersConsidered := make(map[string]bool, len(cupsPrinters))
 	cupsPrintersByName := printerSliceToMapByName(cupsPrinters)
 
-	for _, gcpPrinter := range gcpPrinters {
-		if printersConsidered[gcpPrinter.Name] {
+	for i := range gcpPrinters {
+		if printersConsidered[gcpPrinters[i].Name] {
 			// GCP can have multiple printers with one name. Remove dupes.
-			diffs = append(diffs, PrinterDiff{Operation: DeletePrinter, Printer: gcpPrinter})
+			diffs = append(diffs, PrinterDiff{Operation: DeletePrinter, Printer: gcpPrinters[i]})
 			dirty = true
 
 		} else {
-			printersConsidered[gcpPrinter.Name] = true
+			printersConsidered[gcpPrinters[i].Name] = true
 
-			if cupsPrinter, exists := cupsPrintersByName[gcpPrinter.Name]; exists {
-				cupsPrinter.GCPID = gcpPrinter.GCPID
-				cupsPrinter.CUPSJobSemaphore = gcpPrinter.CUPSJobSemaphore
+			if cupsPrinter, exists := cupsPrintersByName[gcpPrinters[i].Name]; exists {
+				cupsPrinter.GCPID = gcpPrinters[i].GCPID
+				cupsPrinter.CUPSJobSemaphore = gcpPrinters[i].CUPSJobSemaphore
 
-				if reflect.DeepEqual(cupsPrinter, gcpPrinter) {
-					diffs = append(diffs, PrinterDiff{Operation: LeavePrinter, Printer: gcpPrinter})
+				if reflect.DeepEqual(cupsPrinter, gcpPrinters[i]) {
+					diffs = append(diffs, PrinterDiff{Operation: LeavePrinter, Printer: gcpPrinters[i]})
 
 				} else {
-					diffs = append(diffs, diffPrinter(&cupsPrinter, &gcpPrinter))
+					diffs = append(diffs, diffPrinter(&cupsPrinter, &gcpPrinters[i]))
 					dirty = true
 				}
 
 			} else {
-				diffs = append(diffs, PrinterDiff{Operation: DeletePrinter, Printer: gcpPrinter})
+				diffs = append(diffs, PrinterDiff{Operation: DeletePrinter, Printer: gcpPrinters[i]})
 				dirty = true
 			}
 		}
 	}
 
-	for _, cupsPrinter := range cupsPrinters {
-		if !printersConsidered[cupsPrinter.Name] {
-			diffs = append(diffs, PrinterDiff{Operation: RegisterPrinter, Printer: cupsPrinter})
+	for i := range cupsPrinters {
+		if !printersConsidered[cupsPrinters[i].Name] {
+			diffs = append(diffs, PrinterDiff{Operation: RegisterPrinter, Printer: cupsPrinters[i]})
 			dirty = true
 		}
 	}
@@ -169,11 +169,11 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 // Split a slice of printers into non-raw and raw.
 func FilterRawPrinters(printers []Printer) ([]Printer, []Printer) {
 	notRaw, raw := make([]Printer, 0, len(printers)), make([]Printer, 0, 0)
-	for _, printer := range printers {
-		if printer.Description != "Local Raw Printer" {
-			notRaw = append(notRaw, printer)
+	for i := range printers {
+		if printers[i].Description != "Local Raw Printer" {
+			notRaw = append(notRaw, printers[i])
 		} else {
-			raw = append(raw, printer)
+			raw = append(raw, printers[i])
 		}
 	}
 	return notRaw, raw
