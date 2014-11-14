@@ -28,7 +28,7 @@ import (
 )
 
 // Dump XMPP XMP conversation to stdout.
-const debug = true
+const debug = false
 
 // Compare this to err to detect a closed connection.
 var Closed = errors.New("closed")
