@@ -25,18 +25,18 @@ import (
 	"net"
 	"strings"
 	"time"
-
-	"github.com/golang/glog"
 )
 
 // Dump XMPP XMP conversation to stdout.
-const debug = false
+const debug = true
+
+// Compare this to err to detect a closed connection.
+var Closed = errors.New("closed")
 
 // Interface with XMPP server.
 type gcpXMPP struct {
-	conn        *tls.Conn
-	nextPrinter chan nextPrinterResponse
-	q           chan bool
+	conn       *tls.Conn
+	xmlDecoder *xml.Decoder
 }
 
 type nextPrinterResponse struct {
@@ -86,53 +86,30 @@ func newXMPP(xmppJID, accessToken, proxyName string) (*gcpXMPP, error) {
 		return nil, fmt.Errorf("Failed to subscribe: %s", err)
 	}
 
-	x := gcpXMPP{conn, make(chan nextPrinterResponse), make(chan bool)}
-	go x.pollPrinters()
+	x := gcpXMPP{conn, xmlDecoder}
 
 	return &x, nil
 }
 
 // Returns the GCPID of the next printer with waiting jobs.
 func (x *gcpXMPP) nextWaitingPrinter() (string, error) {
-	nextPrinter := <-x.nextPrinter
-	return nextPrinter.gcpID, nextPrinter.err
-}
-
-// Waits for printers from GCP, puts them into a channel. Call as goroutine.
-func (x *gcpXMPP) pollPrinters() {
-	var xmlDecoder *xml.Decoder
-	if debug {
-		xmlDecoder = xml.NewDecoder(&tee{nil, x.conn})
-	} else {
-		xmlDecoder = xml.NewDecoder(x.conn)
-	}
 	var message struct {
 		XMLName xml.Name `xml:"message"`
 		Data    string   `xml:"push>data"`
 	}
 
-	for {
-		if err := xmlDecoder.Decode(&message); err != nil {
-			if strings.Contains(err.Error(), "use of closed network connection") {
-				// Connection was closed.
-				x.q <- true
-				return
-			} else {
-				// Some other error; try re-starting the XML parser.
-				glog.Errorf("Error while waiting for print jobs via XMPP: %s", err)
-				glog.Errorf("Re-starting XMPP XML parser")
-				go x.pollPrinters()
-				return
-			}
-		} else {
-			x.nextPrinter <- nextPrinterResponse{message.Data, nil}
+	if err := x.xmlDecoder.Decode(&message); err != nil {
+		if strings.Contains(err.Error(), "use of closed network connection") {
+			return "", Closed
 		}
+		return "", fmt.Errorf("Error while waiting for print jobs via XMPP: %s", err)
+	} else {
+		return message.Data, nil
 	}
 }
 
 func (x *gcpXMPP) quit() {
 	x.conn.Close()
-	<-x.q
 }
 
 func dial() (*tls.Conn, error) {

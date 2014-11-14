@@ -214,7 +214,7 @@ func (pm *PrinterManager) listenGCPJobs() {
 		for {
 			jobs, err := pm.gcp.NextJobBatch()
 			if err != nil {
-				if strings.Contains(err.Error(), "use of closed network connection") {
+				if err == gcp.Closed {
 					return
 				}
 				glog.Warningf("Error waiting for next printer: %s", err)

@@ -28,6 +28,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/golang/glog"
 	"github.com/golang/oauth2"
 )
 
@@ -35,6 +36,7 @@ const baseURL = "https://www.google.com/cloudprint/"
 
 // Interface between Go and the Google Cloud Print API.
 type GoogleCloudPrint struct {
+	xmppJID        string
 	xmppClient     *gcpXMPP
 	robotTransport *oauth2.Transport
 	userTransport  *oauth2.Transport
@@ -60,7 +62,7 @@ func NewGoogleCloudPrint(xmppJID, robotRefreshToken, userRefreshToken, proxyName
 		return nil, err
 	}
 
-	return &GoogleCloudPrint{xmppClient, robotTransport, userTransport, proxyName}, nil
+	return &GoogleCloudPrint{xmppJID, xmppClient, robotTransport, userTransport, proxyName}, nil
 }
 
 func newTransport(refreshToken string, scopes ...string) (*oauth2.Transport, error) {
@@ -99,7 +101,28 @@ func (gcp *GoogleCloudPrint) CanShare() bool {
 func (gcp *GoogleCloudPrint) NextJobBatch() ([]lib.Job, error) {
 	printerIDb64, err := gcp.xmppClient.nextWaitingPrinter()
 	if err != nil {
-		return nil, err
+		if err == Closed {
+			return nil, err
+		}
+
+		glog.Warningf("Restarting XMPP conversation because: %s", err)
+		gcp.xmppClient.quit()
+
+		x, err := newXMPP(gcp.xmppJID, gcp.robotTransport.Token().AccessToken, gcp.proxyName)
+		if err != nil {
+			glog.Fatalf("Failed to restart XMPP conversation: %s", err)
+		}
+		glog.Warning("Restarted XMPP successfully")
+		gcp.xmppClient = x
+
+		// Now try again.
+		printerIDb64, err = gcp.xmppClient.nextWaitingPrinter()
+		if err != nil {
+			if err == Closed {
+				return nil, err
+			}
+			glog.Fatalf("Failed to wait for next printer twice: %s", err)
+		}
 	}
 
 	printerIDbyte, err := base64.StdEncoding.DecodeString(printerIDb64)
