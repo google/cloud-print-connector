@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/golang/glog"
 	"github.com/golang/oauth2"
@@ -57,12 +58,9 @@ func NewGoogleCloudPrint(xmppJID, robotRefreshToken, userRefreshToken, proxyName
 		}
 	}
 
-	xmppClient, err := newXMPP(xmppJID, robotTransport.Token().AccessToken, proxyName)
-	if err != nil {
-		return nil, err
-	}
-
-	return &GoogleCloudPrint{xmppJID, xmppClient, robotTransport, userTransport, proxyName}, nil
+	gcp := &GoogleCloudPrint{xmppJID, nil, robotTransport, userTransport, proxyName}
+	gcp.restartXMPP()
+	return gcp, nil
 }
 
 func newTransport(refreshToken string, scopes ...string) (*oauth2.Transport, error) {
@@ -95,6 +93,27 @@ func (gcp *GoogleCloudPrint) CanShare() bool {
 	return gcp.userTransport != nil
 }
 
+// Tries to start an XMPP conversation multiple times, then panics.
+func (gcp *GoogleCloudPrint) restartXMPP() {
+	if gcp.xmppClient != nil {
+		gcp.xmppClient.quit()
+	}
+
+	var err error
+	for i := 0; i < 4; i++ {
+		var xmpp *gcpXMPP
+		xmpp, err = newXMPP(gcp.xmppJID, gcp.robotTransport.Token().AccessToken, gcp.proxyName)
+		if err == nil {
+			gcp.xmppClient = xmpp
+			glog.Warning("Started XMPP successfully")
+		}
+		// Sleep for 1, 2, 4, 8 seconds.
+		time.Sleep(time.Duration((i+1)*2) * time.Second)
+	}
+	glog.Fatalf("Failed to start XMPP conversation: %s", err)
+	panic("unreachable")
+}
+
 // Waits for the next batch of jobs from GCP. Blocks until batch arrives.
 //
 // Calls google.com/cloudprint/fetch.
@@ -106,14 +125,7 @@ func (gcp *GoogleCloudPrint) NextJobBatch() ([]lib.Job, error) {
 		}
 
 		glog.Warningf("Restarting XMPP conversation because: %s", err)
-		gcp.xmppClient.quit()
-
-		x, err := newXMPP(gcp.xmppJID, gcp.robotTransport.Token().AccessToken, gcp.proxyName)
-		if err != nil {
-			glog.Fatalf("Failed to restart XMPP conversation: %s", err)
-		}
-		glog.Warning("Restarted XMPP successfully")
-		gcp.xmppClient = x
+		gcp.restartXMPP()
 
 		// Now try again.
 		printerIDb64, err = gcp.xmppClient.nextWaitingPrinter()
