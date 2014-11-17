@@ -106,6 +106,7 @@ func (gcp *GoogleCloudPrint) restartXMPP() {
 		if err == nil {
 			gcp.xmppClient = xmpp
 			glog.Warning("Started XMPP successfully")
+			return
 		}
 		// Sleep for 1, 2, 4, 8 seconds.
 		time.Sleep(time.Duration((i+1)*2) * time.Second)
