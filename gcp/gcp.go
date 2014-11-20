@@ -96,18 +96,25 @@ func (gcp *GoogleCloudPrint) CanShare() bool {
 // Tries to start an XMPP conversation multiple times, then panics.
 func (gcp *GoogleCloudPrint) restartXMPP() {
 	if gcp.xmppClient != nil {
-		gcp.xmppClient.quit()
+		go gcp.xmppClient.quit()
 	}
 
 	var err error
 	for i := 0; i < 4; i++ {
-		var xmpp *gcpXMPP
-		xmpp, err = newXMPP(gcp.xmppJID, gcp.robotTransport.Token().AccessToken, gcp.proxyName)
-		if err == nil {
-			gcp.xmppClient = xmpp
-			glog.Warning("Started XMPP successfully")
-			return
+		if gcp.robotTransport.Token().Expired() {
+			err = gcp.robotTransport.RefreshToken()
 		}
+
+		if err == nil {
+			var xmpp *gcpXMPP
+			xmpp, err = newXMPP(gcp.xmppJID, gcp.robotTransport.Token().AccessToken, gcp.proxyName)
+			if err == nil {
+				gcp.xmppClient = xmpp
+				glog.Warning("Started XMPP successfully")
+				return
+			}
+		}
+
 		// Sleep for 1, 2, 4, 8 seconds.
 		time.Sleep(time.Duration((i+1)*2) * time.Second)
 	}
