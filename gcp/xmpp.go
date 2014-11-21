@@ -93,12 +93,20 @@ func newXMPP(xmppJID, accessToken, proxyName string) (*gcpXMPP, error) {
 
 // Returns the GCPID of the next printer with waiting jobs.
 func (x *gcpXMPP) nextWaitingPrinter() (string, error) {
+	startElement, err := readStartElement(x.xmlDecoder)
+	if err != nil {
+		return "", fmt.Errorf("Failed to read the next start element: %s", err)
+	}
+	if startElement.Name.Local != "message" {
+		return "", fmt.Errorf("Unexpected element while waiting for print message: %+v", startElement)
+	}
+
 	var message struct {
 		XMLName xml.Name `xml:"message"`
 		Data    string   `xml:"push>data"`
 	}
 
-	if err := x.xmlDecoder.Decode(&message); err != nil {
+	if err := x.xmlDecoder.DecodeElement(&message, startElement); err != nil {
 		if strings.Contains(err.Error(), "use of closed network connection") {
 			return "", Closed
 		}
@@ -152,7 +160,7 @@ func saslHandshake(xmlEncoder *xml.Encoder, xmlDecoder *xml.Decoder, domain, use
 		return err
 	} else if startElement.Name.Space != "http://etherx.jabber.org/streams" ||
 		startElement.Name.Local != "stream" {
-		return errors.New("Read unexpected SASL XML stanza")
+		return fmt.Errorf("Read unexpected SASL XML stanza: %s", startElement.Name.Local)
 	}
 
 	var features struct {
@@ -162,7 +170,7 @@ func saslHandshake(xmlEncoder *xml.Encoder, xmlDecoder *xml.Decoder, domain, use
 		}
 	}
 	if err := xmlDecoder.Decode(&features); err != nil {
-		return errors.New("Read unexpected SASL XML element")
+		return fmt.Errorf("Read unexpected SASL XML element: %s", err)
 	} else if features.Mechanisms == nil {
 		return errors.New("SASL mechanisms missing from handshake")
 	}
@@ -192,7 +200,7 @@ func saslHandshake(xmlEncoder *xml.Encoder, xmlDecoder *xml.Decoder, domain, use
 		XMLName xml.Name `xml:"urn:ietf:params:xml:ns:xmpp-sasl success"`
 	}
 	if err := xmlDecoder.Decode(&success); err != nil {
-		return errors.New("Failed to complete SASL handshake")
+		return fmt.Errorf("Failed to complete SASL handshake: %s", err)
 	}
 
 	return nil
@@ -219,7 +227,7 @@ func xmppHandshake(xmlEncoder *xml.Encoder, xmlDecoder *xml.Decoder, domain, pro
 		return "", err
 	} else if startElement.Name.Space != "http://etherx.jabber.org/streams" ||
 		startElement.Name.Local != "stream" {
-		return "", errors.New("Read unexpected XMPP XML stanza")
+		return "", fmt.Errorf("Read unexpected XMPP XML stanza: %s", startElement.Name.Local)
 	}
 
 	var features struct {
@@ -232,7 +240,7 @@ func xmppHandshake(xmlEncoder *xml.Encoder, xmlDecoder *xml.Decoder, domain, pro
 		}
 	}
 	if err := xmlDecoder.Decode(&features); err != nil {
-		return "", errors.New("Read unexpected XMPP XML element")
+		return "", fmt.Errorf("Read unexpected XMPP XML element: %s", err)
 	} else if features.Bind == nil || features.Session == nil {
 		return "", errors.New("XMPP bind or session missing from handshake")
 	}
@@ -343,15 +351,15 @@ func subscribe(xmlEncoder *xml.Encoder, xmlDecoder *xml.Decoder, fullJID string)
 	return nil
 }
 
-func readStartElement(d *xml.Decoder) (xml.StartElement, error) {
+func readStartElement(d *xml.Decoder) (*xml.StartElement, error) {
 	token, err := d.Token()
 	if err != nil {
-		return xml.StartElement{}, err
+		return nil, err
 	}
 	if startElement, ok := token.(xml.StartElement); ok {
-		return startElement, nil
+		return &startElement, nil
 	} else {
-		return xml.StartElement{}, errors.New("XML stream produced unexpected output")
+		return nil, errors.New("XML stream produced unexpected output")
 	}
 }
 
