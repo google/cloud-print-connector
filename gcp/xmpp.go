@@ -25,6 +25,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 // Dump XMPP XMP conversation to stdout.
@@ -352,15 +354,18 @@ func subscribe(xmlEncoder *xml.Encoder, xmlDecoder *xml.Decoder, fullJID string)
 }
 
 func readStartElement(d *xml.Decoder) (*xml.StartElement, error) {
-	token, err := d.Token()
-	if err != nil {
-		return nil, err
+	for {
+		token, err := d.Token()
+		if err != nil {
+			return nil, err
+		}
+		if startElement, ok := token.(xml.StartElement); ok {
+			return &startElement, nil
+		} else {
+			glog.Infof("While reading next XMPP XML element: %T", token)
+		}
 	}
-	if startElement, ok := token.(xml.StartElement); ok {
-		return &startElement, nil
-	} else {
-		return nil, errors.New("XML stream produced unexpected output")
-	}
+	panic("unreachable")
 }
 
 type tee struct {
