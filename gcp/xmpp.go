@@ -25,8 +25,6 @@ import (
 	"net"
 	"strings"
 	"time"
-
-	"github.com/golang/glog"
 )
 
 // Dump XMPP XMP conversation to stdout.
@@ -361,8 +359,6 @@ func readStartElement(d *xml.Decoder) (*xml.StartElement, error) {
 		}
 		if startElement, ok := token.(xml.StartElement); ok {
 			return &startElement, nil
-		} else {
-			glog.Infof("While reading next XMPP XML element: %T", token)
 		}
 	}
 	panic("unreachable")
