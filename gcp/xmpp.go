@@ -95,6 +95,9 @@ func newXMPP(xmppJID, accessToken, proxyName string) (*gcpXMPP, error) {
 func (x *gcpXMPP) nextWaitingPrinter() (string, error) {
 	startElement, err := readStartElement(x.xmlDecoder)
 	if err != nil {
+		if strings.Contains(err.Error(), "use of closed network connection") {
+			return "", Closed
+		}
 		return "", fmt.Errorf("Failed to read the next start element: %s", err)
 	}
 	if startElement.Name.Local != "message" {
