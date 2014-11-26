@@ -161,7 +161,7 @@ func (gcp *GoogleCloudPrint) Control(jobID string, status lib.GCPJobStatus, code
 	form.Set("code", code)
 	form.Set("message", message)
 
-	if _, _, err := post(gcp.robotTransport, "control", form); err != nil {
+	if _, _, _, err := postWithRetry(gcp.robotTransport, "control", form); err != nil {
 		return err
 	}
 
@@ -173,7 +173,7 @@ func (gcp *GoogleCloudPrint) Delete(gcpID string) error {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
 
-	if _, _, err := post(gcp.robotTransport, "delete", form); err != nil {
+	if _, _, _, err := postWithRetry(gcp.robotTransport, "delete", form); err != nil {
 		return err
 	}
 
@@ -187,7 +187,7 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
 
-	responseBody, errorCode, err := post(gcp.robotTransport, "fetch", form)
+	responseBody, errorCode, _, err := postWithRetry(gcp.robotTransport, "fetch", form)
 	if err != nil {
 		if errorCode == 413 {
 			// 413 means "Zero print jobs returned", which isn't really an error.
@@ -231,7 +231,7 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, error) {
 	form := url.Values{}
 	form.Set("proxy", gcp.proxyName)
 
-	responseBody, _, err := post(gcp.robotTransport, "list", form)
+	responseBody, _, _, err := postWithRetry(gcp.robotTransport, "list", form)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +303,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 		form.Add("tag", fmt.Sprintf("cups-%s=%s", key, value))
 	}
 
-	responseBody, _, err := post(gcp.robotTransport, "register", form)
+	responseBody, _, _, err := postWithRetry(gcp.robotTransport, "register", form)
 	if err != nil {
 		return err
 	}
@@ -355,7 +355,7 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 		form.Set("remove_tag", "^cups-.*")
 	}
 
-	if _, _, err := post(gcp.robotTransport, "update", form); err != nil {
+	if _, _, _, err := postWithRetry(gcp.robotTransport, "update", form); err != nil {
 		return err
 	}
 
@@ -376,7 +376,7 @@ func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string) error {
 	form.Set("role", "USER")
 	form.Set("skip_notification", "true")
 
-	if _, _, err := post(gcp.userTransport, "share", form); err != nil {
+	if _, _, _, err := postWithRetry(gcp.userTransport, "share", form); err != nil {
 		return err
 	}
 
@@ -385,7 +385,7 @@ func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string) error {
 
 // Downloads a url (print job) to a Writer.
 func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
-	response, err := get(gcp.robotTransport, url)
+	response, err := getWithRetry(gcp.robotTransport, url)
 	if err != nil {
 		return err
 	}
@@ -400,7 +400,7 @@ func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 
 // Gets a ticket (job options), returns it as a map.
 func (gcp *GoogleCloudPrint) Ticket(ticketURL string) (map[string]string, error) {
-	response, err := get(gcp.robotTransport, ticketURL)
+	response, err := getWithRetry(gcp.robotTransport, ticketURL)
 	if err != nil {
 		return nil, err
 	}
@@ -417,6 +417,16 @@ func (gcp *GoogleCloudPrint) Ticket(ticketURL string) (map[string]string, error)
 	}
 
 	return m, nil
+}
+
+// Calls get() and retries on HTTP failure (response code != 200).
+func getWithRetry(t *oauth2.Transport, url string) (*http.Response, error) {
+	response, err := get(t, url)
+	if response == nil || response.StatusCode == 200 {
+		return response, err
+	}
+
+	return get(t, url)
 }
 
 // GETs to a URL. Returns the response object, in case the body is very large.
@@ -438,29 +448,40 @@ func get(t *oauth2.Transport, url string) (*http.Response, error) {
 	return response, nil
 }
 
+// Calls post() and retries on HTTP failure (response code != 200).
+func postWithRetry(t *oauth2.Transport, method string, form url.Values) ([]byte, uint, int, error) {
+	responseBody, gcpErrorCode, httpStatusCode, err := post(t, method, form)
+	if httpStatusCode == 0 || httpStatusCode == 200 {
+		return responseBody, gcpErrorCode, httpStatusCode, err
+	}
+
+	return post(t, method, form)
+}
+
 // POSTs to a GCP method. Returns the body of the response.
 //
-// On error, the last two return values are non-zero values.
-func post(t *oauth2.Transport, method string, form url.Values) ([]byte, uint, error) {
+// Returns the response body, GCP error code, HTTP status, and error.
+// On success, only the response body is guaranteed to be non-zero.
+func post(t *oauth2.Transport, method string, form url.Values) ([]byte, uint, int, error) {
 	requestBody := strings.NewReader(form.Encode())
 	request, err := http.NewRequest("POST", baseURL+method, requestBody)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("X-CloudPrint-Proxy", "cups-cloudprint-"+runtime.GOOS)
 
 	response, err := t.RoundTrip(request)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, 0, err
 	}
 	if response.StatusCode != 200 {
-		return nil, 0, fmt.Errorf("/%s call failed: %s", method, response.Status)
+		return nil, 0, response.StatusCode, fmt.Errorf("/%s call failed: %s", method, response.Status)
 	}
 
 	responseBody, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, response.StatusCode, err
 	}
 
 	var responseStatus struct {
@@ -469,12 +490,12 @@ func post(t *oauth2.Transport, method string, form url.Values) ([]byte, uint, er
 		ErrorCode uint
 	}
 	if err = json.Unmarshal(responseBody, &responseStatus); err != nil {
-		return nil, 0, err
+		return nil, 0, response.StatusCode, err
 	}
 	if !responseStatus.Success {
-		return nil, responseStatus.ErrorCode, fmt.Errorf(
+		return nil, responseStatus.ErrorCode, response.StatusCode, fmt.Errorf(
 			"/%s call failed: %s", method, responseStatus.Message)
 	}
 
-	return responseBody, 0, nil
+	return responseBody, 0, response.StatusCode, nil
 }
