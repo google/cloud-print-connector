@@ -7,6 +7,12 @@ For now, this connector only works with CUPS servers at localhost.
 
 ```
 $ go get TODO/cups-connector
+$ cd cups-connector/connector
+$ go install
+$ cd ../connector-init
+$ go install
+$ cd ../connector-monitor
+$ go install
 $ connector-init
 $ connector
 ```
