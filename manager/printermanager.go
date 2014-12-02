@@ -228,7 +228,7 @@ func (pm *PrinterManager) listenGCPJobs() {
 	for {
 		select {
 		case job := <-ch:
-			go func() {
+			go func(job *lib.Job) {
 				gcpJobID, gcpStatus, cupsStatus, message := pm.processJob(job)
 				if gcpStatus == lib.JobDone {
 					pm.incrementJobsProcessed(true)
@@ -239,7 +239,7 @@ func (pm *PrinterManager) listenGCPJobs() {
 				if err := pm.gcp.Control(gcpJobID, gcpStatus, string(cupsStatus), message); err != nil {
 					glog.Error(err)
 				}
-			}()
+			}(job)
 		case <-pm.gcpJobPollQuit:
 			pm.gcpJobPollQuit <- true
 			return

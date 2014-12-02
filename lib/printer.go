@@ -66,7 +66,7 @@ const (
 // Describes changes to be pushed to a GCP printer.
 type PrinterDiff struct {
 	Operation PrinterDiffOperation
-	Printer   Printer // Only GCPID, Name, and changed fields are filled.
+	Printer   Printer
 
 	DefaultDisplayNameChanged bool
 	DescriptionChanged        bool

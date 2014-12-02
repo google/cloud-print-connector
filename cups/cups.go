@@ -79,6 +79,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -306,7 +307,7 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string]string {
 
 		default:
 			if count > 0 {
-				values = []string{"unknown"}
+				values = []string{"unknown or unsupported type"}
 			}
 		}
 
@@ -452,7 +453,7 @@ func (c *CUPS) Print(printerName, fileName, title, ownerID string, options map[s
 
 // Calls cupsTempFd().
 func (c *CUPS) CreateTempFile() (*os.File, error) {
-	c_len := C.size_t(200)
+	c_len := C.size_t(syscall.PathMax)
 	c_filename := (*C.char)(C.malloc(c_len))
 	if c_filename == nil {
 		return nil, errors.New("Failed to malloc(); out of memory?")
@@ -478,7 +479,7 @@ func (c *CUPS) CreateTempFile() (*os.File, error) {
 //
 // Calls httpAssembleURI().
 func createJobURI(jobID uint32) (*C.char, error) {
-	c_len := C.size_t(200)
+	c_len := C.size_t(2048) // Generally-accepted max URL length.
 	c_uri := (*C.char)(C.malloc(c_len))
 	if c_uri == nil {
 		return nil, errors.New("Failed to malloc; out of memory?")

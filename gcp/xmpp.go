@@ -86,9 +86,7 @@ func newXMPP(xmppJID, accessToken, proxyName string) (*gcpXMPP, error) {
 		return nil, fmt.Errorf("Failed to subscribe: %s", err)
 	}
 
-	x := gcpXMPP{conn, xmlDecoder}
-
-	return &x, nil
+	return &gcpXMPP{conn, xmlDecoder}, nil
 }
 
 // Returns the GCPID of the next printer with waiting jobs.

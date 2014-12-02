@@ -119,7 +119,6 @@ func (gcp *GoogleCloudPrint) restartXMPP() {
 		time.Sleep(time.Duration((i+1)*2) * time.Second)
 	}
 	glog.Fatalf("Failed to start XMPP conversation: %s", err)
-	panic("unreachable")
 }
 
 // Waits for the next batch of jobs from GCP. Blocks until batch arrives.
