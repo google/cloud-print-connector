@@ -23,7 +23,7 @@ import (
 
 var (
 	ConfigFilename = flag.String(
-		"config-filename", "cups-connector.oauth.json", "Name of config file")
+		"config-filename", "cups-connector.config.json", "Name of config file")
 	DefaultPrinterAttributes = []string{
 		"printer-name",
 		"printer-info",
@@ -76,6 +76,8 @@ type Config struct {
 	MonitorSocketFilename string `json:"monitor_socket_filename"`
 }
 
+// ConfigFromFile reads a Config object from the config file indicated by
+// ConfigFile.
 func ConfigFromFile() (*Config, error) {
 	if !flag.Parsed() {
 		flag.Parse()
@@ -94,6 +96,7 @@ func ConfigFromFile() (*Config, error) {
 	return &config, nil
 }
 
+// ToFile writes this Config object to the config file indicated by ConfigFile.
 func (c *Config) ToFile() error {
 	if !flag.Parsed() {
 		flag.Parse()

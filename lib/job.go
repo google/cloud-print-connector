@@ -18,6 +18,7 @@ package lib
 type GCPJobStatus string
 type CUPSJobStatus string
 
+// CUPSJobStatusFromInt converts an integer to a CUPSJobStatus.
 func CUPSJobStatusFromInt(si uint8) CUPSJobStatus {
 	switch si {
 	case 3:
@@ -39,6 +40,7 @@ func CUPSJobStatusFromInt(si uint8) CUPSJobStatus {
 	}
 }
 
+// GCPJobStatus converts this CUPSJobStatus object to a GCPJobStatus object.
 func (js CUPSJobStatus) GCPJobStatus() GCPJobStatus {
 	switch js {
 	case JobPending, JobHeld, JobProcessing:

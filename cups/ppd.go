@@ -32,9 +32,18 @@ import (
 	"io/ioutil"
 	"os"
 	"runtime"
+	"syscall"
 	"unsafe"
 )
 
+// This isn't really a cache, but an interface to CUPS' quirky PPD interface.
+// The connector needs to know when a PPD changes, but the CUPS API can only:
+// (1) fetch a PPD to a file
+// (2) indicate whether a PPD file is up-to-date.
+// So, this "cache":
+// (1) maintains temporary file copies of PPDs for each printer
+// (2) updates those PPD files as necessary
+// (3) and keeps MD5 hashes of the PPD contents, to minimize disk I/O.
 type ppdCache struct {
 	c_http  *C.http_t
 	m       map[string]*ppdCacheEntry
@@ -107,6 +116,10 @@ func (pc *ppdCache) servePPDs() {
 					continue
 				}
 			}
+			if err = pc.reconnect(); err != nil {
+				r.response <- ppdResponse{"", "",
+					fmt.Errorf("Failed to reconnect while serving a PPD for %s", r.printerName)}
+			}
 			if err = pce.refreshPPDCacheEntry(pc.c_http); err != nil {
 				r.response <- ppdResponse{"", "", err}
 				continue
@@ -129,13 +142,13 @@ type ppdCacheEntry struct {
 	hash    string
 }
 
-// Creates an instance of ppdCache with the name field set, all else empty.
-// Don't forget to call C.free() for the name and buffer fields with
-// ppdCacheEntry.free()!
+// createPPDCacheEntry creates an instance of ppdCache with the name field set,
+// all else empty. The caller must free the name and buffer fields with
+// ppdCacheEntry.free()
 func createPPDCacheEntry(name string) (*ppdCacheEntry, error) {
 	c_name := C.CString(name)
 	modtime := C.time_t(0)
-	bufsize := C.size_t(200)
+	bufsize := C.size_t(syscall.PathMax)
 	buffer := (*C.char)(C.malloc(bufsize))
 	if buffer == nil {
 		C.free(unsafe.Pointer(c_name))
@@ -148,32 +161,34 @@ func createPPDCacheEntry(name string) (*ppdCacheEntry, error) {
 	return pce, nil
 }
 
+// free frees the memory that stores the name and buffer fields, and deletes
+// the file named by the buffer field. If the file doesn't exist, no error is
+// returned.
 func (pce *ppdCacheEntry) free() {
 	C.free(unsafe.Pointer(pce.name))
 	os.Remove(C.GoString(pce.buffer))
 	C.free(unsafe.Pointer(pce.buffer))
 }
 
-// Calls cupsGetPPD3().
+// refreshPPDCacheEntry calls cupsGetPPD3() to refresh this PPD information, in
+// case CUPS has a new PPD for the printer.
 func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
-	if err := pce.reconnect(c_http); err != nil {
-		return err
-	}
-
+	// Lock the OS thread so that thread-local storage is available to
+	// cupsLastError() and cupsLastErrorString().
 	runtime.LockOSThread()
-
 	c_http_status := C.cupsGetPPD3(c_http, pce.name, &pce.modtime, pce.buffer, pce.bufsize)
+	// Only use these values if the returned status is unacceptable.
+	// Fetch them here so that we can unlock the OS thread immediately.
+	c_cupsLastError, c_cupsLastErrorString := C.cupsLastError(), C.cupsLastErrorString()
+	runtime.UnlockOSThread()
 
 	switch c_http_status {
 	case C.HTTP_STATUS_NOT_MODIFIED:
 		// Cache hit.
-		runtime.UnlockOSThread()
 		return nil
 
 	case C.HTTP_STATUS_OK:
 		// Cache miss.
-		runtime.UnlockOSThread()
-
 		ppd, err := os.Open(C.GoString(pce.buffer))
 		if err != nil {
 			return err
@@ -190,10 +205,9 @@ func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
 		return nil
 
 	default:
-		if C.cupsLastError() != C.IPP_STATUS_OK {
+		if c_cupsLastError != C.IPP_STATUS_OK {
 			err := fmt.Errorf("Failed to call cupsGetPPD3(): %d %s",
-				int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
-			runtime.UnlockOSThread()
+				int(c_cupsLastError), C.GoString(c_cupsLastErrorString))
 			return err
 		}
 
@@ -201,12 +215,15 @@ func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
 	}
 }
 
-// Calls httpReconnect().
-func (pce *ppdCacheEntry) reconnect(c_http *C.http_t) error {
+// reconnect calls httpReconnect() via cgo, which re-opens the connection to
+// the CUPS server, if needed.
+func (pc *ppdCache) reconnect() error {
+	// Lock the OS thread so that thread-local storage is available to
+	// cupsLastError() and cupsLastErrorString().
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	c_ippStatus := C.httpReconnect(c_http)
+	c_ippStatus := C.httpReconnect(pc.c_http)
 	if c_ippStatus != C.IPP_STATUS_OK {
 		return fmt.Errorf("Failed to call cupsReconnect(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))

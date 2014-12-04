@@ -27,8 +27,13 @@ import (
 	"time"
 )
 
-// Dump XMPP XMP conversation to stdout.
-const debug = false
+const (
+	// Dump XMPP XMP conversation to stdout.
+	debug = false
+
+	// This is a long-lived, potentially quiet, conversation. Keep it alive!
+	netKeepAlive = time.Second * 60
+)
 
 // Compare this to err to detect a closed connection.
 var Closed = errors.New("closed")
@@ -89,7 +94,7 @@ func newXMPP(xmppJID, accessToken, proxyName string) (*gcpXMPP, error) {
 	return &gcpXMPP{conn, xmlDecoder}, nil
 }
 
-// Returns the GCPID of the next printer with waiting jobs.
+// nextWaitingPrinter returns the GCPID of the next printer with waiting jobs.
 func (x *gcpXMPP) nextWaitingPrinter() (string, error) {
 	startElement, err := readStartElement(x.xmlDecoder)
 	if err != nil {
@@ -126,8 +131,7 @@ func dial() (*tls.Conn, error) {
 		ServerName: "talk.google.com",
 	}
 	netDialer := &net.Dialer{
-		Timeout:   time.Second * 30,
-		KeepAlive: time.Second * 60,
+		KeepAlive: netKeepAlive,
 	}
 	conn, err := tls.DialWithDialer(netDialer, "tcp", "talk.google.com:443", tlsConfig)
 	if err != nil {

@@ -29,8 +29,9 @@ import (
 
 // Manages all interactions between CUPS and Google Cloud Print.
 type PrinterManager struct {
-	cups               *cups.CUPS
-	gcp                *gcp.GoogleCloudPrint
+	cups *cups.CUPS
+	gcp  *gcp.GoogleCloudPrint
+	// Do not mutate this map, only replace it with a new one. See syncPrinters().
 	gcpPrintersByGCPID map[string]lib.Printer
 	gcpJobPollQuit     chan bool
 	printerPollQuit    chan bool
@@ -74,7 +75,10 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 		jobFullUsername, ignoreRawPrinters,
 		shareScope}
 
-	pm.syncPrinters()
+	err = pm.syncPrinters()
+	if err != nil {
+		return nil, err
+	}
 	go pm.syncPrintersPeriodically(ppi)
 	go pm.listenGCPJobs()
 
@@ -90,7 +94,10 @@ func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 	for {
 		select {
 		case <-time.After(interval):
-			pm.syncPrinters()
+			err := pm.syncPrinters()
+			if err != nil {
+				glog.Error(err)
+			}
 		case <-pm.printerPollQuit:
 			pm.printerPollQuit <- true
 			return
@@ -106,13 +113,12 @@ func printerMapToSlice(m map[string]lib.Printer) []lib.Printer {
 	return s
 }
 
-func (pm *PrinterManager) syncPrinters() {
+func (pm *PrinterManager) syncPrinters() error {
 	glog.Info("Synchronizing printers, stand by")
 
 	cupsPrinters, err := pm.cups.GetPrinters()
 	if err != nil {
-		glog.Errorf("Sync failed while calling GetPrinters(): %s", err)
-		return
+		return fmt.Errorf("Sync failed while calling GetPrinters(): %s", err)
 	}
 	if pm.ignoreRawPrinters {
 		cupsPrinters, _ = lib.FilterRawPrinters(cupsPrinters)
@@ -122,7 +128,7 @@ func (pm *PrinterManager) syncPrinters() {
 
 	if diffs == nil {
 		glog.Infof("Printers are already in sync; there are %d", len(cupsPrinters))
-		return
+		return nil
 	}
 
 	ch := make(chan lib.Printer)
@@ -137,9 +143,12 @@ func (pm *PrinterManager) syncPrinters() {
 		}
 	}
 
+	// Notice that we never mutate pm.gcpPrintersByGCPID, only replace the map
+	// that it points to.
 	pm.gcpPrintersByGCPID = currentPrinters
-
 	glog.Infof("Finished synchronizing %d printers", len(currentPrinters))
+
+	return nil
 }
 
 func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer) {
@@ -199,7 +208,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		}
 		glog.Infof("Deleted %s", diff.Printer.Name)
 
-	case lib.LeavePrinter:
+	case lib.NoChangeToPrinter:
 		glog.Infof("No change to %s", diff.Printer.Name)
 		ch <- diff.Printer
 		return
@@ -258,6 +267,8 @@ func (pm *PrinterManager) incrementJobsProcessed(success bool) {
 	}
 }
 
+// processJob performs these steps:
+//
 // 0) Gets a job's ticket (job options).
 // 1) Downloads a new print job PDF to a temp file.
 // 2) Creates a new job in CUPS.
@@ -289,6 +300,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) (string, lib.GCPJobStatus, li
 
 	pm.downloadSemaphore.Acquire()
 	t := time.Now()
+	// Do not check err until semaphore is released and timer is stopped.
 	err = pm.gcp.Download(pdfFile, job.FileURL)
 	dt := time.Now().Sub(t)
 	pm.downloadSemaphore.Release()

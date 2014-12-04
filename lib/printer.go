@@ -60,7 +60,7 @@ const (
 	RegisterPrinter PrinterDiffOperation = iota
 	UpdatePrinter
 	DeletePrinter
-	LeavePrinter
+	NoChangeToPrinter
 )
 
 // Describes changes to be pushed to a GCP printer.
@@ -83,8 +83,8 @@ func printerSliceToMapByName(s []Printer) map[string]Printer {
 	return m
 }
 
-// Returns the diff between old (GCP) and new (CUPS) printers.
-// Returns nil if zero printers or if all diffs are LeavePrinter operation.
+// DiffPrinters returns the diff between old (GCP) and new (CUPS) printers.
+// Returns nil if zero printers or if all diffs are NoChangeToPrinter operation.
 func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 	// So far, no changes.
 	dirty := false
@@ -107,7 +107,7 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 				cupsPrinter.CUPSJobSemaphore = gcpPrinters[i].CUPSJobSemaphore
 
 				if reflect.DeepEqual(cupsPrinter, gcpPrinters[i]) {
-					diffs = append(diffs, PrinterDiff{Operation: LeavePrinter, Printer: gcpPrinters[i]})
+					diffs = append(diffs, PrinterDiff{Operation: NoChangeToPrinter, Printer: gcpPrinters[i]})
 
 				} else {
 					diffs = append(diffs, diffPrinter(&cupsPrinter, &gcpPrinters[i]))
@@ -135,8 +135,10 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 	}
 }
 
-// Find the difference between a CUPS printer and the corresponding GCP printer.
+// diffPrinter finds the difference between a CUPS printer and the corresponding GCP printer.
+//
 // pc: printer-CUPS; the thing that is correct
+//
 // pg: printer-GCP; the thing that will be updated
 func diffPrinter(pc, pg *Printer) PrinterDiff {
 	d := PrinterDiff{
@@ -166,15 +168,22 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	return d
 }
 
-// Split a slice of printers into non-raw and raw.
+// FilterRawPrinters splits a slice of printers into non-raw and raw.
 func FilterRawPrinters(printers []Printer) ([]Printer, []Printer) {
 	notRaw, raw := make([]Printer, 0, len(printers)), make([]Printer, 0, 0)
 	for i := range printers {
-		if printers[i].Description != "Local Raw Printer" {
-			notRaw = append(notRaw, printers[i])
-		} else {
+		if PrinterIsRaw(printers[i]) {
 			raw = append(raw, printers[i])
+		} else {
+			notRaw = append(notRaw, printers[i])
 		}
 	}
 	return notRaw, raw
+}
+
+func PrinterIsRaw(printer Printer) bool {
+	if printer.Description == "Local Raw Printer" {
+		return true
+	}
+	return false
 }

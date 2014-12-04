@@ -33,7 +33,13 @@ import (
 	"github.com/golang/oauth2"
 )
 
-const baseURL = "https://www.google.com/cloudprint/"
+const (
+	// All GCP API methods fall under here.
+	baseURL = "https://www.google.com/cloudprint/"
+
+	// XMPP connections fail. Attempt to reconnect a few times before giving up.
+	restartXMPPMaxRetries = 4
+)
 
 // Interface between Go and the Google Cloud Print API.
 type GoogleCloudPrint struct {
@@ -93,14 +99,14 @@ func (gcp *GoogleCloudPrint) CanShare() bool {
 	return gcp.userTransport != nil
 }
 
-// Tries to start an XMPP conversation multiple times, then panics.
+// restartXMPP tries to start an XMPP conversation multiple times, then panics.
 func (gcp *GoogleCloudPrint) restartXMPP() {
 	if gcp.xmppClient != nil {
 		go gcp.xmppClient.quit()
 	}
 
 	var err error
-	for i := 0; i < 4; i++ {
+	for i := 0; i < restartXMPPMaxRetries; i++ {
 		if gcp.robotTransport.Token().Expired() {
 			err = gcp.robotTransport.RefreshToken()
 		}
@@ -121,9 +127,9 @@ func (gcp *GoogleCloudPrint) restartXMPP() {
 	glog.Fatalf("Failed to start XMPP conversation: %s", err)
 }
 
-// Waits for the next batch of jobs from GCP. Blocks until batch arrives.
-//
-// Calls google.com/cloudprint/fetch.
+// NextJobBatch gets the next batch of print jobs from GCP. Blocks on the XMPP
+// conversation for a printer ID, then calls google.com/cloudprint/fetch to
+// get information about the jobs.
 func (gcp *GoogleCloudPrint) NextJobBatch() ([]lib.Job, error) {
 	printerIDb64, err := gcp.xmppClient.nextWaitingPrinter()
 	if err != nil {
@@ -152,7 +158,8 @@ func (gcp *GoogleCloudPrint) NextJobBatch() ([]lib.Job, error) {
 	return gcp.Fetch(string(printerIDbyte))
 }
 
-// Calls google.com/cloudprint/control.
+// Control calls google.com/cloudprint/control to set the status of a
+// GCP print job.
 func (gcp *GoogleCloudPrint) Control(jobID string, status lib.GCPJobStatus, code, message string) error {
 	form := url.Values{}
 	form.Set("jobid", jobID)
@@ -167,7 +174,7 @@ func (gcp *GoogleCloudPrint) Control(jobID string, status lib.GCPJobStatus, code
 	return nil
 }
 
-// Calls google.com/cloudprint/delete.
+// Delete calls google.com/cloudprint/delete to delete a printer from GCP.
 func (gcp *GoogleCloudPrint) Delete(gcpID string) error {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
@@ -179,9 +186,8 @@ func (gcp *GoogleCloudPrint) Delete(gcpID string) error {
 	return nil
 }
 
-// Gets the outstanding print jobs for a printer.
-//
-// Calls google.com/cloudprint/fetch.
+// Fetch calls google.com/cloudprint/fetch to get the outstanding print jobs for
+// a GCP printer.
 func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
@@ -223,9 +229,8 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 	return jobs, nil
 }
 
-// Gets all GCP printers assigned to the configured proxy.
-//
-// Calls google.com/cloudprint/list.
+// List calls google.com/cloudprint/list to get all GCP printers assigned
+// to this connector.
 func (gcp *GoogleCloudPrint) List() ([]lib.Printer, error) {
 	form := url.Values{}
 	form.Set("proxy", gcp.proxyName)
@@ -281,9 +286,9 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, error) {
 	return printers, nil
 }
 
-// Registers a Google Cloud Print Printer. Sets the GCPID field in the printer arg.
+// Register calls google.com/cloudprint/register to register a GCP printer.
 //
-// Calls google.com/cloudprint/register.
+// Sets the GCPID field in the printer arg.
 func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 	if len(ppd) <= 0 {
 		return errors.New("GCP requires a non-empty PPD")
@@ -321,9 +326,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 	return nil
 }
 
-// Updates a Google Cloud Print Printer.
-//
-// Calls google.com/cloudprint/update.
+// Update calls google.com/cloudprint/update to update a GCP printer.
 func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 	form := url.Values{}
 	form.Set("printerid", diff.Printer.GCPID)
@@ -361,9 +364,7 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 	return nil
 }
 
-// Shares a GCP printer.
-//
-// Calls google.com/cloudprint/share.
+// Share calls google.com/cloudprint/share to share a registered GCP printer.
 func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string) error {
 	if gcp.userTransport == nil {
 		return errors.New("Cannot share because user OAuth credentials not provided.")
@@ -382,7 +383,7 @@ func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string) error {
 	return nil
 }
 
-// Downloads a url (print job) to a Writer.
+// Download downloads a URL (a print job PDF) directly to a Writer.
 func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 	response, err := getWithRetry(gcp.robotTransport, url)
 	if err != nil {
@@ -397,7 +398,7 @@ func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 	return nil
 }
 
-// Gets a ticket (job options), returns it as a map.
+// Ticket gets a ticket (print job options), returns it as a map.
 func (gcp *GoogleCloudPrint) Ticket(ticketURL string) (map[string]string, error) {
 	response, err := getWithRetry(gcp.robotTransport, ticketURL)
 	if err != nil {
@@ -418,7 +419,8 @@ func (gcp *GoogleCloudPrint) Ticket(ticketURL string) (map[string]string, error)
 	return m, nil
 }
 
-// Calls get() and retries on HTTP failure (response code != 200).
+// getWithRetry calls get() and retries once on HTTP failure
+// (response code != 200).
 func getWithRetry(t *oauth2.Transport, url string) (*http.Response, error) {
 	response, err := get(t, url)
 	if response == nil || response.StatusCode == 200 {
@@ -428,7 +430,8 @@ func getWithRetry(t *oauth2.Transport, url string) (*http.Response, error) {
 	return get(t, url)
 }
 
-// GETs to a URL. Returns the response object, in case the body is very large.
+// get GETs a URL. Returns the response object (not body), in case the body
+// is very large.
 func get(t *oauth2.Transport, url string) (*http.Response, error) {
 	request, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -447,7 +450,8 @@ func get(t *oauth2.Transport, url string) (*http.Response, error) {
 	return response, nil
 }
 
-// Calls post() and retries on HTTP failure (response code != 200).
+// postWithRetry calls post() and retries once on HTTP failure
+// (response code != 200).
 func postWithRetry(t *oauth2.Transport, method string, form url.Values) ([]byte, uint, int, error) {
 	responseBody, gcpErrorCode, httpStatusCode, err := post(t, method, form)
 	if httpStatusCode == 0 || httpStatusCode == 200 {
@@ -457,7 +461,7 @@ func postWithRetry(t *oauth2.Transport, method string, form url.Values) ([]byte,
 	return post(t, method, form)
 }
 
-// POSTs to a GCP method. Returns the body of the response.
+// post POSTs to a GCP method. Returns the body of the response.
 //
 // Returns the response body, GCP error code, HTTP status, and error.
 // On success, only the response body is guaranteed to be non-zero.
