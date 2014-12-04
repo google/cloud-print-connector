@@ -196,6 +196,16 @@ func (c *CUPS) reconnect() error {
 	return nil
 }
 
+// doRequestWithRetry calls doRequest and retries once on failure.
+func (c *CUPS) doRequestWithRetry(c_request *C.ipp_t, acceptableStatusCodes []C.ipp_status_t) (*C.ipp_t, error) {
+	c_response, err := c.doRequest(c_request, acceptableStatusCodes)
+	if err == nil {
+		return c_response, err
+	}
+
+	return c.doRequest(c_request, acceptableStatusCodes)
+}
+
 // doRequest calls cupsDoRequest() via cgo.
 //
 // Uses []C.ipp_status_t type for acceptableStatusCodes because compiler fails on
@@ -232,7 +242,7 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 		return nil, err
 	}
 
-	c_response, err := c.doRequest(c_request, []C.ipp_status_t{C.IPP_STATUS_OK, C.IPP_STATUS_ERROR_NOT_FOUND})
+	c_response, err := c.doRequestWithRetry(c_request, []C.ipp_status_t{C.IPP_STATUS_OK, C.IPP_STATUS_ERROR_NOT_FOUND})
 	if err != nil {
 		err = fmt.Errorf(
 			"Failed to call cupsDoRequest() [IPP_OP_CUPS_GET_PRINTERS]: %s", err)
@@ -414,7 +424,7 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.CUPSJobStatus, string, error) {
 		return "", "", err
 	}
 
-	c_response, err := c.doRequest(c_request, []C.ipp_status_t{C.IPP_STATUS_OK})
+	c_response, err := c.doRequestWithRetry(c_request, []C.ipp_status_t{C.IPP_STATUS_OK})
 	if err != nil {
 		err = fmt.Errorf(
 			"Failed to call cupsDoRequest() [IPP_OP_GET_JOB_ATTRIBUTES]: %s", err)
