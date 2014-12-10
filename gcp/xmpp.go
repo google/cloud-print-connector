@@ -33,6 +33,9 @@ const (
 
 	// This is a long-lived, potentially quiet, conversation. Keep it alive!
 	netKeepAlive = time.Second * 60
+
+	// Set our own timeout, rather than have the OS or server timeout for us.
+	netTimeout = time.Second * 60
 )
 
 // Compare this to err to detect a closed connection.
@@ -132,6 +135,7 @@ func dial() (*tls.Conn, error) {
 	}
 	netDialer := &net.Dialer{
 		KeepAlive: netKeepAlive,
+		Timeout:   netTimeout,
 	}
 	conn, err := tls.DialWithDialer(netDialer, "tcp", "talk.google.com:443", tlsConfig)
 	if err != nil {
