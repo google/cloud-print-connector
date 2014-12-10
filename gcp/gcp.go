@@ -65,7 +65,11 @@ func NewGoogleCloudPrint(xmppJID, robotRefreshToken, userRefreshToken, proxyName
 	}
 
 	gcp := &GoogleCloudPrint{xmppJID, nil, robotTransport, userTransport, proxyName}
-	gcp.restartXMPP()
+	if err = gcp.restartXMPP(); err != nil {
+		return nil, err
+	}
+	glog.Info("Started XMPP successfully")
+
 	return gcp, nil
 }
 
@@ -100,7 +104,7 @@ func (gcp *GoogleCloudPrint) CanShare() bool {
 }
 
 // restartXMPP tries to start an XMPP conversation multiple times, then panics.
-func (gcp *GoogleCloudPrint) restartXMPP() {
+func (gcp *GoogleCloudPrint) restartXMPP() error {
 	if gcp.xmppClient != nil {
 		go gcp.xmppClient.quit()
 	}
@@ -116,15 +120,15 @@ func (gcp *GoogleCloudPrint) restartXMPP() {
 			xmpp, err = newXMPP(gcp.xmppJID, gcp.robotTransport.Token().AccessToken, gcp.proxyName)
 			if err == nil {
 				gcp.xmppClient = xmpp
-				glog.Warning("Started XMPP successfully")
-				return
+				return nil
 			}
 		}
 
 		// Sleep for 1, 2, 4, 8 seconds.
 		time.Sleep(time.Duration((i+1)*2) * time.Second)
 	}
-	glog.Fatalf("Failed to start XMPP conversation: %s", err)
+
+	return fmt.Errorf("Failed to (re-)start XMPP conversation: %s", err)
 }
 
 // NextJobBatch gets the next batch of print jobs from GCP. Blocks on the XMPP
@@ -138,7 +142,10 @@ func (gcp *GoogleCloudPrint) NextJobBatch() ([]lib.Job, error) {
 		}
 
 		glog.Warningf("Restarting XMPP conversation because: %s", err)
-		gcp.restartXMPP()
+		if err = gcp.restartXMPP(); err != nil {
+			return nil, err
+		}
+		glog.Info("Started XMPP successfully")
 
 		// Now try again.
 		printerIDb64, err = gcp.xmppClient.nextWaitingPrinter()
