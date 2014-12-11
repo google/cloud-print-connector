@@ -27,6 +27,9 @@ import (
 	"github.com/golang/glog"
 )
 
+// Number of seconds between XMPP channel pings.
+const xmppTimeout = 300
+
 // Manages all interactions between CUPS and Google Cloud Print.
 type PrinterManager struct {
 	cups *cups.CUPS
@@ -122,6 +125,9 @@ func (pm *PrinterManager) syncPrinters() error {
 	}
 	if pm.ignoreRawPrinters {
 		cupsPrinters, _ = lib.FilterRawPrinters(cupsPrinters)
+	}
+	for i := range cupsPrinters {
+		cupsPrinters[i].XMPPTimeout = xmppTimeout
 	}
 
 	diffs := lib.DiffPrinters(cupsPrinters, printerMapToSlice(pm.gcpPrintersByGCPID))
@@ -227,9 +233,10 @@ func (pm *PrinterManager) listenGCPJobs() {
 					return
 				}
 				glog.Warningf("Error waiting for next printer: %s", err)
-			}
-			for i := range jobs {
-				ch <- &jobs[i]
+			} else {
+				for i := range jobs {
+					ch <- &jobs[i]
+				}
 			}
 		}
 	}()

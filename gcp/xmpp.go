@@ -38,7 +38,7 @@ const (
 	netTimeout = time.Second * 60
 )
 
-// Compare this to err to detect a closed connection.
+// Indicates a closed connection; we're probably exiting.
 var Closed = errors.New("closed")
 
 // Interface with XMPP server.
@@ -99,6 +99,7 @@ func newXMPP(xmppJID, accessToken, proxyName string) (*gcpXMPP, error) {
 
 // nextWaitingPrinter returns the GCPID of the next printer with waiting jobs.
 func (x *gcpXMPP) nextWaitingPrinter() (string, error) {
+	// First, verify that this is a message we expect to see.
 	startElement, err := readStartElement(x.xmlDecoder)
 	if err != nil {
 		if strings.Contains(err.Error(), "use of closed network connection") {
@@ -110,6 +111,7 @@ func (x *gcpXMPP) nextWaitingPrinter() (string, error) {
 		return "", fmt.Errorf("Unexpected element while waiting for print message: %+v", startElement)
 	}
 
+	// Second, parse the message.
 	var message struct {
 		XMLName xml.Name `xml:"message"`
 		Data    string   `xml:"push>data"`

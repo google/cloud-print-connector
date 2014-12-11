@@ -51,6 +51,7 @@ type Printer struct {
 	Status             PrinterStatus     // CUPS: printer-state;               GCP: status field
 	CapsHash           string            // CUPS: hash of PPD;                 GCP: capsHash field
 	Tags               map[string]string // CUPS: all printer attributes;      GCP: repeated tag field
+	XMPPTimeout        uint32            //                                    GCP: local_settings/xmpp_timeout_value field
 	CUPSJobSemaphore   *Semaphore
 }
 
@@ -72,6 +73,7 @@ type PrinterDiff struct {
 	DescriptionChanged        bool
 	StatusChanged             bool
 	CapsHashChanged           bool
+	XMPPTimeoutChanged        bool
 	TagsChanged               bool
 }
 
@@ -160,6 +162,9 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	}
 	if pg.CapsHash != pc.CapsHash {
 		d.CapsHashChanged = true
+	}
+	if pg.XMPPTimeout != pc.XMPPTimeout {
+		d.XMPPTimeoutChanged = true
 	}
 	if !reflect.DeepEqual(pg.Tags, pc.Tags) {
 		d.TagsChanged = true
