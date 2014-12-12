@@ -229,7 +229,7 @@ func (pm *PrinterManager) listenGCPJobs() {
 		for {
 			jobs, err := pm.gcp.NextJobBatch()
 			if err != nil {
-				if err == gcp.Closed {
+				if err == gcp.ErrClosed {
 					return
 				}
 				glog.Warningf("Error waiting for next printer: %s", err)

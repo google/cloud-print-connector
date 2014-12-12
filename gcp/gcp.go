@@ -171,7 +171,7 @@ func (gcp *GoogleCloudPrint) nextWaitingPrinterWithRetries() (string, error) {
 			return printerIDb64, nil
 		}
 
-		if err == Closed {
+		if err == ErrClosed {
 			// The connection is closed.
 			return "", err
 		}
@@ -205,7 +205,10 @@ func (gcp *GoogleCloudPrint) nextWaitingPrinterWithRetries() (string, error) {
 func (gcp *GoogleCloudPrint) NextJobBatch() ([]lib.Job, error) {
 	printerIDb64, err := gcp.nextWaitingPrinterWithRetries()
 	if err != nil {
-		glog.Fatal(err)
+		if err == ErrClosed {
+			return nil, err
+		}
+		glog.Fatalf("Fatal error while waiting for next printer: %s", err)
 	}
 	printerIDbytes, err := base64.StdEncoding.DecodeString(printerIDb64)
 	if err != nil {

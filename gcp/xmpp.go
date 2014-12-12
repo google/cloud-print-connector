@@ -39,7 +39,7 @@ const (
 )
 
 // Indicates a closed connection; we're probably exiting.
-var Closed = errors.New("closed")
+var ErrClosed = errors.New("closed")
 
 // Interface with XMPP server.
 type gcpXMPP struct {
@@ -103,7 +103,7 @@ func (x *gcpXMPP) nextWaitingPrinter() (string, error) {
 	startElement, err := readStartElement(x.xmlDecoder)
 	if err != nil {
 		if strings.Contains(err.Error(), "use of closed network connection") {
-			return "", Closed
+			return "", ErrClosed
 		}
 		return "", fmt.Errorf("Failed to read the next start element: %s", err)
 	}
@@ -119,7 +119,7 @@ func (x *gcpXMPP) nextWaitingPrinter() (string, error) {
 
 	if err := x.xmlDecoder.DecodeElement(&message, startElement); err != nil {
 		if strings.Contains(err.Error(), "use of closed network connection") {
-			return "", Closed
+			return "", ErrClosed
 		}
 		return "", fmt.Errorf("Error while waiting for print jobs via XMPP: %s", err)
 	} else {
