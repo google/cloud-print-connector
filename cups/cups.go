@@ -18,7 +18,8 @@ package cups
 /*
 #cgo LDFLAGS: -lcups
 #include <cups/cups.h>
-#include <stdlib.h> // free
+#include <stddef.h> // size_t
+#include <stdlib.h> // free, malloc
 #include <arpa/inet.h> // ntohs
 
 const char
@@ -62,10 +63,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"os"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -166,22 +165,6 @@ func (c *CUPS) Quit() {
 	C.freeStringArrayAndStrings(c.c_printerAttributes, C.int(c.printerAttributesSize))
 }
 
-// reconnect calls httpReconnect() via cgo, which re-opens the connection to
-// the CUPS server, if needed.
-func (c *CUPS) reconnect() error {
-	// Lock the OS thread so that thread-local storage is available to
-	// cupsLastErrorString().
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	c_ippStatus := C.httpReconnect(c.c_http)
-	if c_ippStatus != C.IPP_STATUS_OK {
-		return fmt.Errorf("Failed to call cupsReconnect(): %d %s",
-			int(c_ippStatus), C.GoString(C.cupsLastErrorString()))
-	}
-	return nil
-}
-
 // doRequestWithRetry calls doRequest and retries once on failure.
 func (c *CUPS) doRequestWithRetry(c_request *C.ipp_t, acceptableStatusCodes []C.ipp_status_t) (*C.ipp_t, error) {
 	c_response, err := c.doRequest(c_request, acceptableStatusCodes)
@@ -224,7 +207,7 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	C.ippAddStrings(c_request, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES,
 		C.int(c.printerAttributesSize), nil, c.c_printerAttributes)
 
-	if err := c.reconnect(); err != nil {
+	if err := reconnect(c.c_http); err != nil {
 		return nil, err
 	}
 
@@ -429,7 +412,7 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.CUPSJobStatus, string, error) {
 	C.ippAddStrings(c_request, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD,
 		C.REQUESTED_ATTRIBUTES, C.int(0), nil, c.c_jobAttributes)
 
-	if err := c.reconnect(); err != nil {
+	if err := reconnect(c.c_http); err != nil {
 		return "", "", err
 	}
 
@@ -479,7 +462,7 @@ func (c *CUPS) Print(printerName, fileName, title, ownerID string, options map[s
 	c_user := C.CString(ownerID)
 	defer C.free(unsafe.Pointer(c_user))
 
-	if err := c.reconnect(); err != nil {
+	if err := reconnect(c.c_http); err != nil {
 		return 0, err
 	}
 
@@ -498,32 +481,6 @@ func (c *CUPS) Print(printerName, fileName, title, ownerID string, options map[s
 	}
 
 	return jobID, nil
-}
-
-// CreateTempFile calls cupsTempFd() to create a new file that (1) lives in a
-// "temporary" location (like /tmp) and (2) is readable by CUPS. The caller
-// is responsible for deleting the file.
-func (c *CUPS) CreateTempFile() (*os.File, error) {
-	c_len := C.size_t(syscall.PathMax)
-	c_filename := (*C.char)(C.malloc(c_len))
-	if c_filename == nil {
-		return nil, errors.New("Failed to malloc(); out of memory?")
-	}
-	defer C.free(unsafe.Pointer(c_filename))
-
-	// Lock the OS thread so that thread-local storage is available to
-	// cupsLastError() and cupsLastErrorString().
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	c_fd := C.cupsTempFd(c_filename, C.int(c_len))
-	if c_fd == C.int(-1) {
-		err := fmt.Errorf("Failed to call cupsTempFd(): %d %s",
-			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
-		return nil, err
-	}
-
-	return os.NewFile(uintptr(c_fd), C.GoString(c_filename)), nil
 }
 
 // createJobURI creates a uri string for the job-uri attribute, used to get the

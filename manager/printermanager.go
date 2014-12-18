@@ -299,11 +299,12 @@ func (pm *PrinterManager) processJob(job *lib.Job) (string, lib.GCPJobStatus, li
 			fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err)
 	}
 
-	pdfFile, err := pm.cups.CreateTempFile()
+	pdfFile, err := cups.CreateTempFile()
 	if err != nil {
 		return job.GCPJobID, lib.JobError, "NONE",
 			fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err)
 	}
+	defer os.Remove(pdfFile.Name())
 
 	pm.downloadSemaphore.Acquire()
 	t := time.Now()
@@ -318,7 +319,6 @@ func (pm *PrinterManager) processJob(job *lib.Job) (string, lib.GCPJobStatus, li
 
 	glog.Infof("Downloaded job %s in %s", job.GCPJobID, dt.String())
 	pdfFile.Close()
-	defer os.Remove(pdfFile.Name())
 
 	ownerID := job.OwnerID
 	if !pm.jobFullUsername {
