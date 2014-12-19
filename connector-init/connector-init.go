@@ -16,6 +16,7 @@ limitations under the License.
 package main
 
 import (
+	"cups-connector/gcp"
 	"cups-connector/lib"
 	"encoding/json"
 	"flag"
@@ -66,12 +67,12 @@ var (
 
 func getUserClient(retainUserOauthToken bool) (*http.Client, string) {
 	options := oauth2.Options{
-		ClientID:     lib.ClientID,
-		ClientSecret: lib.ClientSecret,
-		RedirectURL:  lib.RedirectURL,
-		Scopes:       []string{lib.ScopeCloudPrint},
+		ClientID:     gcp.ClientID,
+		ClientSecret: gcp.ClientSecret,
+		RedirectURL:  gcp.RedirectURL,
+		Scopes:       []string{gcp.ScopeCloudPrint},
 	}
-	oauthConfig, err := oauth2.NewConfig(&options, lib.AuthURL, lib.TokenURL)
+	oauthConfig, err := oauth2.NewConfig(&options, gcp.AuthURL, gcp.TokenURL)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -100,9 +101,9 @@ func getUserClient(retainUserOauthToken bool) (*http.Client, string) {
 
 func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
 	params := url.Values{}
-	params.Set("oauth_client_id", lib.ClientID)
+	params.Set("oauth_client_id", gcp.ClientID)
 	params.Set("proxy", proxy)
-	response, err := userClient.Get(lib.CreateRobotURL + "?" + params.Encode())
+	response, err := userClient.Get(gcp.CreateRobotURL + "?" + params.Encode())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -131,12 +132,12 @@ func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
 
 func verifyRobotAccount(authCode string) string {
 	options := oauth2.Options{
-		ClientID:     lib.ClientID,
-		ClientSecret: lib.ClientSecret,
-		RedirectURL:  lib.RedirectURL,
-		Scopes:       []string{lib.ScopeCloudPrint, lib.ScopeGoogleTalk},
+		ClientID:     gcp.ClientID,
+		ClientSecret: gcp.ClientSecret,
+		RedirectURL:  gcp.RedirectURL,
+		Scopes:       []string{gcp.ScopeCloudPrint, gcp.ScopeGoogleTalk},
 	}
-	oauthConfig, err := oauth2.NewConfig(&options, lib.AuthURL, lib.TokenURL)
+	oauthConfig, err := oauth2.NewConfig(&options, gcp.AuthURL, gcp.TokenURL)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -42,6 +42,17 @@ const (
 
 	// Stop retrying when two failurees occur in succession in this quantity of seconds.
 	minimumTimeBetweenXMPPFailures = 3
+
+	// OAuth constants.
+	ClientID        = "539833558011-35iq8btpgas80nrs3o7mv99hm95d4dv6.apps.googleusercontent.com"
+	ClientSecret    = "V9BfPOvdiYuw12hDx5Y5nR0a"
+	RedirectURL     = "oob"
+	ScopeCloudPrint = "https://www.googleapis.com/auth/cloudprint"
+	ScopeGoogleTalk = "https://www.googleapis.com/auth/googletalk"
+	AccessType      = "offline"
+	AuthURL         = "https://accounts.google.com/o/oauth2/auth"
+	TokenURL        = "https://accounts.google.com/o/oauth2/token"
+	CreateRobotURL  = "https://www.google.com/cloudprint/createrobot"
 )
 
 // Interface between Go and the Google Cloud Print API.
@@ -54,14 +65,14 @@ type GoogleCloudPrint struct {
 }
 
 func NewGoogleCloudPrint(xmppJID, robotRefreshToken, userRefreshToken, proxyName string) (*GoogleCloudPrint, error) {
-	robotTransport, err := newTransport(robotRefreshToken, lib.ScopeCloudPrint, lib.ScopeGoogleTalk)
+	robotTransport, err := newTransport(robotRefreshToken, ScopeCloudPrint, ScopeGoogleTalk)
 	if err != nil {
 		return nil, err
 	}
 
 	var userTransport *oauth2.Transport
 	if userRefreshToken != "" {
-		userTransport, err = newTransport(userRefreshToken, lib.ScopeCloudPrint)
+		userTransport, err = newTransport(userRefreshToken, ScopeCloudPrint)
 		if err != nil {
 			return nil, err
 		}
@@ -100,12 +111,12 @@ func marshalLocalSettings(xmppTimeout uint32) (string, error) {
 
 func newTransport(refreshToken string, scopes ...string) (*oauth2.Transport, error) {
 	options := &oauth2.Options{
-		ClientID:     lib.ClientID,
-		ClientSecret: lib.ClientSecret,
-		RedirectURL:  lib.RedirectURL,
+		ClientID:     ClientID,
+		ClientSecret: ClientSecret,
+		RedirectURL:  RedirectURL,
 		Scopes:       scopes,
 	}
-	oauthConfig, err := oauth2.NewConfig(options, lib.AuthURL, lib.TokenURL)
+	oauthConfig, err := oauth2.NewConfig(options, AuthURL, TokenURL)
 	if err != nil {
 		return nil, err
 	}

@@ -105,7 +105,9 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 			printersConsidered[gcpPrinters[i].Name] = true
 
 			if cupsPrinter, exists := cupsPrintersByName[gcpPrinters[i].Name]; exists {
+				// CUPS printer doesn't know about GCPID yet.
 				cupsPrinter.GCPID = gcpPrinters[i].GCPID
+				// Don't lose track of this semaphore.
 				cupsPrinter.CUPSJobSemaphore = gcpPrinters[i].CUPSJobSemaphore
 
 				if reflect.DeepEqual(cupsPrinter, gcpPrinters[i]) {
@@ -147,9 +149,6 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 		Operation: UpdatePrinter,
 		Printer:   *pc,
 	}
-
-	// Do not lose track of this semaphore.
-	d.Printer.CUPSJobSemaphore = pg.CUPSJobSemaphore
 
 	if pg.DefaultDisplayName != pc.DefaultDisplayName {
 		d.DefaultDisplayNameChanged = true
