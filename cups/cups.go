@@ -54,26 +54,12 @@ void freeStringArrayAndStrings(char **stringArray, int size) {
 int ippGetResolutionWrapper(ipp_attribute_t *attr, int element, int *yres, int *units) {
 	return ippGetResolution(attr, element, yres, (ipp_res_t *)units);
 }
-
-// Parses octets from IPP date format (RFC 2579).
-void parseDate(ipp_uchar_t *ipp_date, unsigned short *year, unsigned char *month, unsigned char *day,
-		unsigned char *hour, unsigned char *minutes, unsigned char *seconds, unsigned char *deciseconds,
-		unsigned char *utcDirection, unsigned char *utcHours, unsigned char *utcMinutes) {
-	*year = ntohs(*(unsigned short*)ipp_date);
-	*month = ipp_date[2];
-	*day = ipp_date[3];
-	*hour = ipp_date[4];
-	*minutes = ipp_date[5];
-	*seconds = ipp_date[6];
-	*deciseconds = ipp_date[7];
-	*utcDirection = ipp_date[8] == '+' ? 1 : -1;
-	*utcHours = ipp_date[9];
-	*utcMinutes = ipp_date[10];
-}
 */
 import "C"
 import (
+	"bytes"
 	"cups-connector/lib"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -282,6 +268,39 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	return printers, nil
 }
 
+// convertIPPDateToTime converts an RFC 2579 date to a time.Time object.
+func convertIPPDateToTime(c_date *C.ipp_uchar_t) time.Time {
+	r := bytes.NewReader(C.GoBytes(unsafe.Pointer(c_date), 11))
+	var year uint16
+	var month, day, hour, min, sec, dsec uint8
+	binary.Read(r, binary.BigEndian, &year)
+	binary.Read(r, binary.BigEndian, &month)
+	binary.Read(r, binary.BigEndian, &day)
+	binary.Read(r, binary.BigEndian, &hour)
+	binary.Read(r, binary.BigEndian, &min)
+	binary.Read(r, binary.BigEndian, &sec)
+	binary.Read(r, binary.BigEndian, &dsec)
+
+	var utcDirection, utcHour, utcMin uint8
+	binary.Read(r, binary.BigEndian, &utcDirection)
+	binary.Read(r, binary.BigEndian, &utcHour)
+	binary.Read(r, binary.BigEndian, &utcMin)
+
+	var utcOffset time.Duration
+	utcOffset += int(utcHour) * time.Hour
+	utcOffset += int(utcMin) * time.Minute
+	var loc time.Location
+	if utcDirection == '-' {
+		loc = time.FixedZone("", -utcOffset.Seconds())
+	} else {
+		loc = time.FixedZone("", utcOffset.Seconds())
+	}
+
+	nsec := int(dsec) * 100 * int(time.Millisecond)
+
+	return time.Date(int(year), time.Month(month), int(day), int(hour), int(min), int(sec), nsec, loc)
+}
+
 // attributesToTags converts a slice of C.ipp_attribute_t to a
 // string:string "tag" map. Outside of this package, "printer attributes" are
 // known as "tags".
@@ -319,17 +338,7 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string]string {
 		case C.IPP_TAG_DATE:
 			for i := 0; i < count; i++ {
 				c_date := C.ippGetDate(a, C.int(i))
-				// TODO: Refactor such that parseDate() returns unix time.
-				var c_year C.ushort
-				var c_month, c_day, c_hour, c_minutes, c_seconds, c_deciSeconds,
-					c_utcDirection, c_utcHours, c_utcMinutes C.uchar
-				C.parseDate(c_date, &c_year, &c_month, &c_day, &c_hour, &c_minutes,
-					&c_seconds, &c_deciSeconds, &c_utcDirection, &c_utcHours, &c_utcMinutes)
-				l := time.FixedZone("",
-					60*int(uint8(c_utcDirection)*uint8(c_utcHours)*uint8(c_utcMinutes)))
-				t := time.Date(int(c_year), (time.Month)(int(c_month)), int(c_day),
-					int(c_hour), int(c_minutes), int(c_seconds), int(c_deciSeconds)*100000000,
-					l)
+				t := convertIPPDateToTime(c_date)
 				values[i] = fmt.Sprintf("%d", t.Unix())
 			}
 
