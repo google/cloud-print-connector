@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/oauth2"
+	"golang.org/x/oauth2"
 )
 
 var (
@@ -65,25 +65,26 @@ var (
 		"Filename of unix socket for connector-check to talk to connector")
 )
 
+// getUserClient steps the user through the process of acquiring an OAuth refresh token.
 func getUserClient(retainUserOauthToken bool) (*http.Client, string) {
-	options := oauth2.Options{
+	config := &oauth2.Config{
 		ClientID:     gcp.ClientID,
 		ClientSecret: gcp.ClientSecret,
-		RedirectURL:  gcp.RedirectURL,
-		Scopes:       []string{gcp.ScopeCloudPrint},
-	}
-	oauthConfig, err := oauth2.NewConfig(&options, gcp.AuthURL, gcp.TokenURL)
-	if err != nil {
-		log.Fatal(err)
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  gcp.AuthURL,
+			TokenURL: gcp.TokenURL,
+		},
+		RedirectURL: gcp.RedirectURL,
+		Scopes:      []string{gcp.ScopeCloudPrint},
 	}
 
 	fmt.Println("Login to Google as the user that will own the printers, then visit this URL:")
 	fmt.Println("")
-	fmt.Println(oauthConfig.AuthCodeURL("", "offline", "auto"))
+	fmt.Println(config.AuthCodeURL("state", oauth2.AccessTypeOffline))
 	fmt.Println("")
 
 	authCode := scanNonEmptyString("After authenticating, enter the provided code here: ")
-	transport, err := oauthConfig.NewTransportWithCode(authCode)
+	token, err := config.Exchange(oauth2.NoContext, authCode)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -93,12 +94,13 @@ func getUserClient(retainUserOauthToken bool) (*http.Client, string) {
 
 	var userRefreshToken string
 	if retainUserOauthToken {
-		userRefreshToken = transport.Token().RefreshToken
+		userRefreshToken = token.RefreshToken
 	}
 
-	return &http.Client{Transport: transport}, userRefreshToken
+	return config.Client(oauth2.NoContext, token), userRefreshToken
 }
 
+// initRobotAccount creates a GCP robot account for this connector.
 func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
 	params := url.Values{}
 	params.Set("oauth_client_id", gcp.ClientID)
@@ -131,18 +133,18 @@ func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
 }
 
 func verifyRobotAccount(authCode string) string {
-	options := oauth2.Options{
+	config := &oauth2.Config{
 		ClientID:     gcp.ClientID,
 		ClientSecret: gcp.ClientSecret,
-		RedirectURL:  gcp.RedirectURL,
-		Scopes:       []string{gcp.ScopeCloudPrint, gcp.ScopeGoogleTalk},
-	}
-	oauthConfig, err := oauth2.NewConfig(&options, gcp.AuthURL, gcp.TokenURL)
-	if err != nil {
-		log.Fatal(err)
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  gcp.AuthURL,
+			TokenURL: gcp.TokenURL,
+		},
+		RedirectURL: gcp.RedirectURL,
+		Scopes:      []string{gcp.ScopeCloudPrint, gcp.ScopeGoogleTalk},
 	}
 
-	token, err := oauthConfig.Exchange(authCode)
+	token, err := config.Exchange(oauth2.NoContext, authCode)
 	if err != nil {
 		log.Fatal(err)
 	}

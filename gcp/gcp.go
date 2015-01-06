@@ -30,7 +30,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/golang/oauth2"
+	"golang.org/x/oauth2"
 )
 
 const (
@@ -110,23 +110,20 @@ func marshalLocalSettings(xmppTimeout uint32) (string, error) {
 }
 
 func newTransport(refreshToken string, scopes ...string) (*oauth2.Transport, error) {
-	options := &oauth2.Options{
+	config := &oauth2.Config{
 		ClientID:     ClientID,
 		ClientSecret: ClientSecret,
-		RedirectURL:  RedirectURL,
-		Scopes:       scopes,
-	}
-	oauthConfig, err := oauth2.NewConfig(options, AuthURL, TokenURL)
-	if err != nil {
-		return nil, err
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  AuthURL,
+			TokenURL: TokenURL,
+		},
+		RedirectURL: RedirectURL,
+		Scopes:      scopes,
 	}
 
-	transport := oauthConfig.NewTransport()
-	transport.SetToken(&oauth2.Token{RefreshToken: refreshToken})
-	// Get first access token to be sure we can.
-	if err = transport.RefreshToken(); err != nil {
-		return nil, err
-	}
+	token := &oauth2.Token{RefreshToken: refreshToken}
+	tokenSource := config.TokenSource(oauth2.NoContext, token)
+	transport := &oauth2.Transport{Source: tokenSource}
 
 	return transport, nil
 }
@@ -147,13 +144,14 @@ func (gcp *GoogleCloudPrint) restartXMPP() error {
 
 	var err error
 	for i := 0; i < restartXMPPMaxRetries; i++ {
-		if gcp.robotTransport.Token().Expired() {
-			err = gcp.robotTransport.RefreshToken()
-		}
-
 		if err == nil {
+			token, err := gcp.robotTransport.Source.Token()
+			if err != nil {
+				return fmt.Errorf("Failed to restart XMPP because: %s", err)
+			}
+
 			var xmpp *gcpXMPP
-			xmpp, err = newXMPP(gcp.xmppJID, gcp.robotTransport.Token().AccessToken, gcp.proxyName)
+			xmpp, err = newXMPP(gcp.xmppJID, token.AccessToken, gcp.proxyName)
 			if err == nil {
 				gcp.xmppClient = xmpp
 				return nil
