@@ -270,13 +270,13 @@ func convertIPPDateToTime(c_date *C.ipp_uchar_t) time.Time {
 	binary.Read(r, binary.BigEndian, &utcMin)
 
 	var utcOffset time.Duration
-	utcOffset += int(utcHour) * time.Hour
-	utcOffset += int(utcMin) * time.Minute
-	var loc time.Location
+	utcOffset += time.Duration(utcHour) * time.Hour
+	utcOffset += time.Duration(utcMin) * time.Minute
+	var loc *time.Location
 	if utcDirection == '-' {
-		loc = time.FixedZone("", -utcOffset.Seconds())
+		loc = time.FixedZone("", -int(utcOffset.Seconds()))
 	} else {
-		loc = time.FixedZone("", utcOffset.Seconds())
+		loc = time.FixedZone("", int(utcOffset.Seconds()))
 	}
 
 	nsec := int(dsec) * 100 * int(time.Millisecond)
