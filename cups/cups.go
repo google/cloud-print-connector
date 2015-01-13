@@ -90,12 +90,12 @@ var requiredPrinterAttributes []string = []string{
 
 // Interface between Go and the CUPS API.
 type CUPS struct {
-	c_http                *C.http_t
+	http                  *C.http_t
 	pc                    *ppdCache
 	infoToDisplayName     bool
-	c_printerAttributes   **C.char
+	printerAttributes     **C.char
 	printerAttributesSize int
-	c_jobAttributes       **C.char
+	jobAttributes         **C.char
 }
 
 // NewCUPS calls httpConnectEncrypt() via cgo, to create a new, open,
@@ -116,26 +116,26 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) 
 	}
 
 	printerAttributesSize := len(printerAttributes)
-	c_printerAttributes := C.newArrayOfStrings(C.int(printerAttributesSize))
+	pa := C.newArrayOfStrings(C.int(printerAttributesSize))
 	for i, a := range printerAttributes {
-		C.setStringArrayValue(c_printerAttributes, C.int(i), C.CString(a))
+		C.setStringArrayValue(pa, C.int(i), C.CString(a))
 	}
 
-	c_jobAttributes := C.newArrayOfStrings(C.int(2))
-	C.setStringArrayValue(c_jobAttributes, C.int(0), C.JOB_STATE)
-	C.setStringArrayValue(c_jobAttributes, C.int(1), C.JOB_STATE_REASONS)
+	jobAttributes := C.newArrayOfStrings(C.int(2))
+	C.setStringArrayValue(jobAttributes, C.int(0), C.JOB_STATE)
+	C.setStringArrayValue(jobAttributes, C.int(1), C.JOB_STATE_REASONS)
 
-	c_host := C.cupsServer()
-	c_port := C.ippPort()
-	c_encryption := C.cupsEncryption()
+	host := C.cupsServer()
+	port := C.ippPort()
+	encryption := C.cupsEncryption()
 
-	c_http := C.httpConnectEncrypt(c_host, c_port, c_encryption)
-	if c_http == nil {
-		return nil, fmt.Errorf("Failed to connect to %s:%d", C.GoString(c_host), int(c_port))
+	http := C.httpConnectEncrypt(host, port, encryption)
+	if http == nil {
+		return nil, fmt.Errorf("Failed to connect to %s:%d", C.GoString(host), int(port))
 	}
 
 	var e string
-	switch c_encryption {
+	switch encryption {
 	case C.HTTP_ENCRYPTION_ALWAYS:
 		e = "encrypting ALWAYS"
 	case C.HTTP_ENCRYPTION_IF_REQUESTED:
@@ -145,73 +145,73 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) 
 	case C.HTTP_ENCRYPTION_REQUIRED:
 		e = "encryption REQUIRED"
 	default:
-		c_encryption = C.HTTP_ENCRYPTION_IF_REQUESTED
+		encryption = C.HTTP_ENCRYPTION_IF_REQUESTED
 		e = "encrypting IF REQUESTED"
 	}
 
-	glog.Infof("connected to CUPS server %s:%d %s\n", C.GoString(c_host), int(c_port), e)
+	glog.Infof("connected to CUPS server %s:%d %s\n", C.GoString(host), int(port), e)
 
-	pc := newPPDCache(c_http)
+	pc := newPPDCache(http)
 
 	c := &CUPS{
-		c_http, pc,
-		infoToDisplayName, c_printerAttributes, printerAttributesSize, c_jobAttributes}
+		http, pc,
+		infoToDisplayName, pa, printerAttributesSize, jobAttributes}
 
 	return c, nil
 }
 
 func (c *CUPS) Quit() {
 	c.pc.quit()
-	C.freeStringArrayAndStrings(c.c_printerAttributes, C.int(c.printerAttributesSize))
+	C.freeStringArrayAndStrings(c.printerAttributes, C.int(c.printerAttributesSize))
 }
 
 // doRequestWithRetry calls doRequest and retries once on failure.
-func (c *CUPS) doRequestWithRetry(c_request *C.ipp_t, acceptableStatusCodes []C.ipp_status_t) (*C.ipp_t, error) {
-	c_response, err := c.doRequest(c_request, acceptableStatusCodes)
+func (c *CUPS) doRequestWithRetry(request *C.ipp_t, acceptableStatusCodes []C.ipp_status_t) (*C.ipp_t, error) {
+	response, err := c.doRequest(request, acceptableStatusCodes)
 	if err == nil {
-		return c_response, err
+		return response, err
 	}
 
-	return c.doRequest(c_request, acceptableStatusCodes)
+	return c.doRequest(request, acceptableStatusCodes)
 }
 
 // doRequest calls cupsDoRequest() via cgo.
 //
 // Uses []C.ipp_status_t type for acceptableStatusCodes because compiler fails on
 // "...C.ipp_status_t" type.
-func (c *CUPS) doRequest(c_request *C.ipp_t, acceptableStatusCodes []C.ipp_status_t) (*C.ipp_t, error) {
+func (c *CUPS) doRequest(request *C.ipp_t, acceptableStatusCodes []C.ipp_status_t) (*C.ipp_t, error) {
 	// Lock the OS thread so that thread-local storage is available to
 	// cupsLastError() and cupsLastErrorString().
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	c_response := C.cupsDoRequest(c.c_http, c_request, C.POST_RESOURCE)
-	if c_response == nil {
+	response := C.cupsDoRequest(c.http, request, C.POST_RESOURCE)
+	if response == nil {
 		return nil, fmt.Errorf("%d %s", int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 	}
-	c_statusCode := C.ippGetStatusCode(c_response)
+	statusCode := C.ippGetStatusCode(response)
 	for _, sc := range acceptableStatusCodes {
-		if c_statusCode == sc {
-			return c_response, nil
+		if statusCode == sc {
+			return response, nil
 		}
 	}
 
-	return nil, fmt.Errorf("IPP status code %d", int(c_statusCode))
+	return nil, fmt.Errorf("IPP status code %d", int(statusCode))
 }
 
 // GetPrinters calls cupsDoRequest() with IPP_OP_CUPS_GET_PRINTERS, and returns
 // all CUPS printers found on the CUPS server.
 func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	// ippNewRequest() returns ipp_t pointer which does not need explicit free.
-	c_request := C.ippNewRequest(C.IPP_OP_CUPS_GET_PRINTERS)
-	C.ippAddStrings(c_request, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES,
-		C.int(c.printerAttributesSize), nil, c.c_printerAttributes)
+	request := C.ippNewRequest(C.IPP_OP_CUPS_GET_PRINTERS)
+	C.ippAddStrings(request, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES,
+		C.int(c.printerAttributesSize), nil, c.printerAttributes)
 
-	if err := reconnect(c.c_http); err != nil {
+	if err := reconnect(c.http); err != nil {
 		return nil, err
 	}
 
-	c_response, err := c.doRequestWithRetry(c_request, []C.ipp_status_t{C.IPP_STATUS_OK, C.IPP_STATUS_ERROR_NOT_FOUND})
+	response, err := c.doRequestWithRetry(request, []C.ipp_status_t{C.IPP_STATUS_OK, C.IPP_STATUS_ERROR_NOT_FOUND})
 	if err != nil {
 		err = fmt.Errorf(
 			"Failed to call cupsDoRequest() [IPP_OP_CUPS_GET_PRINTERS]: %s", err)
@@ -219,23 +219,23 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	}
 
 	// cupsDoRequest() returns ipp_t pointer which needs explicit free.
-	defer C.ippDelete(c_response)
+	defer C.ippDelete(response)
 
-	if C.ippGetStatusCode(c_response) == C.IPP_STATUS_ERROR_NOT_FOUND {
+	if C.ippGetStatusCode(response) == C.IPP_STATUS_ERROR_NOT_FOUND {
 		// Normal error when there are no printers.
 		return make([]lib.Printer, 0), nil
 	}
 
 	printers := make([]lib.Printer, 0, 1)
 
-	for a := C.ippFirstAttribute(c_response); a != nil; a = C.ippNextAttribute(c_response) {
+	for a := C.ippFirstAttribute(response); a != nil; a = C.ippNextAttribute(response) {
 		if C.ippGetGroupTag(a) != C.IPP_TAG_PRINTER {
 			continue
 		}
 
 		attributes := make([]*C.ipp_attribute_t, 0, c.printerAttributesSize)
 
-		for ; a != nil && C.ippGetGroupTag(a) == C.IPP_TAG_PRINTER; a = C.ippNextAttribute(c_response) {
+		for ; a != nil && C.ippGetGroupTag(a) == C.IPP_TAG_PRINTER; a = C.ippNextAttribute(response) {
 			attributes = append(attributes, a)
 		}
 
@@ -252,8 +252,8 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 }
 
 // convertIPPDateToTime converts an RFC 2579 date to a time.Time object.
-func convertIPPDateToTime(c_date *C.ipp_uchar_t) time.Time {
-	r := bytes.NewReader(C.GoBytes(unsafe.Pointer(c_date), 11))
+func convertIPPDateToTime(date *C.ipp_uchar_t) time.Time {
+	r := bytes.NewReader(C.GoBytes(unsafe.Pointer(date), 11))
 	var year uint16
 	var month, day, hour, min, sec, dsec uint8
 	binary.Read(r, binary.BigEndian, &year)
@@ -320,30 +320,28 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string]string {
 
 		case C.IPP_TAG_DATE:
 			for i := 0; i < count; i++ {
-				c_date := C.ippGetDate(a, C.int(i))
-				t := convertIPPDateToTime(c_date)
+				date := C.ippGetDate(a, C.int(i))
+				t := convertIPPDateToTime(date)
 				values[i] = fmt.Sprintf("%d", t.Unix())
 			}
 
 		case C.IPP_TAG_RESOLUTION:
 			for i := 0; i < count; i++ {
-				c_yres := C.int(-1)
-				c_unit := C.int(-1)
-				c_xres := C.ippGetResolutionWrapper(a, C.int(i), &c_yres, &c_unit)
-				var unit string
-				if c_unit == C.IPP_RES_PER_CM {
-					unit = "cm"
+				yres := C.int(-1)
+				unit := C.int(-1)
+				xres := C.ippGetResolutionWrapper(a, C.int(i), &yres, &unit)
+				if unit == C.IPP_RES_PER_CM {
+					values[i] = fmt.Sprintf("%dx%dpp%s", int(xres), int(yres), "cm")
 				} else {
-					unit = "i"
+					values[i] = fmt.Sprintf("%dx%dpp%s", int(xres), int(yres), "i")
 				}
-				values[i] = fmt.Sprintf("%dx%dpp%s", int(c_xres), int(c_yres), unit)
 			}
 
 		case C.IPP_TAG_RANGE:
 			for i := 0; i < count; i++ {
-				c_uppervalue := C.int(-1)
-				c_lowervalue := C.ippGetRange(a, C.int(i), &c_uppervalue)
-				values[i] = fmt.Sprintf("%d~%d", int(c_lowervalue), int(c_uppervalue))
+				uppervalue := C.int(-1)
+				lowervalue := C.ippGetRange(a, C.int(i), &uppervalue)
+				values[i] = fmt.Sprintf("%d~%d", int(lowervalue), int(uppervalue))
 			}
 
 		default:
@@ -398,25 +396,24 @@ func (c *CUPS) GetPPDHash(printerName string) (string, error) {
 // GetJobStatus calls cupsDoRequest() with IPP_OP_GET_JOB_ATTRIBUTES to get the
 // current status of the job indicated by the CUPS jobID.
 func (c *CUPS) GetJobStatus(jobID uint32) (lib.CUPSJobStatus, string, error) {
-	c_uri, err := createJobURI(jobID)
+	uri, err := createJobURI(jobID)
 	if err != nil {
 		return "", "", err
 	}
-	defer C.free(unsafe.Pointer(c_uri))
+	defer C.free(unsafe.Pointer(uri))
 
 	// ippNewRequest() returns ipp_t pointer does not need explicit free.
-	c_request := C.ippNewRequest(C.IPP_OP_GET_JOB_ATTRIBUTES)
+	request := C.ippNewRequest(C.IPP_OP_GET_JOB_ATTRIBUTES)
 
-	C.ippAddString(
-		c_request, C.IPP_TAG_OPERATION, C.IPP_TAG_URI, C.JOB_URI, nil, c_uri)
-	C.ippAddStrings(c_request, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD,
-		C.REQUESTED_ATTRIBUTES, C.int(0), nil, c.c_jobAttributes)
+	C.ippAddString(request, C.IPP_TAG_OPERATION, C.IPP_TAG_URI, C.JOB_URI, nil, uri)
+	C.ippAddStrings(request, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD,
+		C.REQUESTED_ATTRIBUTES, C.int(0), nil, c.jobAttributes)
 
-	if err := reconnect(c.c_http); err != nil {
+	if err := reconnect(c.http); err != nil {
 		return "", "", err
 	}
 
-	c_response, err := c.doRequestWithRetry(c_request, []C.ipp_status_t{C.IPP_STATUS_OK})
+	response, err := c.doRequestWithRetry(request, []C.ipp_status_t{C.IPP_STATUS_OK})
 	if err != nil {
 		err = fmt.Errorf(
 			"Failed to call cupsDoRequest() [IPP_OP_GET_JOB_ATTRIBUTES]: %s", err)
@@ -424,16 +421,15 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.CUPSJobStatus, string, error) {
 	}
 
 	// cupsDoRequest() returned ipp_t pointer needs explicit free.
-	defer C.ippDelete(c_response)
+	defer C.ippDelete(response)
 
-	c_status := C.ippFindAttribute(c_response, C.JOB_STATE, C.IPP_TAG_ENUM)
-	status := lib.CUPSJobStatusFromInt(uint8(C.ippGetInteger(c_status, C.int(0))))
+	s := C.ippFindAttribute(response, C.JOB_STATE, C.IPP_TAG_ENUM)
+	status := lib.CUPSJobStatusFromInt(uint8(C.ippGetInteger(s, C.int(0))))
 
-	c_statusReason := C.ippFindAttribute(
-		c_response, C.JOB_STATE_REASONS, C.IPP_TAG_STRING)
+	sr := C.ippFindAttribute(response, C.JOB_STATE_REASONS, C.IPP_TAG_STRING)
 	var statusReason string
-	if c_statusReason != nil {
-		statusReason = C.GoString(C.ippGetString(c_statusReason, C.int(0), nil))
+	if sr != nil {
+		statusReason = C.GoString(C.ippGetString(sr, C.int(0), nil))
 	}
 
 	return status, statusReason, nil
@@ -442,27 +438,27 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.CUPSJobStatus, string, error) {
 // Print calls cupsSetUser() and cupsPrintFile2() to send a new print job to the
 // CUPS server.
 func (c *CUPS) Print(printerName, fileName, title, ownerID string, options map[string]string) (uint32, error) {
-	c_printerName := C.CString(printerName)
-	defer C.free(unsafe.Pointer(c_printerName))
-	c_fileName := C.CString(fileName)
-	defer C.free(unsafe.Pointer(c_fileName))
-	c_title := C.CString(title)
-	defer C.free(unsafe.Pointer(c_title))
-	c_numOptions := C.int(0)
-	var c_options *C.cups_option_t = nil
-	defer C.cupsFreeOptions(c_numOptions, c_options)
+	pn := C.CString(printerName)
+	defer C.free(unsafe.Pointer(pn))
+	fn := C.CString(fileName)
+	defer C.free(unsafe.Pointer(fn))
+	t := C.CString(title)
+	defer C.free(unsafe.Pointer(t))
+	numOptions := C.int(0)
+	var o *C.cups_option_t = nil
+	defer C.cupsFreeOptions(numOptions, o)
 
 	for key, value := range options {
-		c_key, c_value := C.CString(key), C.CString(value)
-		c_numOptions = C.cupsAddOption(c_key, c_value, c_numOptions, &c_options)
-		C.free(unsafe.Pointer(c_key))
-		C.free(unsafe.Pointer(c_value))
+		k, v := C.CString(key), C.CString(value)
+		numOptions = C.cupsAddOption(k, v, numOptions, &o)
+		C.free(unsafe.Pointer(k))
+		C.free(unsafe.Pointer(v))
 	}
 
-	c_user := C.CString(ownerID)
-	defer C.free(unsafe.Pointer(c_user))
+	user := C.CString(ownerID)
+	defer C.free(unsafe.Pointer(user))
 
-	if err := reconnect(c.c_http); err != nil {
+	if err := reconnect(c.http); err != nil {
 		return 0, err
 	}
 
@@ -471,31 +467,29 @@ func (c *CUPS) Print(printerName, fileName, title, ownerID string, options map[s
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	C.cupsSetUser(c_user)
-	c_jobID := C.cupsPrintFile2(
-		c.c_http, c_printerName, c_fileName, c_title, c_numOptions, c_options)
-	jobID := uint32(c_jobID)
+	C.cupsSetUser(user)
+	jobID := C.cupsPrintFile2(c.http, pn, fn, t, numOptions, o)
 	if jobID == 0 {
 		return 0, fmt.Errorf("Failed to call cupsPrintFile2(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 	}
 
-	return jobID, nil
+	return uint32(jobID), nil
 }
 
 // createJobURI creates a uri string for the job-uri attribute, used to get the
 // status of a CUPS job.
 func createJobURI(jobID uint32) (*C.char, error) {
-	c_len := C.size_t(urlMaxLength)
-	c_uri := (*C.char)(C.malloc(c_len))
-	if c_uri == nil {
+	length := C.size_t(urlMaxLength)
+	uri := (*C.char)(C.malloc(length))
+	if uri == nil {
 		return nil, errors.New("Failed to malloc; out of memory?")
 	}
 
-	c_resource := C.CString(fmt.Sprintf("/jobs/%d", jobID))
-	defer C.free(unsafe.Pointer(c_resource))
+	resource := C.CString(fmt.Sprintf("/jobs/%d", jobID))
+	defer C.free(unsafe.Pointer(resource))
 	C.httpAssembleURI(C.HTTP_URI_CODING_ALL,
-		c_uri, C.int(c_len), C.IPP, nil, C.cupsServer(), C.ippPort(), c_resource)
+		uri, C.int(length), C.IPP, nil, C.cupsServer(), C.ippPort(), resource)
 
-	return c_uri, nil
+	return uri, nil
 }

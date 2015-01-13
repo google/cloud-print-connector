@@ -45,7 +45,7 @@ import (
 // (2) updates those PPD files as necessary
 // (3) and keeps MD5 hashes of the PPD contents, to minimize disk I/O.
 type ppdCache struct {
-	c_http  *C.http_t
+	http    *C.http_t
 	cache   map[string]*ppdCacheEntry
 	request chan ppdRequest
 	q       chan bool
@@ -62,9 +62,9 @@ type ppdResponse struct {
 	err      error
 }
 
-func newPPDCache(c_http *C.http_t) *ppdCache {
+func newPPDCache(http *C.http_t) *ppdCache {
 	cache := make(map[string]*ppdCacheEntry)
-	pc := ppdCache{c_http, cache, make(chan ppdRequest), make(chan bool)}
+	pc := ppdCache{http, cache, make(chan ppdRequest), make(chan bool)}
 	go pc.servePPDs()
 	return &pc
 }
@@ -117,11 +117,11 @@ func (pc *ppdCache) servePPDs() {
 				}
 				pc.cache[r.printerName] = pce
 			}
-			if err = reconnect(pc.c_http); err != nil {
+			if err = reconnect(pc.http); err != nil {
 				r.response <- ppdResponse{"", "",
 					fmt.Errorf("Failed to reconnect while serving a PPD for %s", r.printerName)}
 			}
-			if err = pce.refreshPPDCacheEntry(pc.c_http); err != nil {
+			if err = pce.refreshPPDCacheEntry(pc.http); err != nil {
 				r.response <- ppdResponse{"", "", err}
 				continue
 			}
@@ -136,18 +136,16 @@ func (pc *ppdCache) servePPDs() {
 
 // Holds persistent data needed for calling C.cupsGetPPD3.
 type ppdCacheEntry struct {
-	c_name    *C.char
-	c_modtime C.time_t
-	filename  string
-	hash      string
+	name     *C.char
+	modtime  C.time_t
+	filename string
+	hash     string
 }
 
 // createPPDCacheEntry creates an instance of ppdCache with the name field set,
 // all else empty. The caller must free the name and buffer fields with
 // ppdCacheEntry.free()
 func createPPDCacheEntry(name string) (*ppdCacheEntry, error) {
-	c_name := C.CString(name)
-	c_modtime := C.time_t(0)
 	file, err := CreateTempFile()
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create PPD cache entry file: %s", err)
@@ -156,7 +154,7 @@ func createPPDCacheEntry(name string) (*ppdCacheEntry, error) {
 
 	defer file.Close()
 
-	pce := &ppdCacheEntry{c_name, c_modtime, filename, ""}
+	pce := &ppdCacheEntry{C.CString(name), C.time_t(0), filename, ""}
 
 	return pce, nil
 }
@@ -165,32 +163,32 @@ func createPPDCacheEntry(name string) (*ppdCacheEntry, error) {
 // the file named by the buffer field. If the file doesn't exist, no error is
 // returned.
 func (pce *ppdCacheEntry) free() {
-	C.free(unsafe.Pointer(pce.c_name))
+	C.free(unsafe.Pointer(pce.name))
 	os.Remove(pce.filename)
 }
 
 // refreshPPDCacheEntry calls cupsGetPPD3() to refresh this PPD information, in
 // case CUPS has a new PPD for the printer.
-func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
-	c_bufsize := C.size_t(syscall.PathMax)
-	c_buffer := (*C.char)(C.malloc(c_bufsize))
-	if c_buffer == nil {
+func (pce *ppdCacheEntry) refreshPPDCacheEntry(http *C.http_t) error {
+	bufsize := C.size_t(syscall.PathMax)
+	buffer := (*C.char)(C.malloc(bufsize))
+	if buffer == nil {
 		return errors.New("Failed to malloc; out of memory?")
 	}
-	defer C.free(unsafe.Pointer(c_buffer))
-	C.memset(unsafe.Pointer(c_buffer), 0, c_bufsize)
+	defer C.free(unsafe.Pointer(buffer))
+	C.memset(unsafe.Pointer(buffer), 0, bufsize)
 
 	// Lock the OS thread so that thread-local storage is available to
 	// cupsLastError() and cupsLastErrorString().
 	runtime.LockOSThread()
-	c_http_status := C.cupsGetPPD3(c_http, pce.c_name, &pce.c_modtime, c_buffer, c_bufsize)
+	http_status := C.cupsGetPPD3(http, pce.name, &pce.modtime, buffer, bufsize)
 	// Only use these values if the returned status is unacceptable.
 	// Fetch them here so that we can unlock the OS thread immediately.
-	c_cupsLastError, c_cupsLastErrorString := C.cupsLastError(), C.cupsLastErrorString()
+	cupsLastError, cupsLastErrorString := C.cupsLastError(), C.cupsLastErrorString()
 	runtime.UnlockOSThread()
-	defer os.Remove(C.GoString(c_buffer))
+	defer os.Remove(C.GoString(buffer))
 
-	switch c_http_status {
+	switch http_status {
 	case C.HTTP_STATUS_NOT_MODIFIED:
 		// Cache hit.
 		return nil
@@ -199,11 +197,11 @@ func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
 		// Cache miss.
 
 		// Read from CUPS temporary file.
-		r, err := os.Open(C.GoString(c_buffer))
+		r, err := os.Open(C.GoString(buffer))
 		if err != nil {
 			return err
 		}
-		// This was already C.free()'d as c_buffer, above.
+		// This was already C.free()'d as buffer, above.
 		defer r.Close()
 
 		// Copy to both of these through a MultiWriter.
@@ -223,12 +221,12 @@ func (pce *ppdCacheEntry) refreshPPDCacheEntry(c_http *C.http_t) error {
 		return nil
 
 	default:
-		if c_cupsLastError != C.IPP_STATUS_OK {
+		if cupsLastError != C.IPP_STATUS_OK {
 			err := fmt.Errorf("Failed to call cupsGetPPD3(): %d %s",
-				int(c_cupsLastError), C.GoString(c_cupsLastErrorString))
+				int(cupsLastError), C.GoString(cupsLastErrorString))
 			return err
 		}
 
-		return fmt.Errorf("Failed to call cupsGetPPD3(); HTTP status: %d", int(c_http_status))
+		return fmt.Errorf("Failed to call cupsGetPPD3(); HTTP status: %d", int(http_status))
 	}
 }

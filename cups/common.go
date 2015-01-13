@@ -35,38 +35,38 @@ import (
 // "temporary" location (like /tmp) and (2) is readable by CUPS. The caller
 // is responsible for deleting the file.
 func CreateTempFile() (*os.File, error) {
-	c_len := C.size_t(syscall.PathMax)
-	c_filename := (*C.char)(C.malloc(c_len))
-	if c_filename == nil {
+	length := C.size_t(syscall.PathMax)
+	filename := (*C.char)(C.malloc(length))
+	if filename == nil {
 		return nil, errors.New("Failed to malloc(); out of memory?")
 	}
-	defer C.free(unsafe.Pointer(c_filename))
+	defer C.free(unsafe.Pointer(filename))
 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	c_fd := C.cupsTempFd(c_filename, C.int(c_len))
-	if c_fd == C.int(-1) {
+	fd := C.cupsTempFd(filename, C.int(length))
+	if fd == C.int(-1) {
 		err := fmt.Errorf("Failed to call cupsTempFd(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 		return nil, err
 	}
 
-	return os.NewFile(uintptr(c_fd), C.GoString(c_filename)), nil
+	return os.NewFile(uintptr(fd), C.GoString(filename)), nil
 }
 
 // reconnect calls httpReconnect() via cgo, which re-opens the connection to
 // the CUPS server, if needed.
-func reconnect(c_http *C.http_t) error {
+func reconnect(http *C.http_t) error {
 	// Lock the OS thread so that thread-local storage is available to
 	// cupsLastErrorString().
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	c_ippStatus := C.httpReconnect(c_http)
-	if c_ippStatus != C.IPP_STATUS_OK {
+	ippStatus := C.httpReconnect(http)
+	if ippStatus != C.IPP_STATUS_OK {
 		return fmt.Errorf("Failed to call cupsReconnect(): %d %s",
-			int(c_ippStatus), C.GoString(C.cupsLastErrorString()))
+			int(ippStatus), C.GoString(C.cupsLastErrorString()))
 	}
 	return nil
 }
