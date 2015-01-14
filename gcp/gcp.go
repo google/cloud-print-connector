@@ -13,6 +13,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
+// Package gcp is the Google Cloud Print API client.
 package gcp
 
 import (
@@ -55,7 +57,7 @@ const (
 	CreateRobotURL  = "https://www.google.com/cloudprint/createrobot"
 )
 
-// Interface between Go and the Google Cloud Print API.
+// GoogleCloudPrint is the interface between Go and the Google Cloud Print API.
 type GoogleCloudPrint struct {
 	xmppJID        string
 	xmppClient     *gcpXMPP
@@ -64,6 +66,7 @@ type GoogleCloudPrint struct {
 	proxyName      string
 }
 
+// NewGoogleCloudPrint establishes a connection with GCP, returns a new GoogleCloudPrint object.
 func NewGoogleCloudPrint(xmppJID, robotRefreshToken, userRefreshToken, proxyName string) (*GoogleCloudPrint, error) {
 	robotTransport, err := newTransport(robotRefreshToken, ScopeCloudPrint, ScopeGoogleTalk)
 	if err != nil {
@@ -128,10 +131,12 @@ func newTransport(refreshToken string, scopes ...string) (*oauth2.Transport, err
 	return transport, nil
 }
 
+// Quit terminates the XMPP conversation so that new jobs stop arriving.
 func (gcp *GoogleCloudPrint) Quit() {
 	gcp.xmppClient.quit()
 }
 
+// CanShare answers the question "can we share printers when they are registered?"
 func (gcp *GoogleCloudPrint) CanShare() bool {
 	return gcp.userTransport != nil
 }
@@ -311,7 +316,7 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, error) {
 
 	var listData struct {
 		Printers []struct {
-			Id                 string
+			ID                 string
 			Name               string
 			DefaultDisplayName string
 			Description        string
@@ -341,13 +346,13 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, error) {
 			tags[key] = value
 		}
 
-		var xmppTimeout uint32 = 0
+		var xmppTimeout uint32
 		if p.LocalSettings.Current.XMPPTimeoutValue > 0 {
 			xmppTimeout = p.LocalSettings.Current.XMPPTimeoutValue
 		}
 
 		printer := lib.Printer{
-			GCPID:              p.Id,
+			GCPID:              p.ID,
 			Name:               p.Name,
 			DefaultDisplayName: p.DefaultDisplayName,
 			Description:        p.Description,
@@ -370,6 +375,11 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 		return errors.New("GCP requires a non-empty PPD")
 	}
 
+	cdd, err := gcp.Translate(ppd)
+	if err != nil {
+		return err
+	}
+
 	localSettings, err := marshalLocalSettings(printer.XMPPTimeout)
 	if err != nil {
 		return err
@@ -380,7 +390,8 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 	form.Set("default_display_name", printer.DefaultDisplayName)
 	form.Set("proxy", gcp.proxyName)
 	form.Set("local_settings", localSettings)
-	form.Set("capabilities", string(ppd))
+	form.Set("use_cdd", "true")
+	form.Set("capabilities", cdd)
 	form.Set("description", printer.Description)
 	form.Set("status", string(printer.Status))
 	form.Set("capsHash", printer.CapsHash)
@@ -396,14 +407,14 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 
 	var registerData struct {
 		Printers []struct {
-			Id string
+			ID string
 		}
 	}
 	if err = json.Unmarshal(responseBody, &registerData); err != nil {
 		return err
 	}
 
-	printer.GCPID = registerData.Printers[0].Id
+	printer.GCPID = registerData.Printers[0].ID
 
 	return nil
 }
@@ -428,8 +439,14 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 	}
 
 	if diff.CapsHashChanged {
+		cdd, err := gcp.Translate(ppd)
+		if err != nil {
+			return err
+		}
+
+		form.Set("use_cdd", "true")
 		form.Set("capsHash", diff.Printer.CapsHash)
-		form.Set("capabilities", ppd)
+		form.Set("capabilities", cdd)
 	}
 
 	if diff.XMPPTimeoutChanged {
@@ -453,6 +470,50 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 	}
 
 	return nil
+}
+
+// Translate calls google.com/cloudprint/tools/cdd/translate to translate a PPD to CDD.
+func (gcp *GoogleCloudPrint) Translate(ppd string) (string, error) {
+	form := url.Values{}
+	form.Set("capabilities", ppd)
+
+	responseBody, _, _, err := postWithRetry(gcp.robotTransport, "tools/cdd/translate", form)
+	if err != nil {
+		return "", err
+	}
+
+	var cddInterface interface{}
+	if err = json.Unmarshal(responseBody, &cddInterface); err != nil {
+		return "", fmt.Errorf("Failed to unmarshal translated CDD: %s", err)
+	}
+
+	cdd, ok := cddInterface.(map[string]interface{})
+	if !ok {
+		return "", errors.New("Failed to parse translated CDD")
+	}
+	cdd, ok = cdd["cdd"].(map[string]interface{})
+	if !ok {
+		return "", errors.New("Failed to parse translated CDD")
+	}
+	p, ok := cdd["printer"].(map[string]interface{})
+	if !ok {
+		return "", errors.New("Failed to parse translated CDD")
+	}
+
+	p["copies"] = map[string]int{
+		"max":     100,
+		"default": 1,
+	}
+	p["collate"] = map[string]bool{
+		"default": true,
+	}
+
+	cddString, err := json.Marshal(cdd)
+	if err != nil {
+		return "", fmt.Errorf("Failed to remarshal translated CDD: %s", err)
+	}
+
+	return string(cddString), nil
 }
 
 // Share calls google.com/cloudprint/share to share a registered GCP printer.
@@ -487,27 +548,6 @@ func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 	}
 
 	return nil
-}
-
-// Ticket gets a ticket (print job options), returns it as a map.
-func (gcp *GoogleCloudPrint) Ticket(ticketURL string) (map[string]string, error) {
-	response, err := getWithRetry(gcp.robotTransport, ticketURL)
-	if err != nil {
-		return nil, err
-	}
-
-	responseBody, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var m map[string]string
-	err = json.Unmarshal(responseBody, &m)
-	if err != nil {
-		return nil, err
-	}
-
-	return m, nil
 }
 
 // getWithRetry calls get() and retries once on HTTP failure

@@ -13,6 +13,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+
+// Package gcp is the Google Cloud Print API client.
 package gcp
 
 import (
@@ -122,9 +124,9 @@ func (x *gcpXMPP) nextWaitingPrinter() (string, error) {
 			return "", ErrClosed
 		}
 		return "", fmt.Errorf("Error while waiting for print jobs via XMPP: %s", err)
-	} else {
-		return message.Data, nil
 	}
+
+	return message.Data, nil
 }
 
 func (x *gcpXMPP) quit() {
