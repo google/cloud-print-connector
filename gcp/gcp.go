@@ -148,15 +148,14 @@ func (gcp *GoogleCloudPrint) restartXMPP() error {
 
 	var err error
 	for i := 0; i < restartXMPPMaxRetries; i++ {
-		if err == nil {
-			// The current access token is the XMPP password.
-			token, err := gcp.robotClient.Transport.(*oauth2.Transport).Source.Token()
-			if err != nil {
-				return fmt.Errorf("Failed to restart XMPP because: %s", err)
-			}
+		// The current access token is the XMPP password.
+		var token *oauth2.Token
+		token, err = gcp.robotClient.Transport.(*oauth2.Transport).Source.Token()
 
+		if err == nil {
 			var xmpp *gcpXMPP
 			xmpp, err = newXMPP(gcp.xmppJID, token.AccessToken, gcp.proxyName)
+
 			if err == nil {
 				gcp.xmppClient = xmpp
 				return nil
