@@ -54,19 +54,3 @@ func CreateTempFile() (*os.File, error) {
 
 	return os.NewFile(uintptr(fd), C.GoString(filename)), nil
 }
-
-// reconnect calls httpReconnect() via cgo, which re-opens the connection to
-// the CUPS server, if needed.
-func reconnect(http *C.http_t) error {
-	// Lock the OS thread so that thread-local storage is available to
-	// cupsLastErrorString().
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	ippStatus := C.httpReconnect(http)
-	if ippStatus != C.IPP_STATUS_OK {
-		return fmt.Errorf("Failed to call cupsReconnect(): %d %s",
-			int(ippStatus), C.GoString(C.cupsLastErrorString()))
-	}
-	return nil
-}
