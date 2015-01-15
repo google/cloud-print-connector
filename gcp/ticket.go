@@ -110,7 +110,7 @@ type reverseOrderTicketItem struct {
 
 // Ticket gets a ticket, aka print job options.
 func (gcp *GoogleCloudPrint) Ticket(ticketURL string) (map[string]string, error) {
-	response, err := getWithRetry(gcp.robotTransport, ticketURL+"&use_cjt=true")
+	response, err := getWithRetry(gcp.robotClient, ticketURL+"&use_cjt=true")
 	if err != nil {
 		return nil, err
 	}
