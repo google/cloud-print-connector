@@ -182,8 +182,8 @@ func translateTicketToOptions(ticket *printTicketSection) (map[string]string, er
 	if len(ticket.PageRange.Intervals) > 0 {
 		pageRanges := make([]string, 0, len(ticket.PageRange.Intervals))
 		for _, interval := range ticket.PageRange.Intervals {
-			if interval.Start == interval.End {
-				pageRanges = append(pageRanges, string(interval.Start))
+			if interval.End == 0 {
+				pageRanges = append(pageRanges, fmt.Sprintf("%d", interval.Start))
 			} else {
 				pageRanges = append(pageRanges, fmt.Sprintf("%d-%d", interval.Start, interval.End))
 			}
