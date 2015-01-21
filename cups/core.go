@@ -43,7 +43,9 @@ import (
 
 const (
 	maxConnectionAge = "2m"
-	jobURIFormat     = "/jobs/%d"
+	// jobURIFormat is the string format required by the CUPS API
+	// to do things like query the state of a job.
+	jobURIFormat = "/jobs/%d"
 )
 
 // cupsCore protects the CUPS C.http_t connection with a mutex. Although
