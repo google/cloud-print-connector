@@ -30,6 +30,8 @@ import (
 )
 
 func main() {
+	defer glog.Flush()
+
 	config, err := lib.ConfigFromFile()
 	if err != nil {
 		glog.Fatal(err)
@@ -48,12 +50,14 @@ func main() {
 	if err != nil {
 		glog.Fatal(err)
 	}
+	defer cups.Quit()
 
 	gcp, err := gcp.NewGoogleCloudPrint(config.XMPPJID, config.RobotRefreshToken,
 		config.UserRefreshToken, config.ProxyName)
 	if err != nil {
 		glog.Fatal(err)
 	}
+	defer gcp.Quit()
 
 	pm, err := manager.NewPrinterManager(cups, gcp, config.CUPSPrinterPollInterval,
 		config.GCPMaxConcurrentDownloads, config.CUPSJobQueueSize, config.CUPSJobFullUsername,
@@ -61,11 +65,13 @@ func main() {
 	if err != nil {
 		glog.Fatal(err)
 	}
+	defer pm.Quit()
 
 	m, err := monitor.NewMonitor(cups, gcp, pm, config.MonitorSocketFilename)
 	if err != nil {
 		glog.Fatal(err)
 	}
+	defer m.Quit()
 
 	fmt.Printf("Google Cloud Print CUPS Connector ready to rock as proxy '%s'\n", config.ProxyName)
 
@@ -73,12 +79,6 @@ func main() {
 
 	fmt.Println("")
 	fmt.Println("shutting down normally")
-
-	m.Quit()
-	gcp.Quit()
-	pm.Quit()
-	cups.Quit()
-	glog.Flush()
 }
 
 // Blocks until Ctrl-C or SIGTERM.
