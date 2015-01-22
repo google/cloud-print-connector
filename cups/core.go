@@ -30,19 +30,16 @@ const char
 */
 import "C"
 import (
-	"cups-connector/lib"
 	"errors"
 	"fmt"
 	"runtime"
 	"syscall"
-	"time"
 	"unsafe"
 
 	"github.com/golang/glog"
 )
 
 const (
-	maxConnectionAge = "2m"
 	// jobURIFormat is the string format required by the CUPS API
 	// to do things like query the state of a job.
 	jobURIFormat = "/jobs/%d"
@@ -52,24 +49,25 @@ const (
 // the CUPS API claims that it is thread-safe, this library panics under
 // very little pressure without the mutex.
 type cupsCore struct {
-	http             *C.http_t
-	lastConnect      time.Time
-	maxConnectionAge time.Duration
-	httpMutex        *lib.Semaphore
+	host       *C.char
+	port       C.int
+	encryption C.http_encryption_t
 }
 
-// newCUPSCore calls C.httpConnectEncrypt to create a new, open
-// connection to the CUPS server specified by environment variables,
-// client.conf, etc.
 func newCUPSCore() (*cupsCore, error) {
 	host := C.cupsServer()
 	port := C.ippPort()
 	encryption := C.cupsEncryption()
 
-	http := C.httpConnectEncrypt(host, port, encryption)
-	if http == nil {
-		return nil, fmt.Errorf("Failed to connect to %s:%d", C.GoString(host), int(port))
+	cc := &cupsCore{host, port, encryption}
+
+	// This connection isn't used, just checks that a connection is possible
+	// before returning from the constructor.
+	http, err := cc.connect()
+	if err != nil {
+		return nil, err
 	}
+	C.httpClose(http)
 
 	var e string
 	switch encryption {
@@ -86,19 +84,7 @@ func newCUPSCore() (*cupsCore, error) {
 		e = "encrypting REQUIRED"
 	}
 
-	parsedMaxConnectionAge, err := time.ParseDuration(maxConnectionAge)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to parse max CUPS connection time: %s", err)
-	}
-
 	glog.Infof("connected to CUPS server %s:%d %s\n", C.GoString(host), int(port), e)
-
-	cc := &cupsCore{
-		http:             http,
-		lastConnect:      time.Now(),
-		maxConnectionAge: parsedMaxConnectionAge,
-		httpMutex:        lib.NewSemaphore(1),
-	}
 
 	return cc, nil
 }
@@ -107,20 +93,19 @@ func newCUPSCore() (*cupsCore, error) {
 // Returns the CUPS job ID, which is 0 (and meaningless) when err
 // is not nil.
 func (cc *cupsCore) printFile(user, printername, filename, title *C.char, numOptions C.int, options *C.cups_option_t) (C.int, error) {
-	cc.httpMutex.Acquire()
-	defer cc.httpMutex.Release()
-
-	if err := cc.reconnectIfNeeded(); err != nil {
-		return 0, err
-	}
-
 	// Lock the OS thread so that thread-local storage is available to
 	// cupsLastError() and cupsLastErrorString().
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	http, err := cc.connect()
+	if err != nil {
+		return 0, err
+	}
+	defer C.httpClose(http)
+
 	C.cupsSetUser(user)
-	jobID := C.cupsPrintFile2(cc.http, printername, filename, title, numOptions, options)
+	jobID := C.cupsPrintFile2(http, printername, filename, title, numOptions, options)
 	if jobID == 0 {
 		return 0, fmt.Errorf("Failed to call cupsPrintFile2(): %d %s",
 			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
@@ -139,14 +124,7 @@ func (cc *cupsCore) getPrinters(attributes **C.char, attrSize C.int) (*C.ipp_t, 
 	C.ippAddStrings(request, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES,
 		attrSize, nil, attributes)
 
-	cc.httpMutex.Acquire()
-	defer cc.httpMutex.Release()
-
-	if err := cc.reconnectIfNeeded(); err != nil {
-		return nil, err
-	}
-
-	response, err := doRequestWithRetry(cc.http, request,
+	response, err := cc.doRequestWithRetry(request,
 		[]C.ipp_status_t{C.IPP_STATUS_OK, C.IPP_STATUS_ERROR_NOT_FOUND})
 	if err != nil {
 		err = fmt.Errorf("Failed to call cupsDoRequest() [IPP_OP_CUPS_GET_PRINTERS]: %s", err)
@@ -172,19 +150,18 @@ func (cc *cupsCore) getPPD(printername *C.char, modtime *C.time_t) (*C.char, err
 	}
 	C.memset(unsafe.Pointer(buffer), 0, bufsize)
 
-	cc.httpMutex.Acquire()
-	defer cc.httpMutex.Release()
-
-	if err := cc.reconnectIfNeeded(); err != nil {
-		return nil, fmt.Errorf("Failed to reconnect while serving a PPD for %s", printername)
-	}
-
 	// Lock the OS thread so that thread-local storage is available to
 	// cupsLastError() and cupsLastErrorString().
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	httpStatus := C.cupsGetPPD3(cc.http, printername, modtime, buffer, bufsize)
+	http, err := cc.connect()
+	if err != nil {
+		return nil, err
+	}
+	defer C.httpClose(http)
+
+	httpStatus := C.cupsGetPPD3(http, printername, modtime, buffer, bufsize)
 
 	switch httpStatus {
 	case C.HTTP_STATUS_NOT_MODIFIED:
@@ -224,14 +201,7 @@ func (cc *cupsCore) getJobAttributes(jobID C.int, attributes **C.char) (*C.ipp_t
 	C.ippAddStrings(request, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES,
 		C.int(0), nil, attributes)
 
-	cc.httpMutex.Acquire()
-	defer cc.httpMutex.Release()
-
-	if err := cc.reconnectIfNeeded(); err != nil {
-		return nil, err
-	}
-
-	response, err := doRequestWithRetry(cc.http, request, []C.ipp_status_t{C.IPP_STATUS_OK})
+	response, err := cc.doRequestWithRetry(request, []C.ipp_status_t{C.IPP_STATUS_OK})
 	if err != nil {
 		err = fmt.Errorf("Failed to call cupsDoRequest() [IPP_OP_GET_JOB_ATTRIBUTES]: %s", err)
 		return nil, err
@@ -258,25 +228,31 @@ func createJobURI(jobID C.int) (*C.char, error) {
 }
 
 // doRequestWithRetry calls doRequest and retries once on failure.
-func doRequestWithRetry(http *C.http_t, request *C.ipp_t, acceptableStatusCodes []C.ipp_status_t) (*C.ipp_t, error) {
-	response, err := doRequest(http, request, acceptableStatusCodes)
+func (cc *cupsCore) doRequestWithRetry(request *C.ipp_t, acceptableStatusCodes []C.ipp_status_t) (*C.ipp_t, error) {
+	response, err := cc.doRequest(request, acceptableStatusCodes)
 	if err == nil {
 		return response, err
 	}
 
-	return doRequest(http, request, acceptableStatusCodes)
+	return cc.doRequest(request, acceptableStatusCodes)
 }
 
 // doRequest calls cupsDoRequest().
-func doRequest(http *C.http_t, request *C.ipp_t, acceptableStatusCodes []C.ipp_status_t) (*C.ipp_t, error) {
+func (cc *cupsCore) doRequest(request *C.ipp_t, acceptableStatusCodes []C.ipp_status_t) (*C.ipp_t, error) {
 	// Lock the OS thread so that thread-local storage is available to
 	// cupsLastError() and cupsLastErrorString().
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
+	http, err := cc.connect()
+	if err != nil {
+		return nil, err
+	}
+	defer C.httpClose(http)
+
 	response := C.cupsDoRequest(http, request, C.POST_RESOURCE)
 	if response == nil {
-		return nil, fmt.Errorf("%d %s", int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
+		return nil, fmt.Errorf("cupsDoRequest failed: %d %s", int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 	}
 	statusCode := C.ippGetStatusCode(response)
 	for _, sc := range acceptableStatusCodes {
@@ -288,33 +264,18 @@ func doRequest(http *C.http_t, request *C.ipp_t, acceptableStatusCodes []C.ipp_s
 	return nil, fmt.Errorf("IPP status code %d", int(statusCode))
 }
 
-// reconnectIfNeeded checks the age of the current CUPS connection.
-// If too old, then it reconnects, else nothing happens.
-func (cc *cupsCore) reconnectIfNeeded() error {
-	if time.Since(cc.lastConnect) < cc.maxConnectionAge {
-		return nil
+// connect calls C.httpConnectEncrypt to create a new, open
+// connection to the CUPS server specified by environment variables,
+// client.conf, etc.
+//
+// The caller is responsible to close the connection when finished
+// using C.httpClose.
+func (cc *cupsCore) connect() (*C.http_t, error) {
+	http := C.httpConnectEncrypt(cc.host, cc.port, cc.encryption)
+	if http == nil {
+		return nil, fmt.Errorf("Failed to connect to CUPS server %s:%d because %d %s",
+			C.GoString(cc.host), int(cc.port), int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 	}
 
-	if err := reconnect(cc.http); err != nil {
-		return err
-	}
-
-	cc.lastConnect = time.Now()
-	return nil
-}
-
-// reconnect calls C.httpReconnect, which re-starts the connection to
-// the CUPS server.
-func reconnect(http *C.http_t) error {
-	// Lock the OS thread so that thread-local storage is available to
-	// cupsLastErrorString().
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	ippStatus := C.httpReconnect(http)
-	if ippStatus != C.IPP_STATUS_OK {
-		return fmt.Errorf("Failed to call cupsReconnect(): %d %s",
-			int(ippStatus), C.GoString(C.cupsLastErrorString()))
-	}
-	return nil
+	return http, nil
 }
