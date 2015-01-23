@@ -54,7 +54,7 @@ type nextPrinterResponse struct {
 	err   error
 }
 
-func newXMPP(xmppJID, accessToken, proxyName string) (*gcpXMPP, error) {
+func newXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16) (*gcpXMPP, error) {
 	var user, domain string
 	if parts := strings.SplitN(xmppJID, "@", 2); len(parts) != 2 {
 		return nil, fmt.Errorf("Tried to use invalid XMPP JID: %s", xmppJID)
@@ -64,7 +64,7 @@ func newXMPP(xmppJID, accessToken, proxyName string) (*gcpXMPP, error) {
 	}
 
 	// Anyone home?
-	conn, err := dial()
+	conn, err := dial(xmppServer, xmppPort)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to dial XMPP service: %s", err)
 	}
@@ -133,15 +133,16 @@ func (x *gcpXMPP) quit() {
 	x.conn.Close()
 }
 
-func dial() (*tls.Conn, error) {
+func dial(xmppServer string, xmppPort uint16) (*tls.Conn, error) {
 	tlsConfig := &tls.Config{
-		ServerName: "talk.google.com",
+		ServerName: xmppServer,
 	}
 	netDialer := &net.Dialer{
 		KeepAlive: netKeepAlive,
 		Timeout:   netTimeout,
 	}
-	conn, err := tls.DialWithDialer(netDialer, "tcp", "talk.google.com:443", tlsConfig)
+	addr := fmt.Sprintf("%s:%d", xmppServer, xmppPort)
+	conn, err := tls.DialWithDialer(netDialer, "tcp", addr, tlsConfig)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to connect to XMPP server: %s", err)
 	}

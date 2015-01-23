@@ -38,8 +38,9 @@ func main() {
 	}
 
 	if *deleteAllGCPPrinters {
-		gcp, err := gcp.NewGoogleCloudPrint(config.XMPPJID, config.RobotRefreshToken,
-			config.UserRefreshToken, config.ProxyName)
+		gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.XMPPJID, config.RobotRefreshToken,
+			config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID, config.GCPOAuthClientSecret,
+			config.GCPOAuthAuthURL, config.GCPOAuthTokenURL, config.XMPPServer, config.XMPPPort)
 		if err != nil {
 			glog.Fatal(err)
 		}

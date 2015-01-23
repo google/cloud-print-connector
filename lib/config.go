@@ -24,15 +24,6 @@ import (
 var (
 	ConfigFilename = flag.String(
 		"config-filename", "cups-connector.config.json", "Name of config file")
-	DefaultPrinterAttributes = []string{
-		"printer-name",
-		"printer-info",
-		"printer-is-accepting-jobs",
-		"printer-location",
-		"printer-make-and-model",
-		"printer-state",
-		"printer-state-reasons",
-	}
 )
 
 type Config struct {
@@ -74,6 +65,27 @@ type Config struct {
 
 	// Filename of unix socket for connector-check to talk to connector.
 	MonitorSocketFilename string `json:"monitor_socket_filename"`
+
+	// GCP API URL prefix.
+	GCPBaseURL string `json:"gcp_base_url"`
+
+	// XMPP server FQDN.
+	XMPPServer string `json:"xmpp_server"`
+
+	// XMPP server port number.
+	XMPPPort uint16 `json:"xmpp_port"`
+
+	// OAuth2 client ID (not unique per client).
+	GCPOAuthClientID string `json:"gcp_oauth_client_id"`
+
+	// OAuth2 client secret (not unique per client).
+	GCPOAuthClientSecret string `json:"gcp_oauth_client_secret"`
+
+	// OAuth2 auth URL.
+	GCPOAuthAuthURL string `json:"gcp_oauth_auth_url"`
+
+	// OAuth2 token URL.
+	GCPOAuthTokenURL string `json:"gcp_oauth_token_url"`
 }
 
 // ConfigFromFile reads a Config object from the config file indicated by

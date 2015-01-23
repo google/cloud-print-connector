@@ -33,6 +33,16 @@ import (
 )
 
 var (
+	defaultPrinterAttributes = []string{
+		"printer-name",
+		"printer-info",
+		"printer-is-accepting-jobs",
+		"printer-location",
+		"printer-make-and-model",
+		"printer-state",
+		"printer-state-reasons",
+	}
+
 	retainUserOauthTokenFlag = flag.String(
 		"retain-user-oauth-token", "",
 		"Whether to retain the user's OAuth token to enable automatic sharing (true/false)")
@@ -63,16 +73,37 @@ var (
 	monitorSocketFilenameFlag = flag.String(
 		"socket-filename", "/var/run/cups-connector/monitor.sock",
 		"Filename of unix socket for connector-check to talk to connector")
+	gcpBaseURLFlag = flag.String(
+		"gcp-base-url", "https://www.google.com/cloudprint/",
+		"GCP API base URL")
+	gcpOAuthClientIDFlag = flag.String(
+		"gcp-oauth-client-id", "539833558011-35iq8btpgas80nrs3o7mv99hm95d4dv6.apps.googleusercontent.com",
+		"GCP OAuth client ID")
+	gcpOAuthClientSecretFlag = flag.String(
+		"gcp-oauth-client-secret", "V9BfPOvdiYuw12hDx5Y5nR0a",
+		"GCP OAuth client secret")
+	gcpOAuthAuthURLFlag = flag.String(
+		"gcp-oauth-auth-url", "https://accounts.google.com/o/oauth2/auth",
+		"GCP OAuth auth URL")
+	gcpOAuthTokenURLFlag = flag.String(
+		"gcp-oauth-token-url", "https://accounts.google.com/o/oauth2/token",
+		"GCP OAuth token URL")
+	gcpXMPPServerFlag = flag.String(
+		"gcp-xmpp-server", "talk.google.com",
+		"GCP XMPP server FQDN")
+	gcpXMPPPortFlag = flag.Uint(
+		"gcp-xmpp-port", 443,
+		"GCP XMPP port number")
 )
 
 // getUserClient steps the user through the process of acquiring an OAuth refresh token.
 func getUserClient(retainUserOauthToken bool) (*http.Client, string) {
 	config := &oauth2.Config{
-		ClientID:     gcp.ClientID,
-		ClientSecret: gcp.ClientSecret,
+		ClientID:     *gcpOAuthClientIDFlag,
+		ClientSecret: *gcpOAuthClientSecretFlag,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  gcp.AuthURL,
-			TokenURL: gcp.TokenURL,
+			AuthURL:  *gcpOAuthAuthURLFlag,
+			TokenURL: *gcpOAuthTokenURLFlag,
 		},
 		RedirectURL: gcp.RedirectURL,
 		Scopes:      []string{gcp.ScopeCloudPrint},
@@ -103,9 +134,11 @@ func getUserClient(retainUserOauthToken bool) (*http.Client, string) {
 // initRobotAccount creates a GCP robot account for this connector.
 func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
 	params := url.Values{}
-	params.Set("oauth_client_id", gcp.ClientID)
+	params.Set("oauth_client_id", *gcpOAuthClientIDFlag)
 	params.Set("proxy", proxy)
-	response, err := userClient.Get(gcp.CreateRobotURL + "?" + params.Encode())
+
+	url := fmt.Sprintf("%s%s?%s", *gcpBaseURLFlag, "createrobot", params.Encode())
+	response, err := userClient.Get(url)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -134,11 +167,11 @@ func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
 
 func verifyRobotAccount(authCode string) string {
 	config := &oauth2.Config{
-		ClientID:     gcp.ClientID,
-		ClientSecret: gcp.ClientSecret,
+		ClientID:     *gcpOAuthClientIDFlag,
+		ClientSecret: *gcpOAuthClientSecretFlag,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  gcp.AuthURL,
-			TokenURL: gcp.TokenURL,
+			AuthURL:  *gcpOAuthAuthURLFlag,
+			TokenURL: *gcpOAuthTokenURLFlag,
 		},
 		RedirectURL: gcp.RedirectURL,
 		Scopes:      []string{gcp.ScopeCloudPrint, gcp.ScopeGoogleTalk},
@@ -169,11 +202,18 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		*gcpMaxConcurrentDownloadsFlag,
 		*cupsJobQueueSizeFlag,
 		cupsPrinterPollIntervalFlag.String(),
-		lib.DefaultPrinterAttributes,
+		defaultPrinterAttributes,
 		*cupsJobFullUsernameFlag,
 		*cupsIgnoreRawPrintersFlag,
 		*copyPrinterInfoToDisplayNameFlag,
 		*monitorSocketFilenameFlag,
+		*gcpBaseURLFlag,
+		*gcpXMPPServerFlag,
+		uint16(*gcpXMPPPortFlag),
+		*gcpOAuthClientIDFlag,
+		*gcpOAuthClientSecretFlag,
+		*gcpOAuthAuthURLFlag,
+		*gcpOAuthTokenURLFlag,
 	}
 
 	if err := config.ToFile(); err != nil {
