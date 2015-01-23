@@ -82,10 +82,6 @@ func NewGoogleCloudPrint(xmppJID, robotRefreshToken, userRefreshToken, proxyName
 	}
 
 	gcp := &GoogleCloudPrint{xmppJID, nil, robotClient, userClient, proxyName}
-	if err = gcp.restartXMPP(); err != nil {
-		return nil, err
-	}
-	glog.Info("Started XMPP successfully")
 
 	return gcp, nil
 }
@@ -140,8 +136,9 @@ func (gcp *GoogleCloudPrint) CanShare() bool {
 	return gcp.userClient != nil
 }
 
-// restartXMPP tries to start an XMPP conversation multiple times, then panics.
-func (gcp *GoogleCloudPrint) restartXMPP() error {
+// RestartXMPP tries to start an XMPP conversation.
+// Tries multiple times before returning an error.
+func (gcp *GoogleCloudPrint) RestartXMPP() error {
 	if gcp.xmppClient != nil {
 		go gcp.xmppClient.quit()
 	}
@@ -202,7 +199,7 @@ func (gcp *GoogleCloudPrint) nextWaitingPrinterWithRetries() (string, error) {
 		lastFailure = time.Now()
 
 		glog.Warningf("Restarting XMPP conversation because: %s", err)
-		if err = gcp.restartXMPP(); err != nil {
+		if err = gcp.RestartXMPP(); err != nil {
 			// Restarting XMPP failed, so what's the point?
 			return "", err
 		}

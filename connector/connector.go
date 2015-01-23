@@ -59,6 +59,11 @@ func main() {
 	}
 	defer gcp.Quit()
 
+	if err := gcp.RestartXMPP(); err != nil {
+		glog.Fatal(err)
+	}
+	glog.Info("Started XMPP successfully")
+
 	pm, err := manager.NewPrinterManager(cups, gcp, config.CUPSPrinterPollInterval,
 		config.GCPMaxConcurrentDownloads, config.CUPSJobQueueSize, config.CUPSJobFullUsername,
 		config.CUPSIgnoreRawPrinters, config.ShareScope)
