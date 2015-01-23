@@ -301,13 +301,16 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 
 // List calls google.com/cloudprint/list to get all GCP printers assigned
 // to this connector.
-func (gcp *GoogleCloudPrint) List() ([]lib.Printer, error) {
+//
+// The second return value is a map of GCPID:queuedPrintJobs.
+func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, error) {
 	form := url.Values{}
 	form.Set("proxy", gcp.proxyName)
+	form.Set("extra_fields", "queuedJobsCount")
 
 	responseBody, _, _, err := postWithRetry(gcp.robotClient, "list", form)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var listData struct {
@@ -320,11 +323,14 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, error) {
 			CapsHash           string
 			LocalSettings      localSettingsOuter `json:"local_settings"`
 			Tags               []string
+			QueuedJobsCount    uint
 		}
 	}
 	if err = json.Unmarshal(responseBody, &listData); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	queuedJobsCount := make(map[string]uint)
 
 	printers := make([]lib.Printer, 0, len(listData.Printers))
 	for _, p := range listData.Printers {
@@ -358,9 +364,13 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, error) {
 			Tags:               tags,
 		}
 		printers = append(printers, printer)
+
+		if p.QueuedJobsCount > 0 {
+			queuedJobsCount[p.ID] = p.QueuedJobsCount
+		}
 	}
 
-	return printers, nil
+	return printers, queuedJobsCount, nil
 }
 
 // Register calls google.com/cloudprint/register to register a GCP printer.

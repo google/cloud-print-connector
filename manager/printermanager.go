@@ -59,7 +59,7 @@ type PrinterManager struct {
 }
 
 func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string) (*PrinterManager, error) {
-	gcpPrinters, err := gcp.List()
+	gcpPrinters, queuedJobsCount, err := gcp.List()
 	if err != nil {
 		return nil, err
 	}
@@ -100,8 +100,9 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 	if err != nil {
 		return nil, err
 	}
-	go pm.syncPrintersPeriodically(ppi)
-	go pm.listenGCPJobs()
+
+	pm.syncPrintersPeriodically(ppi)
+	pm.listenGCPJobs(queuedJobsCount)
 
 	return &pm, nil
 }
@@ -112,18 +113,20 @@ func (pm *PrinterManager) Quit() {
 }
 
 func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
-	for {
-		select {
-		case <-time.After(interval):
-			err := pm.syncPrinters()
-			if err != nil {
-				glog.Error(err)
+	go func() {
+		for {
+			select {
+			case <-time.After(interval):
+				err := pm.syncPrinters()
+				if err != nil {
+					glog.Error(err)
+				}
+			case <-pm.printerPollQuit:
+				pm.printerPollQuit <- true
+				return
 			}
-		case <-pm.printerPollQuit:
-			pm.printerPollQuit <- true
-			return
 		}
-	}
+	}()
 }
 
 func printerMapToSlice(m map[string]lib.Printer) []lib.Printer {
@@ -241,8 +244,26 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 	ch <- lib.Printer{}
 }
 
-func (pm *PrinterManager) listenGCPJobs() {
+func (pm *PrinterManager) listenGCPJobs(queuedJobsCount map[string]uint) {
 	ch := make(chan *lib.Job)
+
+	for gcpID := range queuedJobsCount {
+		go func() {
+			jobs, err := pm.gcp.Fetch(gcpID)
+			if err != nil {
+				glog.Warningf("Error fetching print jobs: %s", err)
+				return
+			}
+
+			if len(jobs) > 0 {
+				glog.Infof("Fetched %d waiting print jobs for printer %s", len(jobs), gcpID)
+			}
+			for i := range jobs {
+				ch <- &jobs[i]
+			}
+		}()
+	}
+
 	go func() {
 		for {
 			jobs, err := pm.gcp.NextJobBatch()
@@ -251,6 +272,7 @@ func (pm *PrinterManager) listenGCPJobs() {
 					return
 				}
 				glog.Warningf("Error waiting for next print job notification: %s", err)
+
 			} else {
 				for i := range jobs {
 					ch <- &jobs[i]
@@ -259,15 +281,17 @@ func (pm *PrinterManager) listenGCPJobs() {
 		}
 	}()
 
-	for {
-		select {
-		case job := <-ch:
-			go pm.processJob(job)
-		case <-pm.gcpJobPollQuit:
-			pm.gcpJobPollQuit <- true
-			return
+	go func() {
+		for {
+			select {
+			case job := <-ch:
+				go pm.processJob(job)
+			case <-pm.gcpJobPollQuit:
+				pm.gcpJobPollQuit <- true
+				return
+			}
 		}
-	}
+	}()
 }
 
 func (pm *PrinterManager) incrementJobsProcessed(success bool) {
