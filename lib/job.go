@@ -75,4 +75,5 @@ type Job struct {
 	FileURL      string
 	TicketURL    string
 	OwnerID      string
+	Title        string
 }

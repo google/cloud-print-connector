@@ -269,6 +269,7 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 	var jobsData struct {
 		Jobs []struct {
 			ID        string
+			Title     string
 			FileURL   string
 			TicketURL string
 			OwnerID   string
@@ -287,6 +288,7 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 			FileURL:      jobData.FileURL,
 			TicketURL:    jobData.TicketURL,
 			OwnerID:      jobData.OwnerID,
+			Title:        jobData.Title,
 		}
 		jobs = append(jobs, job)
 	}

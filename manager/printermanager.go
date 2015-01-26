@@ -412,7 +412,9 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	printer.CUPSJobSemaphore.Acquire()
 	defer printer.CUPSJobSemaphore.Release()
 
-	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), "gcp:"+job.GCPJobID, ownerID, options)
+	jobTitle := fmt.Sprintf("gcp:%s:%s", job.GCPJobID, job.Title)
+
+	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), jobTitle, ownerID, options)
 	if err != nil {
 		pm.incrementJobsProcessed(false)
 		message = fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)
