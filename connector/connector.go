@@ -24,6 +24,8 @@ import (
 func main() {
 	defer glog.Flush()
 
+	glog.Errorf("CUPS Connector version %s\n", lib.GetBuildDate())
+
 	config, err := lib.ConfigFromFile()
 	if err != nil {
 		glog.Fatal(err)

@@ -14,6 +14,10 @@ import (
 )
 
 var (
+	// To be populated by something like:
+	// go install -ldflags "-X cups-connector/lib.buildDate `date +%Y.%m.%d`"
+	buildDate string
+
 	ConfigFilename = flag.String(
 		"config-filename", "cups-connector.config.json", "Name of config file")
 )
@@ -116,4 +120,11 @@ func (c *Config) ToFile() error {
 	}
 
 	return nil
+}
+
+func GetBuildDate() string {
+	if buildDate == "" {
+		return "DEV"
+	}
+	return buildDate
 }

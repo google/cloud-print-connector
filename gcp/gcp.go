@@ -325,9 +325,6 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, error) {
 	for _, p := range listData.Printers {
 		tags := make(map[string]string)
 		for _, tag := range p.Tags {
-			if !strings.HasPrefix(tag, "cups-") {
-				continue
-			}
 			s := strings.SplitN(tag, "=", 2)
 			key := s[0][5:]
 			var value string
@@ -392,7 +389,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 	form.Set("capsHash", printer.CapsHash)
 	form.Set("content_types", "application/pdf")
 	for key, value := range printer.Tags {
-		form.Add("tag", fmt.Sprintf("cups-%s=%s", key, value))
+		form.Add("tag", fmt.Sprintf("%s=%s", key, value))
 	}
 
 	responseBody, _, _, err := gcp.postWithRetry(gcp.robotClient, "register", form)
@@ -455,9 +452,9 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 
 	if diff.TagsChanged {
 		for key, value := range diff.Printer.Tags {
-			form.Add("tag", fmt.Sprintf("cups-%s=%s", key, value))
+			form.Add("tag", fmt.Sprintf("%s=%s", key, value))
 		}
-		form.Set("remove_tag", "^cups-.*")
+		form.Set("remove_tag", ".*")
 	}
 
 	if _, _, _, err := gcp.postWithRetry(gcp.robotClient, "update", form); err != nil {

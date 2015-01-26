@@ -46,3 +46,24 @@ func CreateTempFile() (*os.File, error) {
 
 	return os.NewFile(uintptr(fd), C.GoString(filename)), nil
 }
+
+// uname returns strings similar to the Unix uname command:
+// sysname, nodename, release, version, machine, domainname
+func uname() (string, string, string, string, string, string, error) {
+	var u syscall.Utsname
+	if err := syscall.Uname(&u); err != nil {
+		return "", "", "", "", "", "", err
+	}
+	return charsToString(u.Sysname), charsToString(u.Nodename),
+		charsToString(u.Release), charsToString(u.Version), charsToString(u.Machine),
+		charsToString(u.Domainname), nil
+}
+
+func charsToString(chars [65]int8) string {
+	s := make([]byte, len(chars))
+	var lens int
+	for ; lens < len(chars) && chars[lens] != 0; lens++ {
+		s[lens] = byte(chars[lens])
+	}
+	return string(s[:lens])
+}

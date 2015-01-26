@@ -48,6 +48,8 @@ import (
 	"cups-connector/lib"
 	"encoding/binary"
 	"fmt"
+	"os"
+	"runtime"
 	"strings"
 	"time"
 	"unsafe"
@@ -88,6 +90,7 @@ type CUPS struct {
 	pc                *ppdCache
 	infoToDisplayName bool
 	printerAttributes []string
+	systemTags        map[string]string
 }
 
 func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) {
@@ -101,7 +104,12 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) 
 	}
 	pc := newPPDCache(cc)
 
-	c := &CUPS{cc, pc, infoToDisplayName, printerAttributes}
+	systemTags, err := getSystemTags()
+	if err != nil {
+		return nil, err
+	}
+
+	c := &CUPS{cc, pc, infoToDisplayName, printerAttributes, systemTags}
 
 	return c, nil
 }
@@ -145,7 +153,8 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 		}
 
 		tags := attributesToTags(attributes)
-		p, err := tagsToPrinter(tags, c.infoToDisplayName)
+
+		p, err := tagsToPrinter(tags, c.systemTags, c.infoToDisplayName)
 		if err != nil {
 			glog.Error(err)
 			continue
@@ -164,6 +173,34 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	}
 
 	return printers, nil
+}
+
+func getSystemTags() (map[string]string, error) {
+	tags := make(map[string]string)
+
+	tags["connector-version"] = lib.GetBuildDate()
+	hostname, err := os.Hostname()
+	if err == nil {
+		tags["system-hostname"] = hostname
+	}
+	tags["system-arch"] = runtime.GOARCH
+
+	sysname, nodename, release, version, machine, domainname, err := uname()
+	if err != nil {
+		return nil, fmt.Errorf("CUPS failed to call uname while initializing: %s", err)
+	}
+
+	tags["system-uname-sysname"] = sysname
+	tags["system-uname-nodename"] = nodename
+	tags["system-uname-release"] = release
+	tags["system-uname-version"] = version
+	tags["system-uname-machine"] = machine
+	tags["system-uname-domainname"] = domainname
+
+	tags["connector-cups-api-version"] = fmt.Sprintf("%d.%d.%d",
+		C.CUPS_VERSION_MAJOR, C.CUPS_VERSION_MINOR, C.CUPS_VERSION_PATCH)
+
+	return tags, nil
 }
 
 // GetPPD gets the PPD for the specified printer.
@@ -345,15 +382,24 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string]string {
 }
 
 // tagsToPrinter converts a map of tags to a Printer.
-func tagsToPrinter(tags map[string]string, infoToDisplayName bool) (lib.Printer, error) {
+func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName bool) (lib.Printer, error) {
+	tags := make(map[string]string)
+
+	for k, v := range printerTags {
+		tags["__cp__"+k] = v
+	}
+	for k, v := range systemTags {
+		tags["__cp__"+k] = v
+	}
+
 	p := lib.Printer{
-		Name:        tags[attrPrinterName],
-		Description: tags[attrPrinterMakeAndModel],
-		Status:      lib.PrinterStatusFromString(tags[attrPrinterState]),
+		Name:        printerTags[attrPrinterName],
+		Description: printerTags[attrPrinterMakeAndModel],
+		Status:      lib.PrinterStatusFromString(printerTags[attrPrinterState]),
 		Tags:        tags,
 	}
 	if infoToDisplayName {
-		p.DefaultDisplayName = tags[attrPrinterInfo]
+		p.DefaultDisplayName = printerTags[attrPrinterInfo]
 	}
 
 	return p, nil
