@@ -44,7 +44,7 @@ func main() {
 			glog.Fatal(err)
 		}
 
-		printers, err := gcp.List()
+		printers, _, err := gcp.List()
 		if err != nil {
 			glog.Fatal(err)
 		}
