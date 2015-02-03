@@ -140,6 +140,8 @@ func translateTicketToOptions(ticket *printTicketSection) (map[string]string, er
 		m["Duplex"] = "DuplexNoTumble"
 	case "SHORT_EDGE":
 		m["Duplex"] = "DuplexTumble"
+	default:
+		m["Duplex"] = "None"
 	}
 	switch strings.ToUpper(ticket.PageOrientation.Type) {
 	case "PORTRAIT":
