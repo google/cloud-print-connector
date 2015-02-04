@@ -8,7 +8,9 @@ https://developers.google.com/open-source/licenses/bsd
 package lib
 
 import (
-	"reflect"
+	"crypto/md5"
+	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -45,6 +47,29 @@ type Printer struct {
 	Tags               map[string]string // CUPS: all printer attributes;      GCP: repeated tag field
 	XMPPTimeout        uint32            //                                    GCP: local_settings/xmpp_timeout_value field
 	CUPSJobSemaphore   *Semaphore
+}
+
+// SetTagshash calculates an MD5 sum for the Printer.Tags map,
+// sets Printer.Tags["tagshash"] to that value.
+func (p *Printer) SetTagshash() {
+	sortedKeys := make([]string, len(p.Tags))
+	i := 0
+	for key := range p.Tags {
+		sortedKeys[i] = key
+		i++
+	}
+	sort.Strings(sortedKeys)
+
+	tagshash := md5.New()
+	for _, key := range sortedKeys {
+		if key == "tagshash" {
+			continue
+		}
+		tagshash.Write([]byte(key))
+		tagshash.Write([]byte(p.Tags[key]))
+	}
+
+	p.Tags["tagshash"] = fmt.Sprintf("%x", tagshash.Sum(nil))
 }
 
 type PrinterDiffOperation int8
@@ -102,11 +127,10 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 				// Don't lose track of this semaphore.
 				cupsPrinter.CUPSJobSemaphore = gcpPrinters[i].CUPSJobSemaphore
 
-				if reflect.DeepEqual(cupsPrinter, gcpPrinters[i]) {
-					diffs = append(diffs, PrinterDiff{Operation: NoChangeToPrinter, Printer: gcpPrinters[i]})
+				diff := diffPrinter(&cupsPrinter, &gcpPrinters[i])
+				diffs = append(diffs, diff)
 
-				} else {
-					diffs = append(diffs, diffPrinter(&cupsPrinter, &gcpPrinters[i]))
+				if diff.Operation != NoChangeToPrinter {
 					dirty = true
 				}
 
@@ -157,11 +181,22 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if pg.XMPPTimeout != pc.XMPPTimeout {
 		d.XMPPTimeoutChanged = true
 	}
-	if !reflect.DeepEqual(pg.Tags, pc.Tags) {
+
+	gcpTagshash, gcpHasTagshash := pg.Tags["tagshash"]
+	cupsTagshash, cupsHasTagshash := pc.Tags["tagshash"]
+	if !gcpHasTagshash || !cupsHasTagshash || gcpTagshash != cupsTagshash {
 		d.TagsChanged = true
 	}
 
-	return d
+	if d.DefaultDisplayNameChanged || d.DescriptionChanged || d.StatusChanged ||
+		d.CapsHashChanged || d.XMPPTimeoutChanged || d.TagsChanged {
+		return d
+	}
+
+	return PrinterDiff{
+		Operation: NoChangeToPrinter,
+		Printer:   *pg,
+	}
 }
 
 // FilterRawPrinters splits a slice of printers into non-raw and raw.

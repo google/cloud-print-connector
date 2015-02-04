@@ -45,7 +45,6 @@ int ippGetResolutionWrapper(ipp_attribute_t *attr, int element, int *yres, int *
 import "C"
 import (
 	"bytes"
-	"crypto/md5"
 	"cups-connector/lib"
 	"encoding/binary"
 	"fmt"
@@ -69,11 +68,6 @@ const (
 
 	attrJobState       = "job-state"
 	attrJobStateReason = "job-state-reason"
-
-	// This prefix tickles a magic spell in GCP so that, for example,
-	// the GCP UI shows location as the string found in the
-	// printer-location CUPS attribute.
-	tagPrefix = "__cp__"
 )
 
 var (
@@ -390,19 +384,13 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string]string {
 // tagsToPrinter converts a map of tags to a Printer.
 func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName bool) (lib.Printer, error) {
 	tags := make(map[string]string)
-	tagshash := md5.New()
 
 	for k, v := range printerTags {
-		tags[tagPrefix+k] = v
-		tagshash.Write([]byte(k))
-		tagshash.Write([]byte(v))
+		tags[k] = v
 	}
 	for k, v := range systemTags {
-		tags[tagPrefix+k] = v
-		tagshash.Write([]byte(k))
-		tagshash.Write([]byte(v))
+		tags[k] = v
 	}
-	tags[tagPrefix+"tagshash"] = fmt.Sprintf("%x", tagshash.Sum(nil))
 
 	p := lib.Printer{
 		Name:        printerTags[attrPrinterName],
@@ -410,6 +398,8 @@ func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName 
 		Status:      lib.PrinterStatusFromString(printerTags[attrPrinterState]),
 		Tags:        tags,
 	}
+	p.SetTagshash()
+
 	if infoToDisplayName {
 		p.DefaultDisplayName = printerTags[attrPrinterInfo]
 	}

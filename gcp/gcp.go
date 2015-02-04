@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,6 +29,11 @@ import (
 )
 
 const (
+	// This prefix tickles a magic spell in GCP so that, for example,
+	// the GCP UI shows location as the string found in the
+	// printer-location CUPS attribute.
+	gcpTagPrefix = "__cp__"
+
 	// XMPP connections fail. Attempt to reconnect a few times before giving up.
 	restartXMPPMaxRetries = 4
 
@@ -325,8 +331,12 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, error) {
 	for _, p := range listData.Printers {
 		tags := make(map[string]string)
 		for _, tag := range p.Tags {
-			s := strings.SplitN(tag, "=", 2)
-			key := s[0][5:]
+			if !strings.HasPrefix(tag, gcpTagPrefix) {
+				// This tag is not managed by the CUPS Connector, so ignore it.
+				continue
+			}
+			s := strings.SplitN(tag[len(gcpTagPrefix):], "=", 2)
+			key := s[0]
 			var value string
 			if len(s) > 1 {
 				value = s[1]
@@ -388,8 +398,14 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 	form.Set("status", string(printer.Status))
 	form.Set("capsHash", printer.CapsHash)
 	form.Set("content_types", "application/pdf")
-	for key, value := range printer.Tags {
-		form.Add("tag", fmt.Sprintf("%s=%s", key, value))
+
+	sortedKeys := make([]string, 0, len(printer.Tags))
+	for key := range printer.Tags {
+		sortedKeys = append(sortedKeys, key)
+	}
+	sort.Strings(sortedKeys)
+	for _, key := range sortedKeys {
+		form.Add("tag", fmt.Sprintf("%s%s=%s", gcpTagPrefix, key, printer.Tags[key]))
 	}
 
 	responseBody, _, _, err := gcp.postWithRetry(gcp.robotClient, "register", form)
@@ -451,10 +467,16 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 	}
 
 	if diff.TagsChanged {
-		for key, value := range diff.Printer.Tags {
-			form.Add("tag", fmt.Sprintf("%s=%s", key, value))
+		sortedKeys := make([]string, 0, len(diff.Printer.Tags))
+		for key := range diff.Printer.Tags {
+			sortedKeys = append(sortedKeys, key)
 		}
-		form.Set("remove_tag", ".*")
+		sort.Strings(sortedKeys)
+		for _, key := range sortedKeys {
+			form.Add("tag", fmt.Sprintf("%s%s=%s", gcpTagPrefix, key, diff.Printer.Tags[key]))
+		}
+
+		form.Set("remove_tag", gcpTagPrefix+".*")
 	}
 
 	if _, _, _, err := gcp.postWithRetry(gcp.robotClient, "update", form); err != nil {
