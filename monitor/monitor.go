@@ -106,7 +106,7 @@ func (m *Monitor) getStats() (string, error) {
 		rawPrinterQuantity = len(rawPrinters)
 	}
 
-	if gcpPrinters, _, err := m.gcp.List(); err != nil {
+	if gcpPrinters, _, _, err := m.gcp.List(); err != nil {
 		return "", err
 	} else {
 		gcpPrinterQuantity = len(gcpPrinters)

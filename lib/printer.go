@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
 
 type PrinterStatus string
@@ -45,7 +46,7 @@ type Printer struct {
 	Status             PrinterStatus     // CUPS: printer-state;               GCP: status field
 	CapsHash           string            // CUPS: hash of PPD;                 GCP: capsHash field
 	Tags               map[string]string // CUPS: all printer attributes;      GCP: repeated tag field
-	XMPPTimeout        uint32            //                                    GCP: local_settings/xmpp_timeout_value field
+	XMPPPingInterval   time.Duration     //                                    GCP: local_settings/xmpp_timeout_value field
 	CUPSJobSemaphore   *Semaphore
 }
 
@@ -90,7 +91,7 @@ type PrinterDiff struct {
 	DescriptionChanged        bool
 	StatusChanged             bool
 	CapsHashChanged           bool
-	XMPPTimeoutChanged        bool
+	XMPPPingIntervalChanged   bool
 	TagsChanged               bool
 }
 
@@ -124,6 +125,8 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 			if cupsPrinter, exists := cupsPrintersByName[gcpPrinters[i].Name]; exists {
 				// CUPS printer doesn't know about GCPID yet.
 				cupsPrinter.GCPID = gcpPrinters[i].GCPID
+				// CUPS printer doesn't know about XMPP ping interval yet.
+				cupsPrinter.XMPPPingInterval = gcpPrinters[i].XMPPPingInterval
 				// Don't lose track of this semaphore.
 				cupsPrinter.CUPSJobSemaphore = gcpPrinters[i].CUPSJobSemaphore
 
@@ -178,8 +181,8 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if pg.CapsHash != pc.CapsHash {
 		d.CapsHashChanged = true
 	}
-	if pg.XMPPTimeout != pc.XMPPTimeout {
-		d.XMPPTimeoutChanged = true
+	if pg.XMPPPingInterval != pc.XMPPPingInterval {
+		d.XMPPPingIntervalChanged = true
 	}
 
 	gcpTagshash, gcpHasTagshash := pg.Tags["tagshash"]
@@ -189,7 +192,7 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	}
 
 	if d.DefaultDisplayNameChanged || d.DescriptionChanged || d.StatusChanged ||
-		d.CapsHashChanged || d.XMPPTimeoutChanged || d.TagsChanged {
+		d.CapsHashChanged || d.XMPPPingIntervalChanged || d.TagsChanged {
 		return d
 	}
 

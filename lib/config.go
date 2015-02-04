@@ -71,6 +71,14 @@ type Config struct {
 	// XMPP server port number.
 	XMPPPort uint16 `json:"xmpp_port"`
 
+	// XMPP ping timeout (give up waiting after this time).
+	XMPPPingTimeout string `json:"gcp_xmpp_ping_timeout"`
+
+	// XMPP ping interval (time between ping attempts).
+	// This value is used when a printer is registered, and can
+	// be overridden through the GCP API update method.
+	XMPPPingIntervalDefault string `json:"gcp_xmpp_ping_interval_default"`
+
 	// OAuth2 client ID (not unique per client).
 	GCPOAuthClientID string `json:"gcp_oauth_client_id"`
 

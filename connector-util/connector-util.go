@@ -12,6 +12,7 @@ import (
 	"cups-connector/lib"
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/golang/glog"
 )
@@ -29,15 +30,25 @@ func main() {
 		return
 	}
 
+	gcpXMPPPingTimeout, err := time.ParseDuration(config.XMPPPingTimeout)
+	if err != nil {
+		glog.Fatalf("Failed to parse xmpp ping timeout: %s", err)
+	}
+	gcpXMPPPingIntervalDefault, err := time.ParseDuration(config.XMPPPingIntervalDefault)
+	if err != nil {
+		glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
+	}
+
 	if *deleteAllGCPPrinters {
 		gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.XMPPJID, config.RobotRefreshToken,
 			config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID, config.GCPOAuthClientSecret,
-			config.GCPOAuthAuthURL, config.GCPOAuthTokenURL, config.XMPPServer, config.XMPPPort)
+			config.GCPOAuthAuthURL, config.GCPOAuthTokenURL, config.XMPPServer, config.XMPPPort,
+			gcpXMPPPingTimeout, gcpXMPPPingIntervalDefault)
 		if err != nil {
 			glog.Fatal(err)
 		}
 
-		printers, _, err := gcp.List()
+		printers, _, _, err := gcp.List()
 		if err != nil {
 			glog.Fatal(err)
 		}

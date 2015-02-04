@@ -17,8 +17,11 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 const (
@@ -38,15 +41,35 @@ var ErrClosed = errors.New("closed")
 // Interface with XMPP server.
 type gcpXMPP struct {
 	conn       *tls.Conn
+	xmlEncoder *xml.Encoder
 	xmlDecoder *xml.Decoder
+	fullJID    string
+
+	printersJobs    chan printerHasJobs
+	printersUpdates chan printerHasUpdates
+	pongs           chan pong
+
+	nextPingID         uint8
+	pingIntervalChange chan time.Duration
+	q                  chan bool
 }
 
-type nextPrinterResponse struct {
+type printerHasJobs struct {
 	gcpID string
 	err   error
 }
 
-func newXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16) (*gcpXMPP, error) {
+type printerHasUpdates struct {
+	gcpID string
+	err   error
+}
+
+type pong struct {
+	pingID uint8
+	err    error
+}
+
+func newXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16, pingTimeout, pingInterval time.Duration) (*gcpXMPP, error) {
 	var user, domain string
 	if parts := strings.SplitN(xmppJID, "@", 2); len(parts) != 2 {
 		return nil, fmt.Errorf("Tried to use invalid XMPP JID: %s", xmppJID)
@@ -73,7 +96,7 @@ func newXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16
 	}
 
 	// SASL
-	if err := saslHandshake(xmlEncoder, xmlDecoder, domain, user, accessToken); err != nil {
+	if err = saslHandshake(xmlEncoder, xmlDecoder, domain, user, accessToken); err != nil {
 		return nil, fmt.Errorf("Failed to perform XMPP-SASL handshake: %s", err)
 	}
 
@@ -84,45 +107,189 @@ func newXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16
 	}
 
 	// Subscribe
-	if err := subscribe(xmlEncoder, xmlDecoder, fullJID); err != nil {
+	if err = subscribe(xmlEncoder, xmlDecoder, fullJID); err != nil {
 		return nil, fmt.Errorf("Failed to subscribe: %s", err)
 	}
 
-	return &gcpXMPP{conn, xmlDecoder}, nil
-}
+	x := gcpXMPP{conn, xmlEncoder, xmlDecoder, fullJID,
+		make(chan printerHasJobs, 10), make(chan printerHasUpdates, 10), make(chan pong, 5),
+		0, make(chan time.Duration), make(chan bool)}
 
-// nextWaitingPrinter returns the GCPID of the next printer with waiting jobs.
-func (x *gcpXMPP) nextWaitingPrinter() (string, error) {
-	// First, verify that this is a message we expect to see.
-	startElement, err := readStartElement(x.xmlDecoder)
-	if err != nil {
-		if strings.Contains(err.Error(), "use of closed network connection") {
-			return "", ErrClosed
-		}
-		return "", fmt.Errorf("Failed to read the next start element: %s", err)
-	}
-	if startElement.Name.Local != "message" {
-		return "", fmt.Errorf("Unexpected element while waiting for print message: %+v", startElement)
+	go x.dispatchIncoming()
+	go x.pingPeriodically(pingTimeout, pingInterval)
+
+	// Check by ping
+	if err = x.ping(pingTimeout); err != nil {
+		return nil, err
 	}
 
-	// Second, parse the message.
-	var message struct {
-		XMLName xml.Name `xml:"message"`
-		Data    string   `xml:"push>data"`
-	}
-
-	if err := x.xmlDecoder.DecodeElement(&message, startElement); err != nil {
-		if strings.Contains(err.Error(), "use of closed network connection") {
-			return "", ErrClosed
-		}
-		return "", fmt.Errorf("Error while waiting for print jobs via XMPP: %s", err)
-	}
-
-	return message.Data, nil
+	return &x, nil
 }
 
 func (x *gcpXMPP) quit() {
 	x.conn.Close()
+	<-x.q
+}
+
+func (x *gcpXMPP) pingPeriodically(timeout, interval time.Duration) {
+	t := time.NewTimer(interval)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-t.C:
+			if err := x.ping(timeout); err != nil {
+				glog.Errorf("Failed to ping XMPP server: %s", err)
+				// Try again soon.
+				t.Reset(time.Second)
+			} else {
+				t.Reset(interval)
+			}
+		case interval = <-x.pingIntervalChange:
+			t.Reset(time.Nanosecond) // Induce ping and interval reset now.
+		}
+	}
+}
+
+func (x *gcpXMPP) setPingInterval(interval time.Duration) {
+	x.pingIntervalChange <- interval
+}
+
+// dispatchIncoming listens for new XMPP messages and puts them into
+// separate channels, by type of message.
+func (x *gcpXMPP) dispatchIncoming() {
+	for {
+		// The xml.StartElement tells us what is coming up.
+		startElement, err := readStartElement(x.xmlDecoder)
+		if err != nil {
+			if strings.Contains(err.Error(), "use of closed network connection") {
+				x.printersJobs <- printerHasJobs{"", ErrClosed}
+				break
+			} else {
+				x.printersJobs <- printerHasJobs{"",
+					fmt.Errorf("Failed to read the next start element: %s", err)}
+				continue
+			}
+		}
+
+		// Parse the message.
+		if startElement.Name.Local == "message" {
+			var message struct {
+				XMLName xml.Name `xml:"message"`
+				Data    string   `xml:"push>data"`
+			}
+
+			if err := x.xmlDecoder.DecodeElement(&message, startElement); err != nil {
+				if strings.Contains(err.Error(), "use of closed network connection") {
+					x.printersJobs <- printerHasJobs{"", ErrClosed}
+					break
+				} else {
+					x.printersJobs <- printerHasJobs{"",
+						fmt.Errorf("Error while parsing print jobs notification via XMPP: %s", err)}
+					continue
+				}
+			}
+
+			gcpIDbytes, err := base64.StdEncoding.DecodeString(message.Data)
+			if err != nil {
+				x.printersJobs <- printerHasJobs{"",
+					fmt.Errorf("Failed to convert XMPP message data from base64: %s", err)}
+				continue
+			}
+			gcpID := string(gcpIDbytes)
+
+			if strings.HasSuffix(gcpID, "/update_settings") {
+				x.printersUpdates <- printerHasUpdates{strings.Split(gcpID, "/")[0], nil}
+			} else {
+				x.printersJobs <- printerHasJobs{gcpID, nil}
+			}
+
+		} else if startElement.Name.Local == "iq" {
+			var message struct {
+				XMLName xml.Name `xml:"iq"`
+				ID      string   `xml:"id,attr"`
+				Type    string   `xml:"type,attr"`
+			}
+
+			if err := x.xmlDecoder.DecodeElement(&message, startElement); err != nil {
+				if strings.Contains(err.Error(), "use of closed network connection") {
+					x.pongs <- pong{0, ErrClosed}
+					break
+				} else {
+					x.pongs <- pong{0,
+						fmt.Errorf("Error while parsing XMPP pong: %s", err)}
+					continue
+				}
+			}
+
+			pingID, err := strconv.ParseUint(message.ID, 10, 8)
+			if err != nil {
+				x.pongs <- pong{0, fmt.Errorf("Failed to convert XMPP ping ID: %s", err)}
+				continue
+			}
+			x.pongs <- pong{uint8(pingID), nil}
+
+		} else {
+			x.printersJobs <- printerHasJobs{"",
+				fmt.Errorf("Unexpected element while waiting for print message: %+v", startElement)}
+		}
+	}
+
+	x.q <- true
+}
+
+// nextPrinterWithJobs returns the GCPID of the next printer with waiting jobs.
+func (x *gcpXMPP) nextPrinterWithJobs() (string, error) {
+	np := <-x.printersJobs
+	return np.gcpID, np.err
+}
+
+// nextPrinterWithUpdates returns the GCPID of the next printer with waiting updates.
+func (x *gcpXMPP) nextPrinterWithUpdates() (string, error) {
+	np := <-x.printersUpdates
+	return np.gcpID, np.err
+}
+
+// ping sends a ping message and blocks until pong is returned. If timeout
+// time passes before pong is returned, then the returned error is not nil.
+func (x *gcpXMPP) ping(timeout time.Duration) error {
+	var ping struct {
+		XMLName xml.Name `xml:"iq"`
+		From    string   `xml:"from,attr"`
+		To      string   `xml:"to,attr"`
+		ID      string   `xml:"id,attr"`
+		Type    string   `xml:"type,attr"`
+		Ping    struct {
+			XMLName xml.Name `xml:"ping"`
+			XMLNS   string   `xml:"xmlns,attr"`
+		}
+	}
+
+	pingID := x.nextPingID
+	x.nextPingID++
+
+	ping.From = x.fullJID
+	ping.To = "cloudprint.google.com"
+	ping.ID = fmt.Sprintf("%d", pingID)
+	ping.Type = "get"
+	ping.Ping.XMLNS = "urn:xmpp:ping"
+
+	if err := x.xmlEncoder.Encode(&ping); err != nil {
+		return fmt.Errorf("XMPP ping request failed: %s", err)
+	}
+
+	for {
+		select {
+		case pn := <-x.pongs:
+			if pn.pingID == pingID {
+				return nil
+			}
+			continue
+		case <-time.After(timeout):
+			return fmt.Errorf("Pong not received after %s", timeout.String())
+		}
+	}
+	panic("unreachable")
 }
 
 func dial(xmppServer string, xmppPort uint16) (*tls.Conn, error) {

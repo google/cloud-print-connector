@@ -86,6 +86,12 @@ var (
 	gcpXMPPPortFlag = flag.Uint(
 		"gcp-xmpp-port", 443,
 		"GCP XMPP port number")
+	gcpXMPPPingTimeoutFlag = flag.String(
+		"gcp-xmpp-ping-timeout", "5s",
+		"GCP XMPP ping timeout (give up waiting for ping response after this)")
+	gcpXMPPPingIntervalDefaultFlag = flag.String(
+		"gcp-xmpp-ping-interval-default", "2m",
+		"GCP XMPP ping interval default (ping every this often)")
 )
 
 // getUserClient steps the user through the process of acquiring an OAuth refresh token.
@@ -202,6 +208,8 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		*gcpBaseURLFlag,
 		*gcpXMPPServerFlag,
 		uint16(*gcpXMPPPortFlag),
+		*gcpXMPPPingTimeoutFlag,
+		*gcpXMPPPingIntervalDefaultFlag,
 		*gcpOAuthClientIDFlag,
 		*gcpOAuthClientSecretFlag,
 		*gcpOAuthAuthURLFlag,

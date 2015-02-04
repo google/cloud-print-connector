@@ -11,7 +11,6 @@ package gcp
 
 import (
 	"cups-connector/lib"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,8 +34,8 @@ const (
 	// XMPP connections fail. Attempt to reconnect a few times before giving up.
 	restartXMPPMaxRetries = 4
 
-	// Stop retrying when two failurees occur in succession in this quantity of seconds.
-	minimumTimeBetweenXMPPFailures = 3
+	// Stop retrying when two failures occur in a short period of time.
+	minTimeBetweenXMPPFailures = time.Second * 3
 
 	// OAuth constants.
 	RedirectURL     = "oob"
@@ -53,12 +52,15 @@ type GoogleCloudPrint struct {
 	robotClient *http.Client
 	userClient  *http.Client
 	proxyName   string
-	xmppServer  string
-	xmppPort    uint16
+
+	xmppServer              string
+	xmppPort                uint16
+	xmppPingTimeout         time.Duration
+	xmppPingIntervalDefault time.Duration
 }
 
 // NewGoogleCloudPrint establishes a connection with GCP, returns a new GoogleCloudPrint object.
-func NewGoogleCloudPrint(baseURL, xmppJID, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, xmppServer string, xmppPort uint16) (*GoogleCloudPrint, error) {
+func NewGoogleCloudPrint(baseURL, xmppJID, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, xmppServer string, xmppPort uint16, xmppPingTimeout, xmppPingIntervalDefault time.Duration) (*GoogleCloudPrint, error) {
 	robotClient, err := newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, robotRefreshToken, ScopeCloudPrint, ScopeGoogleTalk)
 	if err != nil {
 		return nil, err
@@ -72,26 +74,33 @@ func NewGoogleCloudPrint(baseURL, xmppJID, robotRefreshToken, userRefreshToken, 
 		}
 	}
 
-	gcp := &GoogleCloudPrint{baseURL, xmppJID, nil, robotClient, userClient, proxyName, xmppServer, xmppPort}
+	gcp := &GoogleCloudPrint{baseURL, xmppJID, nil, robotClient, userClient, proxyName,
+		xmppServer, xmppPort, xmppPingTimeout, xmppPingIntervalDefault}
 
 	return gcp, nil
 }
 
-type localSettingsInner struct {
-	XMPPTimeoutValue uint32 `json:"xmpp_timeout_value"`
+type localSettingsSettings struct {
+	XMPPPingInterval uint32 `json:"xmpp_timeout_value"`
 	// Other values can be set here; omit until needed.
 }
 
-type localSettingsOuter struct {
-	// "current" name must be lower-case, but can't annotate inner struct
-	// without separate type declaration.
-	Current localSettingsInner `json:"current"`
+// localSettingsPush is for Register and Update.
+// Using the pending field is not permitted from device accounts.
+type localSettingsPush struct {
+	Current localSettingsSettings `json:"current"`
+}
+
+// localSettingsPull is for List.
+type localSettingsPull struct {
+	Current localSettingsSettings `json:"current"`
+	Pending localSettingsSettings `json:"pending"`
 }
 
 // Turn arguments into a JSON-encoded GCP LocalSettings object.
-func marshalLocalSettings(xmppTimeout uint32) (string, error) {
-	var ls localSettingsOuter
-	ls.Current.XMPPTimeoutValue = xmppTimeout
+func marshalLocalSettings(xmppInterval time.Duration) (string, error) {
+	var ls localSettingsPush
+	ls.Current.XMPPPingInterval = uint32(xmppInterval.Seconds())
 	lss, err := json.Marshal(ls)
 	if err != nil {
 		return "", err
@@ -109,9 +118,9 @@ func (gcp *GoogleCloudPrint) CanShare() bool {
 	return gcp.userClient != nil
 }
 
-// RestartXMPP tries to start an XMPP conversation.
+// StartXMPP tries to start an XMPP conversation.
 // Tries multiple times before returning an error.
-func (gcp *GoogleCloudPrint) RestartXMPP() error {
+func (gcp *GoogleCloudPrint) StartXMPP() error {
 	if gcp.xmppClient != nil {
 		go gcp.xmppClient.quit()
 	}
@@ -124,7 +133,8 @@ func (gcp *GoogleCloudPrint) RestartXMPP() error {
 
 		if err == nil {
 			var xmpp *gcpXMPP
-			xmpp, err = newXMPP(gcp.xmppJID, token.AccessToken, gcp.proxyName, gcp.xmppServer, gcp.xmppPort)
+			xmpp, err = newXMPP(gcp.xmppJID, token.AccessToken, gcp.proxyName,
+				gcp.xmppServer, gcp.xmppPort, gcp.xmppPingTimeout, gcp.xmppPingIntervalDefault)
 
 			if err == nil {
 				gcp.xmppClient = xmpp
@@ -136,69 +146,55 @@ func (gcp *GoogleCloudPrint) RestartXMPP() error {
 		time.Sleep(time.Duration((i+1)*2) * time.Second)
 	}
 
-	return fmt.Errorf("Failed to (re-)start XMPP conversation: %s", err)
-}
-
-// nextWaitingPrinter calls xmppClient.nextWaitingPrinter(), with retries on
-// failure. If a call to this function fails, then there's probably no reason to
-// go on living.
-//
-// Returns a base64-encoded string representation of the ID of the printer
-// that has waiting job(s).
-func (gcp *GoogleCloudPrint) nextWaitingPrinterWithRetries() (string, error) {
-	lastFailure := time.Unix(0, 0)
-	for {
-		printerIDb64, err := gcp.xmppClient.nextWaitingPrinter()
-		if err == nil {
-			// Success!
-			return printerIDb64, nil
-		}
-
-		if err == ErrClosed {
-			// The connection is closed.
-			return "", err
-		}
-
-		if strings.HasPrefix(err.Error(), "Unexpected element") {
-			// Not really an error, but interesting, so log and try again.
-			glog.Warningf("While waiting for print jobs: %s", err)
-			continue
-		}
-
-		if time.Since(lastFailure) < time.Duration(minimumTimeBetweenXMPPFailures)*time.Second {
-			// There was a failure very recently; a third try is likely to fail.
-			return "", fmt.Errorf("While (retrying) waiting for print jobs: %s", err)
-		}
-		lastFailure = time.Now()
-
-		glog.Warningf("Restarting XMPP conversation because: %s", err)
-		if err = gcp.RestartXMPP(); err != nil {
-			// Restarting XMPP failed, so what's the point?
-			return "", err
-		}
-		glog.Info("Started XMPP successfully")
-	}
-	panic("unreachable")
+	return fmt.Errorf("Failed to start XMPP conversation: %s", err)
 }
 
 // NextJobBatch gets the next batch of print jobs from GCP. Blocks on XMPP until
 // batch notification arrives. Calls google.com/cloudprint/fetch to get the jobs.
 //
-// Panics when XMPP error is too serious to retry.
+// Returns ErrClosed if the XMPP connection closes; the caller should assume
+// that life is gracefully ending.
+//
+// If any other error is returned, then there's probably no reason to go on living.
 func (gcp *GoogleCloudPrint) NextJobBatch() ([]lib.Job, error) {
-	printerIDb64, err := gcp.nextWaitingPrinterWithRetries()
-	if err != nil {
+	var lastFailure time.Time
+
+	var gcpID string
+	var err error
+	for {
+		gcpID, err = gcp.xmppClient.nextPrinterWithJobs()
+		if err == nil {
+			// Success!
+			break
+		}
+
 		if err == ErrClosed {
+			// The connection is closed.
 			return nil, err
 		}
-		glog.Fatalf("Fatal error while waiting for next printer: %s", err)
+
+		if strings.Contains(err.Error(), "Unexpected element") {
+			// Not really an error, but interesting, so log and try again.
+			glog.Warningf("While waiting for print jobs: %s", err)
+			continue
+		}
+
+		if time.Since(lastFailure) < time.Duration(minTimeBetweenXMPPFailures) {
+			// We have seen two unaccounted-for errors in a short period of time.
+			// This suggests that the XMPP conversation has failed, so let's
+			// give up.
+			return nil, fmt.Errorf("XMPP conversation failed: %s", err)
+		}
+		lastFailure = time.Now()
 	}
-	printerIDbytes, err := base64.StdEncoding.DecodeString(printerIDb64)
-	if err != nil {
-		return nil, err
-	}
-	printerID := string(printerIDbytes)
-	return gcp.Fetch(printerID)
+
+	return gcp.Fetch(gcpID)
+}
+
+// NextPrinterWithUpdates gets the GCPID of the next printer with updates
+// in the pending state.
+func (gcp *GoogleCloudPrint) NextPrinterWithUpdates() (string, error) {
+	return gcp.xmppClient.nextPrinterWithUpdates()
 }
 
 // Control calls google.com/cloudprint/control to set the status of a
@@ -277,15 +273,16 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 // List calls google.com/cloudprint/list to get all GCP printers assigned
 // to this connector.
 //
-// The second return value is a map of GCPID:queuedPrintJobs.
-func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, error) {
+// The second return value is a map of GCPID -> queued print job quantity.
+// The third return value is a map of GCPID -> pending XMPP ping interval changes.
+func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, map[string]time.Duration, error) {
 	form := url.Values{}
 	form.Set("proxy", gcp.proxyName)
 	form.Set("extra_fields", "queuedJobsCount")
 
 	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"list", form)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	var listData struct {
@@ -296,20 +293,21 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, error) {
 			Description        string
 			Status             string
 			CapsHash           string
-			LocalSettings      localSettingsOuter `json:"local_settings"`
+			LocalSettings      localSettingsPull `json:"local_settings"`
 			Tags               []string
 			QueuedJobsCount    uint
 		}
 	}
 	if err = json.Unmarshal(responseBody, &listData); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	queuedJobsCount := make(map[string]uint)
-
+	xmppPingIntervalChanges := make(map[string]time.Duration)
 	printers := make([]lib.Printer, 0, len(listData.Printers))
+
 	for _, p := range listData.Printers {
-		tags := make(map[string]string)
+		tags := make(map[string]string, len(p.Tags))
 		for _, tag := range p.Tags {
 			if !strings.HasPrefix(tag, gcpTagPrefix) {
 				// This tag is not managed by the CUPS Connector, so ignore it.
@@ -324,9 +322,14 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, error) {
 			tags[key] = value
 		}
 
-		var xmppTimeout uint32
-		if p.LocalSettings.Current.XMPPTimeoutValue > 0 {
-			xmppTimeout = p.LocalSettings.Current.XMPPTimeoutValue
+		var xmppPingInterval time.Duration
+		if p.LocalSettings.Pending.XMPPPingInterval > 0 {
+			xmppPingIntervalSeconds := p.LocalSettings.Pending.XMPPPingInterval
+			xmppPingIntervalChanges[p.ID] = time.Second * time.Duration(xmppPingIntervalSeconds)
+			xmppPingInterval = time.Second * time.Duration(xmppPingIntervalSeconds)
+		} else if p.LocalSettings.Current.XMPPPingInterval > 0 {
+			xmppPingIntervalSeconds := p.LocalSettings.Current.XMPPPingInterval
+			xmppPingInterval = time.Second * time.Duration(xmppPingIntervalSeconds)
 		}
 
 		printer := lib.Printer{
@@ -336,7 +339,7 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, error) {
 			Description:        p.Description,
 			Status:             lib.PrinterStatusFromString(p.Status),
 			CapsHash:           p.CapsHash,
-			XMPPTimeout:        xmppTimeout,
+			XMPPPingInterval:   xmppPingInterval,
 			Tags:               tags,
 		}
 		printers = append(printers, printer)
@@ -346,7 +349,7 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, error) {
 		}
 	}
 
-	return printers, queuedJobsCount, nil
+	return printers, queuedJobsCount, xmppPingIntervalChanges, nil
 }
 
 // Register calls google.com/cloudprint/register to register a GCP printer.
@@ -362,7 +365,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 		return err
 	}
 
-	localSettings, err := marshalLocalSettings(printer.XMPPTimeout)
+	localSettings, err := marshalLocalSettings(gcp.xmppPingIntervalDefault)
 	if err != nil {
 		return err
 	}
@@ -437,8 +440,8 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 		form.Set("capabilities", cdd)
 	}
 
-	if diff.XMPPTimeoutChanged {
-		localSettings, err := marshalLocalSettings(diff.Printer.XMPPTimeout)
+	if diff.XMPPPingIntervalChanged {
+		localSettings, err := marshalLocalSettings(diff.Printer.XMPPPingInterval)
 		if err != nil {
 			return err
 		}
@@ -464,6 +467,88 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 	}
 
 	return nil
+}
+
+// SetConnectorXMPPPingInterval sets the interval at which this connector will
+// ping the XMPP server.
+func (gcp *GoogleCloudPrint) SetConnectorXMPPPingInterval(interval time.Duration) {
+	gcp.xmppClient.setPingInterval(interval)
+}
+
+// SetPrinterXMPPPingInterval checks GCP for a pending XMPP interval change,
+// and applies the change, to one printer.
+func (gcp *GoogleCloudPrint) SetPrinterXMPPPingInterval(printer lib.Printer) error {
+	diff := lib.PrinterDiff{
+		Operation:               lib.UpdatePrinter,
+		Printer:                 printer,
+		XMPPPingIntervalChanged: true,
+	}
+
+	if err := gcp.Update(&diff, ""); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Printer gets the printer identified by it's GCPID.
+func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, error) {
+	form := url.Values{}
+	form.Set("printerid", gcpID)
+
+	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"printer", form)
+	if err != nil {
+		return nil, err
+	}
+
+	var printersData struct {
+		Printers []struct {
+			ID                 string
+			Name               string
+			DefaultDisplayName string
+			Description        string
+			Status             string
+			CapsHash           string
+			LocalSettings      localSettingsPull `json:"local_settings"`
+			Tags               []string
+		}
+	}
+	if err = json.Unmarshal(responseBody, &printersData); err != nil {
+		return nil, err
+	}
+
+	tags := make(map[string]string)
+	for _, tag := range printersData.Printers[0].Tags {
+		s := strings.SplitN(tag, "=", 2)
+		key := s[0][6:]
+		var value string
+		if len(s) > 1 {
+			value = s[1]
+		}
+		tags[key] = value
+	}
+
+	var xmppPingInterval time.Duration
+	if printersData.Printers[0].LocalSettings.Pending.XMPPPingInterval > 0 {
+		xmppPingIntervalSeconds := printersData.Printers[0].LocalSettings.Pending.XMPPPingInterval
+		xmppPingInterval = time.Second * time.Duration(xmppPingIntervalSeconds)
+	} else if printersData.Printers[0].LocalSettings.Current.XMPPPingInterval > 0 {
+		xmppPingIntervalSeconds := printersData.Printers[0].LocalSettings.Current.XMPPPingInterval
+		xmppPingInterval = time.Second * time.Duration(xmppPingIntervalSeconds)
+	}
+
+	printer := &lib.Printer{
+		GCPID:              printersData.Printers[0].ID,
+		Name:               printersData.Printers[0].Name,
+		DefaultDisplayName: printersData.Printers[0].DefaultDisplayName,
+		Description:        printersData.Printers[0].Description,
+		Status:             lib.PrinterStatusFromString(printersData.Printers[0].Status),
+		CapsHash:           printersData.Printers[0].CapsHash,
+		XMPPPingInterval:   xmppPingInterval,
+		Tags:               tags,
+	}
+
+	return printer, err
 }
 
 // Translate calls google.com/cloudprint/tools/cdd/translate to translate a PPD to CDD.
