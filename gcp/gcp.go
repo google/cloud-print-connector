@@ -16,10 +16,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -99,24 +97,6 @@ func marshalLocalSettings(xmppTimeout uint32) (string, error) {
 		return "", err
 	}
 	return string(lss), nil
-}
-
-func newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, refreshToken string, scopes ...string) (*http.Client, error) {
-	config := &oauth2.Config{
-		ClientID:     oauthClientID,
-		ClientSecret: oauthClientSecret,
-		Endpoint: oauth2.Endpoint{
-			AuthURL:  oauthAuthURL,
-			TokenURL: oauthTokenURL,
-		},
-		RedirectURL: RedirectURL,
-		Scopes:      scopes,
-	}
-
-	token := &oauth2.Token{RefreshToken: refreshToken}
-	client := config.Client(oauth2.NoContext, token)
-
-	return client, nil
 }
 
 // Quit terminates the XMPP conversation so that new jobs stop arriving.
@@ -230,7 +210,7 @@ func (gcp *GoogleCloudPrint) Control(jobID string, status lib.GCPJobStatus, code
 	form.Set("code", code)
 	form.Set("message", message)
 
-	if _, _, _, err := gcp.postWithRetry(gcp.robotClient, "control", form); err != nil {
+	if _, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"control", form); err != nil {
 		return err
 	}
 
@@ -242,7 +222,7 @@ func (gcp *GoogleCloudPrint) Delete(gcpID string) error {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
 
-	if _, _, _, err := gcp.postWithRetry(gcp.robotClient, "delete", form); err != nil {
+	if _, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"delete", form); err != nil {
 		return err
 	}
 
@@ -255,7 +235,7 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
 
-	responseBody, errorCode, _, err := gcp.postWithRetry(gcp.robotClient, "fetch", form)
+	responseBody, errorCode, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"fetch", form)
 	if err != nil {
 		if errorCode == 413 {
 			// 413 means "Zero print jobs returned", which isn't really an error.
@@ -303,7 +283,7 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, error) {
 	form.Set("proxy", gcp.proxyName)
 	form.Set("extra_fields", "queuedJobsCount")
 
-	responseBody, _, _, err := gcp.postWithRetry(gcp.robotClient, "list", form)
+	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"list", form)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -408,7 +388,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 		form.Add("tag", fmt.Sprintf("%s%s=%s", gcpTagPrefix, key, printer.Tags[key]))
 	}
 
-	responseBody, _, _, err := gcp.postWithRetry(gcp.robotClient, "register", form)
+	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"register", form)
 	if err != nil {
 		return err
 	}
@@ -479,7 +459,7 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 		form.Set("remove_tag", gcpTagPrefix+".*")
 	}
 
-	if _, _, _, err := gcp.postWithRetry(gcp.robotClient, "update", form); err != nil {
+	if _, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"update", form); err != nil {
 		return err
 	}
 
@@ -491,7 +471,7 @@ func (gcp *GoogleCloudPrint) Translate(ppd string) (string, error) {
 	form := url.Values{}
 	form.Set("capabilities", ppd)
 
-	responseBody, _, _, err := gcp.postWithRetry(gcp.robotClient, "tools/cdd/translate", form)
+	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"tools/cdd/translate", form)
 	if err != nil {
 		return "", err
 	}
@@ -542,7 +522,7 @@ func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string) error {
 	form.Set("role", "USER")
 	form.Set("skip_notification", "true")
 
-	if _, _, _, err := gcp.postWithRetry(gcp.userClient, "share", form); err != nil {
+	if _, _, _, err := postWithRetry(gcp.userClient, gcp.baseURL+"share", form); err != nil {
 		return err
 	}
 
@@ -563,91 +543,4 @@ func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 	}
 
 	return nil
-}
-
-// getWithRetry calls get() and retries once on HTTP failure
-// (response code != 200).
-func getWithRetry(hc *http.Client, url string) (*http.Response, error) {
-	response, err := get(hc, url)
-	if response != nil && response.StatusCode == 200 {
-		return response, err
-	}
-
-	return get(hc, url)
-}
-
-// get GETs a URL. Returns the response object (not body), in case the body
-// is very large.
-//
-// The caller must close the returned Response.Body object if err == nil.
-func get(hc *http.Client, url string) (*http.Response, error) {
-	request, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	request.Header.Set("X-CloudPrint-Proxy", "cups-cloudprint-"+runtime.GOOS)
-
-	response, err := hc.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("GET failure: %s", err)
-	}
-	if response.StatusCode != 200 {
-		return nil, fmt.Errorf("GET HTTP-level failure: %s %s", url, response.Status)
-	}
-
-	return response, nil
-}
-
-// postWithRetry calls post() and retries once on HTTP failure
-// (response code != 200).
-func (gcp *GoogleCloudPrint) postWithRetry(hc *http.Client, method string, form url.Values) ([]byte, uint, int, error) {
-	responseBody, gcpErrorCode, httpStatusCode, err := gcp.post(hc, method, form)
-	if responseBody != nil && httpStatusCode == 200 {
-		return responseBody, gcpErrorCode, httpStatusCode, err
-	}
-
-	return gcp.post(hc, method, form)
-}
-
-// post POSTs to a GCP method. Returns the body of the response.
-//
-// Returns the response body, GCP error code, HTTP status, and error.
-// On success, only the response body is guaranteed to be non-zero.
-func (gcp *GoogleCloudPrint) post(hc *http.Client, method string, form url.Values) ([]byte, uint, int, error) {
-	requestBody := strings.NewReader(form.Encode())
-	request, err := http.NewRequest("POST", gcp.baseURL+method, requestBody)
-	if err != nil {
-		return nil, 0, 0, err
-	}
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	request.Header.Set("X-CloudPrint-Proxy", "cups-cloudprint-"+runtime.GOOS)
-
-	response, err := hc.Do(request)
-	if err != nil {
-		return nil, 0, 0, fmt.Errorf("/%s POST failure: %s", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != 200 {
-		return nil, 0, response.StatusCode, fmt.Errorf("/%s POST HTTP-level failure: %s", method, response.Status)
-	}
-
-	responseBody, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return nil, 0, response.StatusCode, err
-	}
-
-	var responseStatus struct {
-		Success   bool
-		Message   string
-		ErrorCode uint
-	}
-	if err = json.Unmarshal(responseBody, &responseStatus); err != nil {
-		return nil, 0, response.StatusCode, err
-	}
-	if !responseStatus.Success {
-		return nil, responseStatus.ErrorCode, response.StatusCode, fmt.Errorf(
-			"/%s call failed: %s", method, responseStatus.Message)
-	}
-
-	return responseBody, 0, response.StatusCode, nil
 }
