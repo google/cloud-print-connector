@@ -457,7 +457,10 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	printer.CUPSJobSemaphore.Acquire()
 	defer printer.CUPSJobSemaphore.Release()
 
-	jobTitle := fmt.Sprintf("gcp:%s %s", job.GCPJobID, job.Title)[:255]
+	jobTitle := fmt.Sprintf("gcp:%s %s", job.GCPJobID, job.Title)
+	if len(jobTitle) > 255 {
+		jobTitle = jobTitle[:255]
+	}
 
 	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), jobTitle, ownerID, options)
 	if err != nil {
