@@ -92,8 +92,39 @@ type Config struct {
 	GCPOAuthTokenURL string `json:"gcp_oauth_token_url"`
 }
 
+// DefaultConfig represents reasonable default values for Config fields.
+// Omitted Config fields are omitted on purpose; they are unique per
+// connector instance.
+var DefaultConfig = Config{
+	GCPMaxConcurrentDownloads: 5,
+	CUPSJobQueueSize:          3,
+	CUPSPrinterPollInterval:   "1m",
+	CUPSPrinterAttributes: []string{
+		"printer-name",
+		"printer-info",
+		"printer-is-accepting-jobs",
+		"printer-location",
+		"printer-make-and-model",
+		"printer-state",
+		"printer-state-reasons",
+	},
+	CUPSJobFullUsername:          false,
+	CUPSIgnoreRawPrinters:        true,
+	CopyPrinterInfoToDisplayName: true,
+	MonitorSocketFilename:        "/var/run/cups-connector/monitor.sock",
+	GCPBaseURL:                   "https://www.google.com/cloudprint/",
+	XMPPServer:                   "talk.google.com",
+	XMPPPort:                     443,
+	XMPPPingTimeout:              "5s",
+	XMPPPingIntervalDefault:      "2m",
+	GCPOAuthClientID:             "539833558011-35iq8btpgas80nrs3o7mv99hm95d4dv6.apps.googleusercontent.com",
+	GCPOAuthClientSecret:         "V9BfPOvdiYuw12hDx5Y5nR0a",
+	GCPOAuthAuthURL:              "https://accounts.google.com/o/oauth2/auth",
+	GCPOAuthTokenURL:             "https://accounts.google.com/o/oauth2/token",
+}
+
 // ConfigFromFile reads a Config object from the config file indicated by
-// ConfigFile.
+// the config filename flag.
 func ConfigFromFile() (*Config, error) {
 	if !flag.Parsed() {
 		flag.Parse()

@@ -18,24 +18,17 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
 )
 
+// All flags are string type. This makes parsing "not set" easier, and
+// allows default values to be separated.
 var (
-	defaultPrinterAttributes = []string{
-		"printer-name",
-		"printer-info",
-		"printer-is-accepting-jobs",
-		"printer-location",
-		"printer-make-and-model",
-		"printer-state",
-		"printer-state-reasons",
-	}
-
-	retainUserOauthTokenFlag = flag.String(
+	retainUserOAuthTokenFlag = flag.String(
 		"retain-user-oauth-token", "",
 		"Whether to retain the user's OAuth token to enable automatic sharing (true/false)")
 	shareScopeFlag = flag.String(
@@ -44,64 +37,152 @@ var (
 	proxyNameFlag = flag.String(
 		"proxy-name", "",
 		"User-chosen name of this proxy. Should be unique per Google user account")
-	gcpMaxConcurrentDownloadsFlag = flag.Uint(
-		"gcp-max-concurrent-downloads", 5,
+	gcpMaxConcurrentDownloadsFlag = flag.String(
+		"gcp-max-concurrent-downloads", "",
 		"Maximum quantity of PDFs to download concurrently")
-	cupsJobQueueSizeFlag = flag.Uint(
-		"cups-job-queue-size", 3,
+	cupsJobQueueSizeFlag = flag.String(
+		"cups-job-queue-size", "",
 		"CUPS job queue size")
-	cupsPrinterPollIntervalFlag = flag.Duration(
-		"cups-printer-poll-interval", time.Minute,
+	cupsPrinterPollIntervalFlag = flag.String(
+		"cups-printer-poll-interval", "",
 		"Interval, in seconds, between CUPS printer status polls")
-	cupsJobFullUsernameFlag = flag.Bool(
-		"cups-job-full-username", false,
+	cupsJobFullUsernameFlag = flag.String(
+		"cups-job-full-username", "",
 		"Whether to use the full username (joe@example.com) in CUPS jobs")
-	cupsIgnoreRawPrintersFlag = flag.Bool(
-		"cups-ignore-raw-printers", true,
+	cupsIgnoreRawPrintersFlag = flag.String(
+		"cups-ignore-raw-printers", "",
 		"Whether to ignore raw printers")
-	copyPrinterInfoToDisplayNameFlag = flag.Bool(
-		"copy-printer-info-to-display-name", true,
+	copyPrinterInfoToDisplayNameFlag = flag.String(
+		"copy-printer-info-to-display-name", "",
 		"Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName")
 	monitorSocketFilenameFlag = flag.String(
-		"socket-filename", "/var/run/cups-connector/monitor.sock",
+		"socket-filename", "",
 		"Filename of unix socket for connector-check to talk to connector")
 	gcpBaseURLFlag = flag.String(
-		"gcp-base-url", "https://www.google.com/cloudprint/",
+		"gcp-base-url", "",
 		"GCP API base URL")
-	gcpOAuthClientIDFlag = flag.String(
-		"gcp-oauth-client-id", "539833558011-35iq8btpgas80nrs3o7mv99hm95d4dv6.apps.googleusercontent.com",
-		"GCP OAuth client ID")
-	gcpOAuthClientSecretFlag = flag.String(
-		"gcp-oauth-client-secret", "V9BfPOvdiYuw12hDx5Y5nR0a",
-		"GCP OAuth client secret")
-	gcpOAuthAuthURLFlag = flag.String(
-		"gcp-oauth-auth-url", "https://accounts.google.com/o/oauth2/auth",
-		"GCP OAuth auth URL")
-	gcpOAuthTokenURLFlag = flag.String(
-		"gcp-oauth-token-url", "https://accounts.google.com/o/oauth2/token",
-		"GCP OAuth token URL")
 	gcpXMPPServerFlag = flag.String(
-		"gcp-xmpp-server", "talk.google.com",
+		"gcp-xmpp-server", "",
 		"GCP XMPP server FQDN")
-	gcpXMPPPortFlag = flag.Uint(
-		"gcp-xmpp-port", 443,
+	gcpXMPPPortFlag = flag.String(
+		"gcp-xmpp-port", "",
 		"GCP XMPP port number")
 	gcpXMPPPingTimeoutFlag = flag.String(
-		"gcp-xmpp-ping-timeout", "5s",
+		"gcp-xmpp-ping-timeout", "",
 		"GCP XMPP ping timeout (give up waiting for ping response after this)")
 	gcpXMPPPingIntervalDefaultFlag = flag.String(
-		"gcp-xmpp-ping-interval-default", "2m",
+		"gcp-xmpp-ping-interval-default", "",
 		"GCP XMPP ping interval default (ping every this often)")
+	gcpOAuthClientIDFlag = flag.String(
+		"gcp-oauth-client-id", "",
+		"GCP OAuth client ID")
+	gcpOAuthClientSecretFlag = flag.String(
+		"gcp-oauth-client-secret", "",
+		"GCP OAuth client secret")
+	gcpOAuthAuthURLFlag = flag.String(
+		"gcp-oauth-auth-url", "",
+		"GCP OAuth auth URL")
+	gcpOAuthTokenURLFlag = flag.String(
+		"gcp-oauth-token-url", "",
+		"GCP OAuth token URL")
 )
 
+// flagToUint returns the value of a flag, or its default, as a uint.
+// Panics if string is not properly formatted as a uint value.
+func flagToUint(flag *string, defaultValue uint) uint {
+	if flag == nil {
+		panic("Flag pointer is nil")
+	}
+
+	if *flag == "" {
+		return defaultValue
+	}
+
+	value, err := strconv.ParseUint(*flag, 10, 0)
+	if err != nil {
+		panic(err)
+	}
+
+	return uint(value)
+}
+
+// flagToUint16 returns the value of a flag, or its default, as a uint16.
+// Panics if string is not properly formatted as a uint16 value.
+func flagToUint16(flag *string, defaultValue uint16) uint16 {
+	if flag == nil {
+		panic("Flag pointer is nil")
+	}
+
+	if *flag == "" {
+		return defaultValue
+	}
+
+	value, err := strconv.ParseUint(*flag, 10, 16)
+	if err != nil {
+		panic(err)
+	}
+
+	return uint16(value)
+}
+
+// flagToBool returns the value of a flag, or it's default, as a bool.
+// Panics if string is not properly formatted as a bool value.
+func flagToBool(flag *string, defaultValue bool) bool {
+	if flag == nil {
+		panic("Flag pointer is nil")
+	}
+
+	if *flag == "" {
+		return defaultValue
+	}
+
+	value, err := strconv.ParseBool(*flag)
+	if err != nil {
+		panic(err)
+	}
+
+	return value
+}
+
+// flagToString returns the value of a flag, or it's default, as a string.
+func flagToString(flag *string, defaultValue string) string {
+	if flag == nil {
+		panic("Flag pointer is nil")
+	}
+
+	if *flag == "" {
+		return defaultValue
+	}
+
+	return *flag
+}
+
+// flagToString returns the value of a flag, or it's default, as a string.
+// Panics if string is not properly formatted as a time.Duration string.
+func flagToDurationString(flag *string, defaultValue string) string {
+	if flag == nil {
+		panic("Flag pointer is nil")
+	}
+
+	if *flag == "" {
+		return defaultValue
+	}
+
+	if _, err := time.ParseDuration(*flag); err != nil {
+		panic(err)
+	}
+
+	return *flag
+}
+
 // getUserClient steps the user through the process of acquiring an OAuth refresh token.
-func getUserClient(retainUserOauthToken bool) (*http.Client, string) {
+func getUserClient(retainUserOAuthToken bool) (*http.Client, string) {
 	config := &oauth2.Config{
-		ClientID:     *gcpOAuthClientIDFlag,
-		ClientSecret: *gcpOAuthClientSecretFlag,
+		ClientID:     flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID),
+		ClientSecret: flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  *gcpOAuthAuthURLFlag,
-			TokenURL: *gcpOAuthTokenURLFlag,
+			AuthURL:  flagToString(gcpOAuthAuthURLFlag, lib.DefaultConfig.GCPOAuthAuthURL),
+			TokenURL: flagToString(gcpOAuthTokenURLFlag, lib.DefaultConfig.GCPOAuthTokenURL),
 		},
 		RedirectURL: gcp.RedirectURL,
 		Scopes:      []string{gcp.ScopeCloudPrint},
@@ -112,7 +193,7 @@ func getUserClient(retainUserOauthToken bool) (*http.Client, string) {
 	fmt.Println(config.AuthCodeURL("state", oauth2.AccessTypeOffline))
 	fmt.Println("")
 
-	authCode := scanNonEmptyString("After authenticating, enter the provided code here: ")
+	authCode := scanNonEmptyString("After authenticating, enter the provided code here:")
 	token, err := config.Exchange(oauth2.NoContext, authCode)
 	if err != nil {
 		log.Fatal(err)
@@ -122,7 +203,7 @@ func getUserClient(retainUserOauthToken bool) (*http.Client, string) {
 	fmt.Println("Acquired OAuth credentials for user account")
 
 	var userRefreshToken string
-	if retainUserOauthToken {
+	if retainUserOAuthToken {
 		userRefreshToken = token.RefreshToken
 	}
 
@@ -132,10 +213,10 @@ func getUserClient(retainUserOauthToken bool) (*http.Client, string) {
 // initRobotAccount creates a GCP robot account for this connector.
 func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
 	params := url.Values{}
-	params.Set("oauth_client_id", *gcpOAuthClientIDFlag)
+	params.Set("oauth_client_id", flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID))
 	params.Set("proxy", proxy)
 
-	url := fmt.Sprintf("%s%s?%s", *gcpBaseURLFlag, "createrobot", params.Encode())
+	url := fmt.Sprintf("%s%s?%s", flagToString(gcpBaseURLFlag, lib.DefaultConfig.GCPBaseURL), "createrobot", params.Encode())
 	response, err := userClient.Get(url)
 	if err != nil {
 		log.Fatal(err)
@@ -165,11 +246,11 @@ func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
 
 func verifyRobotAccount(authCode string) string {
 	config := &oauth2.Config{
-		ClientID:     *gcpOAuthClientIDFlag,
-		ClientSecret: *gcpOAuthClientSecretFlag,
+		ClientID:     flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID),
+		ClientSecret: flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  *gcpOAuthAuthURLFlag,
-			TokenURL: *gcpOAuthTokenURLFlag,
+			AuthURL:  flagToString(gcpOAuthAuthURLFlag, lib.DefaultConfig.GCPOAuthAuthURL),
+			TokenURL: flagToString(gcpOAuthTokenURLFlag, lib.DefaultConfig.GCPOAuthTokenURL),
 		},
 		RedirectURL: gcp.RedirectURL,
 		Scopes:      []string{gcp.ScopeCloudPrint, gcp.ScopeGoogleTalk},
@@ -197,23 +278,23 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		userRefreshToken,
 		shareScope,
 		proxy,
-		*gcpMaxConcurrentDownloadsFlag,
-		*cupsJobQueueSizeFlag,
-		cupsPrinterPollIntervalFlag.String(),
-		defaultPrinterAttributes,
-		*cupsJobFullUsernameFlag,
-		*cupsIgnoreRawPrintersFlag,
-		*copyPrinterInfoToDisplayNameFlag,
-		*monitorSocketFilenameFlag,
-		*gcpBaseURLFlag,
-		*gcpXMPPServerFlag,
-		uint16(*gcpXMPPPortFlag),
-		*gcpXMPPPingTimeoutFlag,
-		*gcpXMPPPingIntervalDefaultFlag,
-		*gcpOAuthClientIDFlag,
-		*gcpOAuthClientSecretFlag,
-		*gcpOAuthAuthURLFlag,
-		*gcpOAuthTokenURLFlag,
+		flagToUint(gcpMaxConcurrentDownloadsFlag, lib.DefaultConfig.GCPMaxConcurrentDownloads),
+		flagToUint(cupsJobQueueSizeFlag, lib.DefaultConfig.CUPSJobQueueSize),
+		flagToDurationString(cupsPrinterPollIntervalFlag, lib.DefaultConfig.CUPSPrinterPollInterval),
+		lib.DefaultConfig.CUPSPrinterAttributes,
+		flagToBool(cupsJobFullUsernameFlag, lib.DefaultConfig.CUPSJobFullUsername),
+		flagToBool(cupsIgnoreRawPrintersFlag, lib.DefaultConfig.CUPSIgnoreRawPrinters),
+		flagToBool(copyPrinterInfoToDisplayNameFlag, lib.DefaultConfig.CopyPrinterInfoToDisplayName),
+		flagToString(monitorSocketFilenameFlag, lib.DefaultConfig.MonitorSocketFilename),
+		flagToString(gcpBaseURLFlag, lib.DefaultConfig.GCPBaseURL),
+		flagToString(gcpXMPPServerFlag, lib.DefaultConfig.XMPPServer),
+		flagToUint16(gcpXMPPPortFlag, lib.DefaultConfig.XMPPPort),
+		flagToDurationString(gcpXMPPPingTimeoutFlag, lib.DefaultConfig.XMPPPingTimeout),
+		flagToDurationString(gcpXMPPPingIntervalDefaultFlag, lib.DefaultConfig.XMPPPingIntervalDefault),
+		flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID),
+		flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
+		flagToString(gcpOAuthAuthURLFlag, lib.DefaultConfig.GCPOAuthAuthURL),
+		flagToString(gcpOAuthTokenURLFlag, lib.DefaultConfig.GCPOAuthTokenURL),
 	}
 
 	if err := config.ToFile(); err != nil {
@@ -224,7 +305,7 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 func scanNonEmptyString(prompt string) string {
 	for {
 		var answer string
-		fmt.Printf(prompt)
+		fmt.Println(prompt)
 		if length, err := fmt.Scan(&answer); err != nil {
 			log.Fatal(err)
 		} else if length > 0 {
@@ -237,7 +318,7 @@ func scanNonEmptyString(prompt string) string {
 func scanYesOrNo(question string) bool {
 	for {
 		var answer string
-		fmt.Printf(question)
+		fmt.Println(question)
 		if _, err := fmt.Scan(&answer); err != nil {
 			log.Fatal(err)
 		} else if parsed, value := stringToBool(answer); parsed {
@@ -268,18 +349,18 @@ func main() {
 
 	var parsed bool
 
-	var retainUserOauthToken bool
-	if parsed, retainUserOauthToken = stringToBool(*retainUserOauthTokenFlag); !parsed {
-		retainUserOauthToken = scanYesOrNo(
-			"Would you like to retain the user OAuth token to enable automatic sharing? ")
+	var retainUserOAuthToken bool
+	if parsed, retainUserOAuthToken = stringToBool(*retainUserOAuthTokenFlag); !parsed {
+		retainUserOAuthToken = scanYesOrNo(
+			"Would you like to retain the user OAuth token to enable automatic sharing?")
 	}
 
 	var shareScope string
-	if retainUserOauthToken {
+	if retainUserOAuthToken {
 		if len(*shareScopeFlag) > 0 {
 			shareScope = *shareScopeFlag
 		} else {
-			shareScope = scanNonEmptyString("User or group email address, or domain name, to share with: ")
+			shareScope = scanNonEmptyString("User or group email address, or domain name, to share with:")
 		}
 	} else {
 		fmt.Println(
@@ -288,10 +369,10 @@ func main() {
 
 	proxyName := *proxyNameFlag
 	if len(proxyName) < 1 {
-		proxyName = scanNonEmptyString("Proxy name for this CloudPrint-CUPS server: ")
+		proxyName = scanNonEmptyString("Proxy name for this CloudPrint-CUPS server:")
 	}
 
-	userClient, userRefreshToken := getUserClient(retainUserOauthToken)
+	userClient, userRefreshToken := getUserClient(retainUserOAuthToken)
 	fmt.Println("")
 
 	xmppJID, robotRefreshToken := createRobotAccount(userClient, proxyName)
@@ -301,9 +382,9 @@ func main() {
 
 	createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName)
 	fmt.Printf("The config file %s is ready to rock.\n", *lib.ConfigFilename)
-	fmt.Println("Keep it somewhere safe, as it contains an OAuth token.")
+	fmt.Println("Keep it somewhere safe, as it contains an OAuth refresh token.")
 
-	socketDirectory := filepath.Dir(*monitorSocketFilenameFlag)
+	socketDirectory := filepath.Dir(flagToString(monitorSocketFilenameFlag, lib.DefaultConfig.MonitorSocketFilename))
 	if _, err := os.Stat(socketDirectory); os.IsNotExist(err) {
 		fmt.Println("")
 		fmt.Printf("When the connector runs, be sure the socket directory %s exists.\n", socketDirectory)
