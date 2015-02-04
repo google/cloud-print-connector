@@ -13,6 +13,7 @@ import (
 	"cups-connector/lib"
 	"cups-connector/manager"
 	"cups-connector/monitor"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -22,6 +23,7 @@ import (
 )
 
 func main() {
+	flag.Parse()
 	defer glog.Flush()
 
 	glog.Errorf("CUPS Connector version %s\n", lib.GetBuildDate())
