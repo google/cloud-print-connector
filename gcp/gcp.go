@@ -10,6 +10,7 @@ https://developers.google.com/open-source/licenses/bsd
 package gcp
 
 import (
+	"bytes"
 	"cups-connector/lib"
 	"encoding/json"
 	"errors"
@@ -561,8 +562,11 @@ func (gcp *GoogleCloudPrint) Translate(ppd string) (string, error) {
 		return "", err
 	}
 
+	d := json.NewDecoder(bytes.NewReader(responseBody))
+	d.UseNumber() // Force large numbers to be formatted not in scientific notation.
+
 	var cddInterface interface{}
-	if err = json.Unmarshal(responseBody, &cddInterface); err != nil {
+	if err = d.Decode(&cddInterface); err != nil {
 		return "", fmt.Errorf("Failed to unmarshal translated CDD: %s", err)
 	}
 
