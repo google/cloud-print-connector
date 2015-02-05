@@ -20,6 +20,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"sync"
 	"unsafe"
 )
 
@@ -32,49 +33,34 @@ import (
 // (2) updates those PPD files as necessary
 // (3) and keeps MD5 hashes of the PPD contents, to minimize disk I/O.
 type ppdCache struct {
-	cc      *cupsCore
-	cache   map[string]*ppdCacheEntry
-	request chan ppdRequest
-	q       chan bool
-}
-
-type ppdRequest struct {
-	printerName string
-	response    chan ppdResponse
-}
-
-type ppdResponse struct {
-	filename string
-	hash     string
-	err      error
+	cc         *cupsCore
+	cache      map[string]*ppdCacheEntry
+	cacheMutex sync.RWMutex
 }
 
 func newPPDCache(cc *cupsCore) *ppdCache {
 	cache := make(map[string]*ppdCacheEntry)
-	pc := ppdCache{cc, cache, make(chan ppdRequest), make(chan bool)}
-	go pc.servePPDs()
+	pc := ppdCache{cc, cache, sync.RWMutex{}}
 	return &pc
 }
 
 func (pc *ppdCache) quit() {
-	pc.q <- true
-	<-pc.q
-	for printerName, pce := range pc.cache {
+	pc.cacheMutex.Lock()
+	defer pc.cacheMutex.Unlock()
+
+	for printername, pce := range pc.cache {
 		pce.free()
-		delete(pc.cache, printerName)
+		delete(pc.cache, printername)
 	}
 }
 
-func (pc *ppdCache) getPPD(printerName string) (string, error) {
-	ch := make(chan ppdResponse)
-	request := ppdRequest{printerName, ch}
-	pc.request <- request
-	response := <-ch
-
-	if response.err != nil {
-		return "", response.err
+func (pc *ppdCache) getPPD(printername string) (string, error) {
+	filename, _, err := pc.getPPDCacheEntry(printername)
+	if err != nil {
+		return "", err
 	}
-	ppd, err := ioutil.ReadFile(response.filename)
+
+	ppd, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return "", err
 	}
@@ -82,38 +68,43 @@ func (pc *ppdCache) getPPD(printerName string) (string, error) {
 	return string(ppd), nil
 }
 
-func (pc *ppdCache) getPPDHash(printerName string) (string, error) {
-	ch := make(chan ppdResponse)
-	request := ppdRequest{printerName, ch}
-	pc.request <- request
-	response := <-ch
-	return response.hash, response.err
+func (pc *ppdCache) getPPDHash(printername string) (string, error) {
+	_, hash, err := pc.getPPDCacheEntry(printername)
+	return hash, err
 }
 
-func (pc *ppdCache) servePPDs() {
-	for {
-		select {
-		case r := <-pc.request:
-			var err error
-			pce, exists := pc.cache[r.printerName]
-			if !exists {
-				pce, err = createPPDCacheEntry(r.printerName)
-				if err != nil {
-					r.response <- ppdResponse{"", "", err}
-					continue
-				}
-				pc.cache[r.printerName] = pce
-			}
-			if err = pce.refreshPPDCacheEntry(pc.cc); err != nil {
-				r.response <- ppdResponse{"", "", err}
-				continue
-			}
-			r.response <- ppdResponse{pce.filename, pce.hash, nil}
+func (pc *ppdCache) getPPDCacheEntry(printername string) (string, string, error) {
+	pc.cacheMutex.RLock()
+	pce, exists := pc.cache[printername]
+	pc.cacheMutex.RUnlock()
 
-		case <-pc.q:
-			pc.q <- true
-			return
+	if !exists {
+		pce, err := createPPDCacheEntry(printername)
+		if err != nil {
+			return "", "", err
 		}
+		if err = pce.refresh(pc.cc); err != nil {
+			return "", "", err
+		}
+
+		pc.cacheMutex.Lock()
+		defer pc.cacheMutex.Unlock()
+
+		if firstPCE, exists := pc.cache[printername]; exists {
+			// Two entries were created at the same time. Remove the older one.
+			delete(pc.cache, printername)
+			go firstPCE.free()
+		}
+		pc.cache[printername] = pce
+		filename, hash := pce.getFilenameAndHash()
+		return filename, hash, nil
+
+	} else {
+		if err := pce.refresh(pc.cc); err != nil {
+			return "", "", err
+		}
+		filename, hash := pce.getFilenameAndHash()
+		return filename, hash, nil
 	}
 }
 
@@ -123,6 +114,8 @@ type ppdCacheEntry struct {
 	modtime     C.time_t
 	filename    string
 	hash        string
+	// mutex protects fields modtime, filename, and hash.
+	mutex sync.Mutex
 }
 
 // createPPDCacheEntry creates an instance of ppdCache with the name field set,
@@ -136,22 +129,34 @@ func createPPDCacheEntry(name string) (*ppdCacheEntry, error) {
 	defer file.Close()
 	filename := file.Name()
 
-	pce := &ppdCacheEntry{C.CString(name), C.time_t(0), filename, ""}
+	pce := &ppdCacheEntry{C.CString(name), C.time_t(0), filename, "", sync.Mutex{}}
 
 	return pce, nil
+}
+
+func (pce *ppdCacheEntry) getFilenameAndHash() (string, string) {
+	pce.mutex.Lock()
+	defer pce.mutex.Unlock()
+	return pce.filename, pce.hash
 }
 
 // free frees the memory that stores the name and buffer fields, and deletes
 // the file named by the buffer field. If the file doesn't exist, no error is
 // returned.
 func (pce *ppdCacheEntry) free() {
+	pce.mutex.Lock()
+	defer pce.mutex.Unlock()
+
 	C.free(unsafe.Pointer(pce.printername))
 	os.Remove(pce.filename)
 }
 
-// refreshPPDCacheEntry calls cupsGetPPD3() to refresh this PPD information, in
+// refresh calls cupsGetPPD3() to refresh this PPD information, in
 // case CUPS has a new PPD for the printer.
-func (pce *ppdCacheEntry) refreshPPDCacheEntry(cc *cupsCore) error {
+func (pce *ppdCacheEntry) refresh(cc *cupsCore) error {
+	pce.mutex.Lock()
+	defer pce.mutex.Unlock()
+
 	ppdFilename, err := cc.getPPD(pce.printername, &pce.modtime)
 	if err != nil {
 		return err

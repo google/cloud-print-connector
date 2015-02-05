@@ -51,6 +51,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -160,19 +161,33 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 			continue
 		}
 
-		if !lib.PrinterIsRaw(p) {
-			if ppdHash, err := c.pc.getPPDHash(p.Name); err == nil {
-				p.CapsHash = ppdHash
-			} else {
-				glog.Error(err)
-				continue
-			}
-		}
-
 		printers = append(printers, p)
 	}
 
+	c.addPPDHashToPrinters(printers)
+
 	return printers, nil
+}
+
+// addPPDHashToPrinters fetches PPD hashes for all printers concurrently.
+func (c *CUPS) addPPDHashToPrinters(printers []lib.Printer) {
+	var wg sync.WaitGroup
+
+	for i := range printers {
+		if !lib.PrinterIsRaw(printers[i]) {
+			wg.Add(1)
+			go func(p *lib.Printer) {
+				if ppdHash, err := c.pc.getPPDHash(p.Name); err == nil {
+					p.CapsHash = ppdHash
+				} else {
+					glog.Error(err)
+				}
+				wg.Done()
+			}(&printers[i])
+		}
+	}
+
+	wg.Wait()
 }
 
 func getSystemTags() (map[string]string, error) {
@@ -206,11 +221,6 @@ func getSystemTags() (map[string]string, error) {
 // GetPPD gets the PPD for the specified printer.
 func (c *CUPS) GetPPD(printername string) (string, error) {
 	return c.pc.getPPD(printername)
-}
-
-// GetPPDHash gets the PPD hash (aka capsHash) for the specified printer.
-func (c *CUPS) GetPPDHash(printername string) (string, error) {
-	return c.pc.getPPDHash(printername)
 }
 
 // GetJobStatus gets the current status of the job indicated by jobID.
