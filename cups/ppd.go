@@ -163,6 +163,7 @@ func (pce *ppdCacheEntry) refreshPPDCacheEntry(cc *cupsCore) error {
 	}
 
 	// (else) Cache miss.
+	defer C.free(unsafe.Pointer(ppdFilename))
 	defer os.Remove(C.GoString(ppdFilename))
 
 	// Read from CUPS temporary file.

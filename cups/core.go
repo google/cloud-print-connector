@@ -24,6 +24,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"os"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -133,7 +134,8 @@ func (cc *cupsCore) getPrinters(attributes **C.char, attrSize C.int) (*C.ipp_t, 
 // Note that modtime is a pointer whose value is changed by this
 // function.
 //
-// The caller is responsible to C.free the returned *C.char filename.
+// The caller is responsible to C.free the returned *C.char filename
+// if the returned filename is not nil.
 func (cc *cupsCore) getPPD(printername *C.char, modtime *C.time_t) (*C.char, error) {
 	bufsize := C.size_t(syscall.PathMax)
 	buffer := (*C.char)(C.malloc(bufsize))
@@ -158,6 +160,10 @@ func (cc *cupsCore) getPPD(printername *C.char, modtime *C.time_t) (*C.char, err
 	switch httpStatus {
 	case C.HTTP_STATUS_NOT_MODIFIED:
 		// Cache hit.
+		if len(C.GoString(buffer)) > 0 {
+			os.Remove(C.GoString(buffer))
+		}
+		C.free(unsafe.Pointer(buffer))
 		return nil, nil
 
 	case C.HTTP_STATUS_OK:
@@ -165,6 +171,10 @@ func (cc *cupsCore) getPPD(printername *C.char, modtime *C.time_t) (*C.char, err
 		return buffer, nil
 
 	default:
+		if len(C.GoString(buffer)) > 0 {
+			os.Remove(C.GoString(buffer))
+		}
+		C.free(unsafe.Pointer(buffer))
 		cupsLastError := C.cupsLastError()
 		if cupsLastError != C.IPP_STATUS_OK {
 			return nil, fmt.Errorf("Failed to call cupsGetPPD3(): %d %s",
