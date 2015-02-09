@@ -27,7 +27,7 @@ type PrinterManager struct {
 	gcp  *gcp.GoogleCloudPrint
 
 	// Do not mutate this map, only replace it with a new one. See syncPrinters().
-	gcpPrintersByGCPID map[string]lib.Printer
+	gcpPrintersByGCPID *lib.ConcurrentPrinterMap
 	gcpJobPollQuit     chan bool
 	printerPollQuit    chan bool
 	downloadSemaphore  *lib.Semaphore
@@ -56,15 +56,19 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 		return nil, err
 	}
 	// Organize the GCP printers into a map.
-	gcpPrintersByGCPID := make(map[string]lib.Printer, len(gcpPrinters))
 	for i := range gcpPrinters {
 		gcpPrinters[i].CUPSJobSemaphore = lib.NewSemaphore(cupsQueueSize)
-		gcpPrintersByGCPID[gcpPrinters[i].GCPID] = gcpPrinters[i]
 	}
+	gcpPrintersByGCPID := lib.NewConcurrentPrinterMap(gcpPrinters)
 
 	// Update any pending XMPP ping interval changes.
 	for gcpID := range xmppPingIntervalChanges {
-		p := gcpPrintersByGCPID[gcpID]
+		p, exists := gcpPrintersByGCPID.Get(gcpID)
+		if !exists {
+			// Ignore missing printers because this condition will resolve
+			// itself as the connector continues to initialize.
+			continue
+		}
 		if err = gcp.SetPrinterXMPPPingInterval(p); err != nil {
 			return nil, err
 		}
@@ -73,7 +77,7 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 
 	// Set the connector XMPP ping interval the the min of all printers.
 	var connectorXMPPPingInterval time.Duration = math.MaxInt64
-	for _, p := range gcpPrintersByGCPID {
+	for _, p := range gcpPrintersByGCPID.GetAll() {
 		if p.XMPPPingInterval < connectorXMPPPingInterval {
 			connectorXMPPPingInterval = p.XMPPPingInterval
 		}
@@ -159,14 +163,6 @@ func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 	}()
 }
 
-func printerMapToSlice(m map[string]lib.Printer) []lib.Printer {
-	s := make([]lib.Printer, 0, len(m))
-	for k := range m {
-		s = append(s, m[k])
-	}
-	return s
-}
-
 func (pm *PrinterManager) syncPrinters() error {
 	glog.Info("Synchronizing printers, stand by")
 
@@ -178,8 +174,7 @@ func (pm *PrinterManager) syncPrinters() error {
 		cupsPrinters, _ = lib.FilterRawPrinters(cupsPrinters)
 	}
 
-	diffs := lib.DiffPrinters(cupsPrinters, printerMapToSlice(pm.gcpPrintersByGCPID))
-
+	diffs := lib.DiffPrinters(cupsPrinters, pm.gcpPrintersByGCPID.GetAll())
 	if diffs == nil {
 		glog.Infof("Printers are already in sync; there are %d", len(cupsPrinters))
 		return nil
@@ -189,17 +184,15 @@ func (pm *PrinterManager) syncPrinters() error {
 	for i := range diffs {
 		go pm.applyDiff(&diffs[i], ch)
 	}
-	currentPrinters := make(map[string]lib.Printer, len(diffs))
+	currentPrinters := make([]lib.Printer, 0, len(diffs))
 	for _ = range diffs {
 		p := <-ch
 		if p.Name != "" {
-			currentPrinters[p.GCPID] = p
+			currentPrinters = append(currentPrinters, p)
 		}
 	}
 
-	// Notice that we never mutate pm.gcpPrintersByGCPID, only replace the map
-	// that it points to.
-	pm.gcpPrintersByGCPID = currentPrinters
+	pm.gcpPrintersByGCPID.Refresh(currentPrinters)
 	glog.Infof("Finished synchronizing %d printers", len(currentPrinters))
 
 	return nil
@@ -382,7 +375,7 @@ func (pm *PrinterManager) deleteInFlightJob(gcpID string) {
 // Errors are returned as a string (last return value), for reporting
 // to GCP and local logging.
 func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, map[string]string, *os.File, string) {
-	printer, exists := pm.gcpPrintersByGCPID[job.GCPPrinterID]
+	printer, exists := pm.gcpPrintersByGCPID.Get(job.GCPPrinterID)
 	if !exists {
 		return lib.Printer{}, nil, nil,
 			fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID)
@@ -530,7 +523,7 @@ func (pm *PrinterManager) followJob(job *lib.Job, cupsJobID uint32) {
 func (pm *PrinterManager) GetJobStats() (uint, uint, uint, error) {
 	var processing uint
 
-	for _, printer := range pm.gcpPrintersByGCPID {
+	for _, printer := range pm.gcpPrintersByGCPID.GetAll() {
 		processing += printer.CUPSJobSemaphore.Count()
 	}
 
