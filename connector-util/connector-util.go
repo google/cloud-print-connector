@@ -68,6 +68,11 @@ func updateConfigFile() {
 		fmt.Println("Added gcp_max_concurrent_downloads")
 		config.GCPMaxConcurrentDownloads = lib.DefaultConfig.GCPMaxConcurrentDownloads
 	}
+	if _, exists := configMap["cups_max_connections"]; !exists {
+		dirty = true
+		fmt.Println("Added cups_max_connections")
+		config.CUPSMaxConnections = lib.DefaultConfig.CUPSMaxConnections
+	}
 	if _, exists := configMap["cups_job_queue_size"]; !exists {
 		dirty = true
 		fmt.Println("Added cups_job_queue_size")

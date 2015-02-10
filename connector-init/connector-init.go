@@ -40,6 +40,9 @@ var (
 	gcpMaxConcurrentDownloadsFlag = flag.String(
 		"gcp-max-concurrent-downloads", "",
 		"Maximum quantity of PDFs to download concurrently")
+	cupsMaxConnectionsFlag = flag.String(
+		"cups-max-connections", "",
+		"Max connections to CUPS server")
 	cupsJobQueueSizeFlag = flag.String(
 		"cups-job-queue-size", "",
 		"CUPS job queue size")
@@ -279,6 +282,7 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		shareScope,
 		proxy,
 		flagToUint(gcpMaxConcurrentDownloadsFlag, lib.DefaultConfig.GCPMaxConcurrentDownloads),
+		flagToUint(cupsMaxConnectionsFlag, lib.DefaultConfig.CUPSMaxConnections),
 		flagToUint(cupsJobQueueSizeFlag, lib.DefaultConfig.CUPSJobQueueSize),
 		flagToDurationString(cupsPrinterPollIntervalFlag, lib.DefaultConfig.CUPSPrinterPollInterval),
 		lib.DefaultConfig.CUPSPrinterAttributes,

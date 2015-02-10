@@ -21,6 +21,8 @@ import (
 const monitorFormat = `cups-printers=%d
 cups-raw-printers=%d
 gcp-printers=%d
+cups-conn-qty=%d
+cups-conn-max-qty=%d
 jobs-done=%d
 jobs-error=%d
 jobs-in-progress=%d
@@ -106,6 +108,9 @@ func (m *Monitor) getStats() (string, error) {
 		rawPrinterQuantity = len(rawPrinters)
 	}
 
+	cupsConnOpen := m.cups.ConnQtyOpen()
+	cupsConnMax := m.cups.ConnQtyMax()
+
 	if gcpPrinters, _, _, err := m.gcp.List(); err != nil {
 		return "", err
 	} else {
@@ -120,6 +125,7 @@ func (m *Monitor) getStats() (string, error) {
 	stats := fmt.Sprintf(
 		monitorFormat,
 		cupsPrinterQuantity, rawPrinterQuantity, gcpPrinterQuantity,
+		cupsConnOpen, cupsConnMax,
 		jobsDone, jobsError, jobsProcessing)
 
 	return stats, nil

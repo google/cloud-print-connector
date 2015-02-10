@@ -22,6 +22,7 @@ const char
 */
 import "C"
 import (
+	"cups-connector/lib"
 	"errors"
 	"fmt"
 	"os"
@@ -38,29 +39,19 @@ const (
 	jobURIFormat = "/jobs/%d"
 )
 
-// cupsCore protects the CUPS C.http_t connection with a mutex. Although
-// the CUPS API claims that it is thread-safe, this library panics under
-// very little pressure without the mutex.
+// cupsCore handles CUPS API interaction and connection management.
 type cupsCore struct {
 	host       *C.char
 	port       C.int
 	encryption C.http_encryption_t
+	// connectionSemaphore limits the quantity of open CUPS connections.
+	connectionSemaphore *lib.Semaphore
 }
 
-func newCUPSCore() (*cupsCore, error) {
+func newCUPSCore(maxConnections uint) (*cupsCore, error) {
 	host := C.cupsServer()
 	port := C.ippPort()
 	encryption := C.cupsEncryption()
-
-	cc := &cupsCore{host, port, encryption}
-
-	// This connection isn't used, just checks that a connection is possible
-	// before returning from the constructor.
-	http, err := cc.connect()
-	if err != nil {
-		return nil, err
-	}
-	C.httpClose(http)
 
 	var e string
 	switch encryption {
@@ -77,6 +68,16 @@ func newCUPSCore() (*cupsCore, error) {
 		e = "encrypting REQUIRED"
 	}
 
+	cc := &cupsCore{host, port, encryption, lib.NewSemaphore(maxConnections)}
+
+	// This connection isn't used, just checks that a connection is possible
+	// before returning from the constructor.
+	http, err := cc.connect()
+	if err != nil {
+		return nil, err
+	}
+	cc.disconnect(http)
+
 	glog.Infof("connected to CUPS server %s:%d %s\n", C.GoString(host), int(port), e)
 
 	return cc, nil
@@ -86,16 +87,11 @@ func newCUPSCore() (*cupsCore, error) {
 // Returns the CUPS job ID, which is 0 (and meaningless) when err
 // is not nil.
 func (cc *cupsCore) printFile(user, printername, filename, title *C.char, numOptions C.int, options *C.cups_option_t) (C.int, error) {
-	// Lock the OS thread so that thread-local storage is available to
-	// cupsLastError() and cupsLastErrorString().
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	http, err := cc.connect()
 	if err != nil {
 		return 0, err
 	}
-	defer C.httpClose(http)
+	defer cc.disconnect(http)
 
 	C.cupsSetUser(user)
 	jobID := C.cupsPrintFile2(http, printername, filename, title, numOptions, options)
@@ -144,16 +140,11 @@ func (cc *cupsCore) getPPD(printername *C.char, modtime *C.time_t) (*C.char, err
 	}
 	C.memset(unsafe.Pointer(buffer), 0, bufsize)
 
-	// Lock the OS thread so that thread-local storage is available to
-	// cupsLastError() and cupsLastErrorString().
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	http, err := cc.connect()
 	if err != nil {
 		return nil, err
 	}
-	defer C.httpClose(http)
+	defer cc.disconnect(http)
 
 	httpStatus := C.cupsGetPPD3(http, printername, modtime, buffer, bufsize)
 
@@ -241,16 +232,11 @@ func (cc *cupsCore) doRequestWithRetry(request *C.ipp_t, acceptableStatusCodes [
 
 // doRequest calls cupsDoRequest().
 func (cc *cupsCore) doRequest(request *C.ipp_t, acceptableStatusCodes []C.ipp_status_t) (*C.ipp_t, error) {
-	// Lock the OS thread so that thread-local storage is available to
-	// cupsLastError() and cupsLastErrorString().
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	http, err := cc.connect()
 	if err != nil {
 		return nil, err
 	}
-	defer C.httpClose(http)
+	defer cc.disconnect(http)
 
 	response := C.cupsDoRequest(http, request, C.POST_RESOURCE)
 	if response == nil {
@@ -270,14 +256,43 @@ func (cc *cupsCore) doRequest(request *C.ipp_t, acceptableStatusCodes []C.ipp_st
 // connection to the CUPS server specified by environment variables,
 // client.conf, etc.
 //
+// connect also acquires the connection semaphore and locks the OS
+// thread to allow the CUPS API to use thread-local storage cleanly.
+//
 // The caller is responsible to close the connection when finished
-// using C.httpClose.
+// using cupsCore.disconnect.
 func (cc *cupsCore) connect() (*C.http_t, error) {
+	cc.connectionSemaphore.Acquire()
+
+	// Lock the OS thread so that thread-local storage is available to
+	// cupsLastError() and cupsLastErrorString().
+	runtime.LockOSThread()
+
 	http := C.httpConnectEncrypt(cc.host, cc.port, cc.encryption)
 	if http == nil {
+		defer cc.disconnect(http)
 		return nil, fmt.Errorf("Failed to connect to CUPS server %s:%d because %d %s",
 			C.GoString(cc.host), int(cc.port), int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 	}
 
 	return http, nil
+}
+
+// disconnect calls C.httpClose to close an open CUPS connection, then
+// unlocks the OS thread and the connection semaphore.
+//
+// The http argument may be nil; the OS thread and semaphore are still
+// treated the same as described above.
+func (cc *cupsCore) disconnect(http *C.http_t) {
+	C.httpClose(http)
+	runtime.UnlockOSThread()
+	cc.connectionSemaphore.Release()
+}
+
+func (cc *cupsCore) connQtyOpen() uint {
+	return cc.connectionSemaphore.Count()
+}
+
+func (cc *cupsCore) connQtyMax() uint {
+	return cc.connectionSemaphore.Size()
 }

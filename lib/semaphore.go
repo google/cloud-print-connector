@@ -27,3 +27,7 @@ func (s *Semaphore) Release() {
 func (s *Semaphore) Count() uint {
 	return uint(len(s.ch))
 }
+
+func (s *Semaphore) Size() uint {
+	return uint(cap(s.ch))
+}

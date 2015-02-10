@@ -94,12 +94,12 @@ type CUPS struct {
 	systemTags        map[string]string
 }
 
-func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) {
+func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections uint) (*CUPS, error) {
 	if err := checkPrinterAttributes(printerAttributes); err != nil {
 		return nil, err
 	}
 
-	cc, err := newCUPSCore()
+	cc, err := newCUPSCore(maxConnections)
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +117,16 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string) (*CUPS, error) 
 
 func (c *CUPS) Quit() {
 	c.pc.quit()
+}
+
+// ConnQtyOpen gets the current quantity of open CUPS connections.
+func (c *CUPS) ConnQtyOpen() uint {
+	return c.cc.connQtyOpen()
+}
+
+// ConnQtyOpen gets the maximum quantity of open CUPS connections.
+func (c *CUPS) ConnQtyMax() uint {
+	return c.cc.connQtyMax()
 }
 
 // GetPrinters gets all CUPS printers found on the CUPS server.

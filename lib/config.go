@@ -41,6 +41,9 @@ type Config struct {
 	// Maximum quantity of PDFs to download concurrently.
 	GCPMaxConcurrentDownloads uint `json:"gcp_max_concurrent_downloads"`
 
+	// Maximum quantity of open CUPS connections.
+	CUPSMaxConnections uint `json:"cups_max_connections"`
+
 	// CUPS job queue size.
 	CUPSJobQueueSize uint `json:"cups_job_queue_size"`
 
@@ -97,6 +100,7 @@ type Config struct {
 // connector instance.
 var DefaultConfig = Config{
 	GCPMaxConcurrentDownloads: 5,
+	CUPSMaxConnections:        5,
 	CUPSJobQueueSize:          3,
 	CUPSPrinterPollInterval:   "1m",
 	CUPSPrinterAttributes: []string{
