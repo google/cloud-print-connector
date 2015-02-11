@@ -28,6 +28,7 @@ import (
 	"os"
 	"runtime"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/golang/glog"
@@ -46,6 +47,8 @@ type cupsCore struct {
 	encryption C.http_encryption_t
 	// connectionSemaphore limits the quantity of open CUPS connections.
 	connectionSemaphore *lib.Semaphore
+	// connectionPool allows a connection to be reused instead of closed.
+	connectionPool chan *C.http_t
 }
 
 func newCUPSCore(maxConnections uint) (*cupsCore, error) {
@@ -68,7 +71,10 @@ func newCUPSCore(maxConnections uint) (*cupsCore, error) {
 		e = "encrypting REQUIRED"
 	}
 
-	cc := &cupsCore{host, port, encryption, lib.NewSemaphore(maxConnections)}
+	cs := lib.NewSemaphore(maxConnections)
+	cp := make(chan *C.http_t)
+
+	cc := &cupsCore{host, port, encryption, cs, cp}
 
 	// This connection isn't used, just checks that a connection is possible
 	// before returning from the constructor.
@@ -268,11 +274,20 @@ func (cc *cupsCore) connect() (*C.http_t, error) {
 	// cupsLastError() and cupsLastErrorString().
 	runtime.LockOSThread()
 
-	http := C.httpConnectEncrypt(cc.host, cc.port, cc.encryption)
-	if http == nil {
-		defer cc.disconnect(http)
-		return nil, fmt.Errorf("Failed to connect to CUPS server %s:%d because %d %s",
-			C.GoString(cc.host), int(cc.port), int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
+	var http *C.http_t
+
+	select {
+	case h := <-cc.connectionPool:
+		// Reuse another connection.
+		http = h
+	default:
+		// No connection available for reuse; create a new one.
+		http = C.httpConnectEncrypt(cc.host, cc.port, cc.encryption)
+		if http == nil {
+			defer cc.disconnect(http)
+			return nil, fmt.Errorf("Failed to connect to CUPS server %s:%d because %d %s",
+				C.GoString(cc.host), int(cc.port), int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
+		}
 	}
 
 	return http, nil
@@ -284,7 +299,15 @@ func (cc *cupsCore) connect() (*C.http_t, error) {
 // The http argument may be nil; the OS thread and semaphore are still
 // treated the same as described above.
 func (cc *cupsCore) disconnect(http *C.http_t) {
-	C.httpClose(http)
+	go func() {
+		select {
+		case cc.connectionPool <- http:
+			// Hand this connection to the next guy who needs it.
+		case <-time.After(time.Second):
+			// Don't wait very long; stale connections are no fun.
+			C.httpClose(http)
+		}
+	}()
 	runtime.UnlockOSThread()
 	cc.connectionSemaphore.Release()
 }
