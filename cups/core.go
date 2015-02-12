@@ -244,6 +244,10 @@ func (cc *cupsCore) doRequest(request *C.ipp_t, acceptableStatusCodes []C.ipp_st
 	}
 	defer cc.disconnect(http)
 
+	if C.ippValidateAttributes(request) != 1 {
+		return nil, fmt.Errorf("Bad IPP request: %s", C.GoString(C.cupsLastErrorString()))
+	}
+
 	response := C.cupsDoRequest(http, request, C.POST_RESOURCE)
 	if response == nil {
 		return nil, fmt.Errorf("cupsDoRequest failed: %d %s", int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
