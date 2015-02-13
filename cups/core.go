@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -49,6 +50,7 @@ type cupsCore struct {
 	connectionSemaphore *lib.Semaphore
 	// connectionPool allows a connection to be reused instead of closed.
 	connectionPool chan *C.http_t
+	hostIsLocal    bool
 }
 
 func newCUPSCore(maxConnections uint) (*cupsCore, error) {
@@ -71,10 +73,15 @@ func newCUPSCore(maxConnections uint) (*cupsCore, error) {
 		e = "encrypting REQUIRED"
 	}
 
+	var hostIsLocal bool
+	if h := C.GoString(host); strings.HasPrefix(h, "/") || h == "localhost" {
+		hostIsLocal = true
+	}
+
 	cs := lib.NewSemaphore(maxConnections)
 	cp := make(chan *C.http_t)
 
-	cc := &cupsCore{host, port, encryption, cs, cp}
+	cc := &cupsCore{host, port, encryption, cs, cp, hostIsLocal}
 
 	// This connection isn't used, just checks that a connection is possible
 	// before returning from the constructor.
@@ -146,11 +153,24 @@ func (cc *cupsCore) getPPD(printername *C.char, modtime *C.time_t) (*C.char, err
 	}
 	C.memset(unsafe.Pointer(buffer), 0, bufsize)
 
-	http, err := cc.connect()
-	if err != nil {
-		return nil, err
+	var http *C.http_t
+	if !cc.hostIsLocal {
+		// Don't need a connection or corresponding semaphore if the PPD
+		// is on the local filesystem.
+		// Still need OS thread lock; see else.
+		var err error
+		http, err = cc.connect()
+		if err != nil {
+			return nil, err
+		}
+		defer cc.disconnect(http)
+
+	} else {
+		// Lock the OS thread so that thread-local storage is available to
+		// cupsLastError() and cupsLastErrorString().
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
 	}
-	defer cc.disconnect(http)
 
 	httpStatus := C.cupsGetPPD3(http, printername, modtime, buffer, bufsize)
 
