@@ -9,37 +9,43 @@ package main
 
 import (
 	"cups-connector/lib"
+	"flag"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"time"
 )
 
+var timeoutFlag = flag.Duration(
+	"timeout", time.Second*10,
+	"wait for a response for this long")
+
 func main() {
+	flag.Parse()
+	fmt.Printf("CUPS Connector version %s\n", lib.GetBuildDate())
+
 	config, err := lib.ConfigFromFile()
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
 	if _, err := os.Stat(config.MonitorSocketFilename); err != nil {
 		if !os.IsNotExist(err) {
-			log.Fatal(err)
+			panic(err)
 		}
-		log.Fatal(fmt.Errorf(
+		panic(fmt.Sprintf(
 			"No connector is running, or the monitoring socket %s is mis-configured",
 			config.MonitorSocketFilename))
 	}
 
-	timer := time.AfterFunc(time.Second*3, func() {
-		log.Fatal("timeout")
-		return
+	timer := time.AfterFunc(*timeoutFlag, func() {
+		panic(fmt.Sprintf("timeout after %s", timeoutFlag.String()))
 	})
 
 	conn, err := net.DialTimeout("unix", config.MonitorSocketFilename, time.Second)
 	if err != nil {
-		log.Fatal(fmt.Errorf(
+		panic(fmt.Sprintf(
 			"No connector is running, or it is not listening to socket %s",
 			config.MonitorSocketFilename))
 	}
@@ -47,7 +53,7 @@ func main() {
 
 	buf, err := ioutil.ReadAll(conn)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
 	timer.Stop()
