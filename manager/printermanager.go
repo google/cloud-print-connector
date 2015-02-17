@@ -249,6 +249,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		return
 
 	case lib.DeletePrinter:
+		pm.cups.RemoveCachedPPD(diff.Printer.Name)
 		if err := pm.gcp.Delete(diff.Printer.GCPID); err != nil {
 			glog.Errorf("Failed to delete a printer %s: %s", diff.Printer.GCPID, err)
 			break

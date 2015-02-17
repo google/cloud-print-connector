@@ -223,6 +223,11 @@ func (c *CUPS) GetPPD(printername string) (string, error) {
 	return c.pc.getPPD(printername)
 }
 
+// RemoveCachedPPD removes a printer's PPD from the cache.
+func (c *CUPS) RemoveCachedPPD(printername string) {
+	c.pc.removePPD(printername)
+}
+
 // GetJobStatus gets the current status of the job indicated by jobID.
 func (c *CUPS) GetJobStatus(jobID uint32) (lib.CUPSJobStatus, string, error) {
 	ja := C.newArrayOfStrings(C.int(len(jobAttributes)))

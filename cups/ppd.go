@@ -54,6 +54,17 @@ func (pc *ppdCache) quit() {
 	}
 }
 
+// removePPD removes a cache entry from the cache.
+func (pc *ppdCache) removePPD(printername string) {
+	pc.cacheMutex.Lock()
+	defer pc.cacheMutex.Unlock()
+
+	if pce, exists := pc.cache[printername]; exists {
+		pce.free()
+		delete(pc.cache, printername)
+	}
+}
+
 func (pc *ppdCache) getPPD(printername string) (string, error) {
 	filename, _, err := pc.getPPDCacheEntry(printername)
 	if err != nil {
