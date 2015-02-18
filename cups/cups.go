@@ -265,16 +265,16 @@ func (c *CUPS) Print(printername, filename, title, user string, options map[stri
 	defer C.free(unsafe.Pointer(fn))
 	t := C.CString(title)
 	defer C.free(unsafe.Pointer(t))
+
 	numOptions := C.int(0)
 	var o *C.cups_option_t = nil
-	defer C.cupsFreeOptions(numOptions, o)
-
 	for key, value := range options {
 		k, v := C.CString(key), C.CString(value)
 		numOptions = C.cupsAddOption(k, v, numOptions, &o)
 		C.free(unsafe.Pointer(k))
 		C.free(unsafe.Pointer(v))
 	}
+	defer C.cupsFreeOptions(numOptions, o)
 
 	u := C.CString(user)
 	defer C.free(unsafe.Pointer(u))
