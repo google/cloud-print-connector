@@ -29,7 +29,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 	"unsafe"
 
@@ -149,7 +148,7 @@ func (cc *cupsCore) getPrinters(attributes **C.char, attrSize C.int) (*C.ipp_t, 
 // The caller is responsible to C.free the returned *C.char filename
 // if the returned filename is not nil.
 func (cc *cupsCore) getPPD(printername *C.char, modtime *C.time_t) (*C.char, error) {
-	bufsize := C.size_t(syscall.PathMax)
+	bufsize := C.size_t(filePathMaxLength)
 	buffer := (*C.char)(C.malloc(bufsize))
 	if buffer == nil {
 		return nil, errors.New("Failed to malloc; out of memory?")

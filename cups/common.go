@@ -10,8 +10,9 @@ package cups
 /*
 #cgo LDFLAGS: -lcups
 #include <cups/cups.h>
-#include <stddef.h> // size_t
-#include <stdlib.h> // malloc, free
+#include <stddef.h>      // size_t
+#include <stdlib.h>      // malloc, free
+#include <sys/utsname.h> // uname
 */
 import "C"
 import (
@@ -23,11 +24,16 @@ import (
 	"unsafe"
 )
 
+// filePathMaxLength varies by operating system and file system.
+// This value should be large enough to be useful and small enough
+// to work on any platform.
+const filePathMaxLength = 1024
+
 // CreateTempFile calls cupsTempFd() to create a new file that (1) lives in a
 // "temporary" location (like /tmp) and (2) is readable by CUPS. The caller
 // is responsible for deleting the file.
 func CreateTempFile() (*os.File, error) {
-	length := C.size_t(syscall.PathMax)
+	length := C.size_t(filePathMaxLength)
 	filename := (*C.char)(C.malloc(length))
 	if filename == nil {
 		return nil, errors.New("Failed to malloc(); out of memory?")
@@ -48,22 +54,16 @@ func CreateTempFile() (*os.File, error) {
 }
 
 // uname returns strings similar to the Unix uname command:
-// sysname, nodename, release, version, machine, domainname
-func uname() (string, string, string, string, string, string, error) {
-	var u syscall.Utsname
-	if err := syscall.Uname(&u); err != nil {
-		return "", "", "", "", "", "", err
+// sysname, nodename, release, version, machine
+func uname() (string, string, string, string, string, error) {
+	var name C.struct_utsname
+	_, err := C.uname(&name)
+	if err != nil {
+		var errno syscall.Errno = err.(syscall.Errno)
+		return "", "", "", "", "", fmt.Errorf("Failed to call uname: %s", errno)
 	}
-	return charsToString(u.Sysname), charsToString(u.Nodename),
-		charsToString(u.Release), charsToString(u.Version), charsToString(u.Machine),
-		charsToString(u.Domainname), nil
-}
 
-func charsToString(chars [65]int8) string {
-	s := make([]byte, len(chars))
-	var lens int
-	for ; lens < len(chars) && chars[lens] != 0; lens++ {
-		s[lens] = byte(chars[lens])
-	}
-	return string(s[:lens])
+	return C.GoString(&name.sysname[0]), C.GoString(&name.nodename[0]),
+		C.GoString(&name.release[0]), C.GoString(&name.version[0]),
+		C.GoString(&name.machine[0]), nil
 }

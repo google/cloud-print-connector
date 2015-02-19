@@ -210,7 +210,7 @@ func getSystemTags() (map[string]string, error) {
 	}
 	tags["system-arch"] = runtime.GOARCH
 
-	sysname, nodename, release, version, machine, domainname, err := uname()
+	sysname, nodename, release, version, machine, err := uname()
 	if err != nil {
 		return nil, fmt.Errorf("CUPS failed to call uname while initializing: %s", err)
 	}
@@ -220,7 +220,6 @@ func getSystemTags() (map[string]string, error) {
 	tags["system-uname-release"] = release
 	tags["system-uname-version"] = version
 	tags["system-uname-machine"] = machine
-	tags["system-uname-domainname"] = domainname
 
 	tags["connector-cups-api-version"] = fmt.Sprintf("%d.%d.%d",
 		C.CUPS_VERSION_MAJOR, C.CUPS_VERSION_MINOR, C.CUPS_VERSION_PATCH)
