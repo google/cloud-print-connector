@@ -99,7 +99,7 @@ func post(hc *http.Client, url string, form url.Values) ([]byte, uint, int, erro
 
 	response, err := hc.Do(request)
 	if err != nil {
-		return nil, 0, 0, fmt.Errorf("/%s POST failure: %s", err)
+		return nil, 0, 0, fmt.Errorf("POST failure: %s", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != 200 {
