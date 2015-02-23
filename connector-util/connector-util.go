@@ -73,6 +73,11 @@ func updateConfigFile() {
 		fmt.Println("Added cups_max_connections")
 		config.CUPSMaxConnections = lib.DefaultConfig.CUPSMaxConnections
 	}
+	if _, exists := configMap["cups_connect_timeout"]; !exists {
+		dirty = true
+		fmt.Println("Added cups_connect_timeout")
+		config.CUPSConnectTimeout = lib.DefaultConfig.CUPSConnectTimeout
+	}
 	if _, exists := configMap["cups_job_queue_size"]; !exists {
 		dirty = true
 		fmt.Println("Added cups_job_queue_size")

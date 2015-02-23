@@ -94,12 +94,12 @@ type CUPS struct {
 	systemTags        map[string]string
 }
 
-func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections uint) (*CUPS, error) {
+func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections uint, connectTimeout time.Duration) (*CUPS, error) {
 	if err := checkPrinterAttributes(printerAttributes); err != nil {
 		return nil, err
 	}
 
-	cc, err := newCUPSCore(maxConnections)
+	cc, err := newCUPSCore(maxConnections, connectTimeout)
 	if err != nil {
 		return nil, err
 	}

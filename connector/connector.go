@@ -43,7 +43,13 @@ func main() {
 			config.MonitorSocketFilename)
 	}
 
-	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes, config.CUPSMaxConnections)
+	cupsConnectTimeout, err := time.ParseDuration(config.CUPSConnectTimeout)
+	if err != nil {
+		glog.Fatalf("Failed to parse cups connect timeout: %s", err)
+	}
+
+	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes,
+		config.CUPSMaxConnections, cupsConnectTimeout)
 	if err != nil {
 		glog.Fatal(err)
 	}

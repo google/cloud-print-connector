@@ -43,6 +43,9 @@ var (
 	cupsMaxConnectionsFlag = flag.String(
 		"cups-max-connections", "",
 		"Max connections to CUPS server")
+	cupsConnectTimeoutFlag = flag.String(
+		"cups-connect-timeout", "",
+		"CUPS timeout for opening a new connection")
 	cupsJobQueueSizeFlag = flag.String(
 		"cups-job-queue-size", "",
 		"CUPS job queue size")
@@ -306,6 +309,7 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		proxy,
 		flagToUint(gcpMaxConcurrentDownloadsFlag, lib.DefaultConfig.GCPMaxConcurrentDownloads),
 		flagToUint(cupsMaxConnectionsFlag, lib.DefaultConfig.CUPSMaxConnections),
+		flagToDurationString(cupsConnectTimeoutFlag, lib.DefaultConfig.CUPSConnectTimeout),
 		flagToUint(cupsJobQueueSizeFlag, lib.DefaultConfig.CUPSJobQueueSize),
 		flagToDurationString(cupsPrinterPollIntervalFlag, lib.DefaultConfig.CUPSPrinterPollInterval),
 		lib.DefaultConfig.CUPSPrinterAttributes,

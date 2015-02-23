@@ -10,9 +10,10 @@ package cups
 /*
 #cgo LDFLAGS: -lcups
 #include <cups/cups.h>
-#include <stddef.h> // size_t
-#include <stdlib.h> // free, malloc
-#include <time.h>   // time_t
+#include <stddef.h>     // size_t
+#include <stdlib.h>     // free, malloc
+#include <sys/socket.h> // AF_UNSPEC
+#include <time.h>       // time_t
 
 const char
     *POST_RESOURCE        = "/",
@@ -43,9 +44,10 @@ const (
 
 // cupsCore handles CUPS API interaction and connection management.
 type cupsCore struct {
-	host       *C.char
-	port       C.int
-	encryption C.http_encryption_t
+	host           *C.char
+	port           C.int
+	encryption     C.http_encryption_t
+	connectTimeout C.int
 	// connectionSemaphore limits the quantity of open CUPS connections.
 	connectionSemaphore *lib.Semaphore
 	// connectionPool allows a connection to be reused instead of closed.
@@ -53,10 +55,11 @@ type cupsCore struct {
 	hostIsLocal    bool
 }
 
-func newCUPSCore(maxConnections uint) (*cupsCore, error) {
+func newCUPSCore(maxConnections uint, connectTimeout time.Duration) (*cupsCore, error) {
 	host := C.cupsServer()
 	port := C.ippPort()
 	encryption := C.cupsEncryption()
+	timeout := C.int(connectTimeout / time.Millisecond)
 
 	var e string
 	switch encryption {
@@ -81,7 +84,7 @@ func newCUPSCore(maxConnections uint) (*cupsCore, error) {
 	cs := lib.NewSemaphore(maxConnections)
 	cp := make(chan *C.http_t)
 
-	cc := &cupsCore{host, port, encryption, cs, cp, hostIsLocal}
+	cc := &cupsCore{host, port, encryption, timeout, cs, cp, hostIsLocal}
 
 	// This connection isn't used, just checks that a connection is possible
 	// before returning from the constructor.
@@ -282,9 +285,8 @@ func (cc *cupsCore) doRequest(request *C.ipp_t, acceptableStatusCodes []C.ipp_st
 	return nil, fmt.Errorf("IPP status code %d", int(statusCode))
 }
 
-// connect calls C.httpConnectEncrypt to create a new, open
-// connection to the CUPS server specified by environment variables,
-// client.conf, etc.
+// connect calls C.httpConnect2 to create a new, open connection to
+// the CUPS server specified by environment variables, client.conf, etc.
 //
 // connect also acquires the connection semaphore and locks the OS
 // thread to allow the CUPS API to use thread-local storage cleanly.
@@ -306,7 +308,7 @@ func (cc *cupsCore) connect() (*C.http_t, error) {
 		http = h
 	default:
 		// No connection available for reuse; create a new one.
-		http = C.httpConnectEncrypt(cc.host, cc.port, cc.encryption)
+		http = C.httpConnect2(cc.host, cc.port, nil, C.AF_UNSPEC, cc.encryption, 1, cc.connectTimeout, nil)
 		if http == nil {
 			defer cc.disconnect(http)
 			return nil, fmt.Errorf("Failed to connect to CUPS server %s:%d because %d %s",

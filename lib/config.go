@@ -44,6 +44,9 @@ type Config struct {
 	// Maximum quantity of open CUPS connections.
 	CUPSMaxConnections uint `json:"cups_max_connections"`
 
+	// CUPS timeout for opening a new connection.
+	CUPSConnectTimeout string `json:"cups_connect_timeout"`
+
 	// CUPS job queue size.
 	CUPSJobQueueSize uint `json:"cups_job_queue_size"`
 
@@ -101,6 +104,7 @@ type Config struct {
 var DefaultConfig = Config{
 	GCPMaxConcurrentDownloads: 5,
 	CUPSMaxConnections:        5,
+	CUPSConnectTimeout:        "5s",
 	CUPSJobQueueSize:          3,
 	CUPSPrinterPollInterval:   "1m",
 	CUPSPrinterAttributes: []string{
