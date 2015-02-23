@@ -88,6 +88,10 @@ var (
 	gcpOAuthTokenURLFlag = flag.String(
 		"gcp-oauth-token-url", "",
 		"GCP OAuth token URL")
+
+	gcpUserOAuthRefreshTokenFlag = flag.String(
+		"gcp-user-refresh-token", "",
+		"GCP user refresh token, useful when managing many connectors")
 )
 
 // flagToUint returns the value of a flag, or its default, as a uint.
@@ -178,8 +182,8 @@ func flagToDurationString(flag *string, defaultValue string) string {
 	return *flag
 }
 
-// getUserClient steps the user through the process of acquiring an OAuth refresh token.
-func getUserClient(retainUserOAuthToken bool) (*http.Client, string) {
+// getUserClientFromUser steps the user through the process of acquiring an OAuth refresh token.
+func getUserClientFromUser(retainUserOAuthToken bool) (*http.Client, string) {
 	config := &oauth2.Config{
 		ClientID:     flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID),
 		ClientSecret: flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
@@ -211,6 +215,25 @@ func getUserClient(retainUserOAuthToken bool) (*http.Client, string) {
 	}
 
 	return config.Client(oauth2.NoContext, token), userRefreshToken
+}
+
+// getUserClientFromToken creates a user client with just a refresh token.
+func getUserClientFromToken(userRefreshToken string) *http.Client {
+	config := &oauth2.Config{
+		ClientID:     flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID),
+		ClientSecret: flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  flagToString(gcpOAuthAuthURLFlag, lib.DefaultConfig.GCPOAuthAuthURL),
+			TokenURL: flagToString(gcpOAuthTokenURLFlag, lib.DefaultConfig.GCPOAuthTokenURL),
+		},
+		RedirectURL: gcp.RedirectURL,
+		Scopes:      []string{gcp.ScopeCloudPrint},
+	}
+
+	token := &oauth2.Token{RefreshToken: userRefreshToken}
+	client := config.Client(oauth2.NoContext, token)
+
+	return client
 }
 
 // initRobotAccount creates a GCP robot account for this connector.
@@ -376,7 +399,13 @@ func main() {
 		proxyName = scanNonEmptyString("Proxy name for this CloudPrint-CUPS server:")
 	}
 
-	userClient, userRefreshToken := getUserClient(retainUserOAuthToken)
+	var userClient *http.Client
+	userRefreshToken := flagToString(gcpUserOAuthRefreshTokenFlag, "")
+	if userRefreshToken == "" {
+		userClient, userRefreshToken = getUserClientFromUser(retainUserOAuthToken)
+	} else {
+		userClient = getUserClientFromToken(userRefreshToken)
+	}
 	fmt.Println("")
 
 	xmppJID, robotRefreshToken := createRobotAccount(userClient, proxyName)
