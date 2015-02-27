@@ -95,6 +95,9 @@ var (
 	gcpUserOAuthRefreshTokenFlag = flag.String(
 		"gcp-user-refresh-token", "",
 		"GCP user refresh token, useful when managing many connectors")
+	gcpAPITimeoutFlag = flag.Duration(
+		"gcp-api-timeout", 5*time.Second,
+		"GCP API timeout, for debugging")
 )
 
 // flagToUint returns the value of a flag, or its default, as a uint.
@@ -217,7 +220,10 @@ func getUserClientFromUser(retainUserOAuthToken bool) (*http.Client, string) {
 		userRefreshToken = token.RefreshToken
 	}
 
-	return config.Client(oauth2.NoContext, token), userRefreshToken
+	client := config.Client(oauth2.NoContext, token)
+	client.Timeout = *gcpAPITimeoutFlag
+
+	return client, userRefreshToken
 }
 
 // getUserClientFromToken creates a user client with just a refresh token.
@@ -235,6 +241,7 @@ func getUserClientFromToken(userRefreshToken string) *http.Client {
 
 	token := &oauth2.Token{RefreshToken: userRefreshToken}
 	client := config.Client(oauth2.NoContext, token)
+	client.Timeout = *gcpAPITimeoutFlag
 
 	return client
 }
