@@ -247,10 +247,9 @@ func getUserClientFromToken(userRefreshToken string) *http.Client {
 }
 
 // initRobotAccount creates a GCP robot account for this connector.
-func initRobotAccount(userClient *http.Client, proxy string) (string, string) {
+func initRobotAccount(userClient *http.Client) (string, string) {
 	params := url.Values{}
 	params.Set("oauth_client_id", flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID))
-	params.Set("proxy", proxy)
 
 	url := fmt.Sprintf("%s%s?%s", flagToString(gcpBaseURLFlag, lib.DefaultConfig.GCPBaseURL), "createrobot", params.Encode())
 	response, err := userClient.Get(url)
@@ -300,8 +299,8 @@ func verifyRobotAccount(authCode string) string {
 	return token.RefreshToken
 }
 
-func createRobotAccount(userClient *http.Client, proxy string) (string, string) {
-	xmppJID, authCode := initRobotAccount(userClient, proxy)
+func createRobotAccount(userClient *http.Client) (string, string) {
+	xmppJID, authCode := initRobotAccount(userClient)
 	token := verifyRobotAccount(authCode)
 
 	return xmppJID, token
@@ -419,7 +418,7 @@ func main() {
 	}
 	fmt.Println("")
 
-	xmppJID, robotRefreshToken := createRobotAccount(userClient, proxyName)
+	xmppJID, robotRefreshToken := createRobotAccount(userClient)
 
 	fmt.Println("Acquired OAuth credentials for robot account")
 	fmt.Println("")
