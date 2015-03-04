@@ -289,11 +289,7 @@ func (pm *PrinterManager) listenGCPJobs(queuedJobsCount map[string]uint) {
 		for {
 			jobs, err := pm.gcp.NextJobBatch()
 			if err != nil {
-				if err == gcp.ErrClosed {
-					return
-				}
-				// If XMPP fails then life is not worth living.
-				glog.Fatalf("Giving up due to XMPP problem: %s", err)
+				glog.Errorf("Failed to fetch job batch: %s", err)
 
 			} else {
 				for i := range jobs {
@@ -319,16 +315,8 @@ func (pm *PrinterManager) listenGCPJobs(queuedJobsCount map[string]uint) {
 func (pm *PrinterManager) listenGCPPrinterUpdates() {
 	go func() {
 		for {
-			gcpID, err := pm.gcp.NextPrinterWithUpdates()
-			if err != nil {
-				if err == gcp.ErrClosed {
-					return
-				}
-				glog.Warningf("Error waiting for next printer update notification: %s", err)
-
-			} else {
-				pm.gcpPrinterUpdates <- gcpID
-			}
+			gcpID := pm.gcp.NextPrinterWithUpdates()
+			pm.gcpPrinterUpdates <- gcpID
 		}
 	}()
 }

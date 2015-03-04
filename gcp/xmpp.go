@@ -35,41 +35,32 @@ const (
 	netTimeout = time.Second * 60
 )
 
-// Indicates a closed connection; we're probably exiting.
-var ErrClosed = errors.New("closed")
-
 // Interface with XMPP server.
-type gcpXMPP struct {
+type XMPP struct {
 	conn       *tls.Conn
 	xmlEncoder *xml.Encoder
 	xmlDecoder *xml.Decoder
 	fullJID    string
 
-	printersJobs    chan printerHasJobs
-	printersUpdates chan printerHasUpdates
-	pongs           chan pong
+	printersJobs    chan<- string
+	printersUpdates chan<- string
 
-	nextPingID         uint8
-	pingIntervalChange chan time.Duration
-	q                  chan bool
+	pongs               chan uint8
+	nextPingID          uint8
+	pingIntervalUpdates <-chan time.Duration
+	dead                chan<- interface{}
 }
 
-type printerHasJobs struct {
-	gcpID string
-	err   error
-}
-
-type printerHasUpdates struct {
-	gcpID string
-	err   error
-}
-
-type pong struct {
-	pingID uint8
-	err    error
-}
-
-func newXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16, pingTimeout, pingInterval time.Duration) (*gcpXMPP, error) {
+// NewXMPP creates a new XMPP connection.
+//
+// The GCP ID of printers with new jobs are sent on printersJobs.
+//
+// The GCP ID of printers with new updates are sent on printersUpdates.
+//
+// Updates to the ping interval are received on pingIntervalUpdates.
+//
+// If the connection dies unexpectedly, a message is sent on dead.
+func NewXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16, pingTimeout, pingInterval time.Duration, printersJobs, printersUpdates chan<- string, pingIntervalUpdates <-chan time.Duration, dead chan<- interface{}) (*XMPP, error) {
 	var user, domain string
 	if parts := strings.SplitN(xmppJID, "@", 2); len(parts) != 2 {
 		return nil, fmt.Errorf("Tried to use invalid XMPP JID: %s", xmppJID)
@@ -111,63 +102,79 @@ func newXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16
 		return nil, fmt.Errorf("Failed to subscribe: %s", err)
 	}
 
-	x := gcpXMPP{conn, xmlEncoder, xmlDecoder, fullJID,
-		make(chan printerHasJobs, 10), make(chan printerHasUpdates, 10), make(chan pong, 5),
-		0, make(chan time.Duration), make(chan bool)}
+	x := XMPP{
+		conn:                conn,
+		xmlEncoder:          xmlEncoder,
+		xmlDecoder:          xmlDecoder,
+		fullJID:             fullJID,
+		printersJobs:        printersJobs,
+		printersUpdates:     printersUpdates,
+		pongs:               make(chan uint8, 10),
+		nextPingID:          0,
+		pingIntervalUpdates: pingIntervalUpdates,
+		dead:                dead,
+	}
 
-	go x.dispatchIncoming()
-	go x.pingPeriodically(pingTimeout, pingInterval)
+	// dispatchIncoming signals pingPeriodically to return via dying.
+	dying := make(chan interface{})
+	go x.dispatchIncoming(dying)
+	go x.pingPeriodically(pingTimeout, pingInterval, dying)
 
 	// Check by ping
-	if err = x.ping(pingTimeout); err != nil {
-		return nil, err
+	if !x.ping(pingTimeout) {
+		return nil, errors.New("XMPP conversation started, but initial ping failed")
 	}
 
 	return &x, nil
 }
 
-func (x *gcpXMPP) quit() {
+// Quit causes the XMPP connection to close.
+func (x *XMPP) Quit() {
+	// Trigger dispatchIncoming to return.
 	x.conn.Close()
-	<-x.q
+	// dispatchIncoming notifies pingPeriodically via dying channel.
+	// pingPeriodically signals death via x.dead channel.
 }
 
-func (x *gcpXMPP) pingPeriodically(timeout, interval time.Duration) {
+func (x *XMPP) pingPeriodically(timeout, interval time.Duration, dying <-chan interface{}) {
 	t := time.NewTimer(interval)
 	defer t.Stop()
 
 	for {
 		select {
 		case <-t.C:
-			if err := x.ping(timeout); err != nil {
-				glog.Errorf("Failed to ping XMPP server: %s", err)
-				// Try again soon.
-				t.Reset(time.Second)
-			} else {
+			if x.ping(timeout) {
 				t.Reset(interval)
+			} else {
+				// Ping failed; try again soon.
+				t.Reset(time.Second)
+				// TODO abort connection if too many failures
 			}
-		case interval = <-x.pingIntervalChange:
+		case interval = <-x.pingIntervalUpdates:
 			t.Reset(time.Nanosecond) // Induce ping and interval reset now.
+		case <-dying:
+			// Signal death externally.
+			x.dead <- new(interface{})
+			return
 		}
 	}
 }
 
-func (x *gcpXMPP) setPingInterval(interval time.Duration) {
-	x.pingIntervalChange <- interval
-}
-
 // dispatchIncoming listens for new XMPP messages and puts them into
 // separate channels, by type of message.
-func (x *gcpXMPP) dispatchIncoming() {
+func (x *XMPP) dispatchIncoming(dying chan<- interface{}) {
 	for {
 		// The xml.StartElement tells us what is coming up.
 		startElement, err := readStartElement(x.xmlDecoder)
 		if err != nil {
 			if strings.Contains(err.Error(), "use of closed network connection") {
-				x.printersJobs <- printerHasJobs{"", ErrClosed}
+				glog.Info("XMPP connection was closed")
+				break
+			} else if err == io.EOF {
+				glog.Info("XMPP connection failed")
 				break
 			} else {
-				x.printersJobs <- printerHasJobs{"",
-					fmt.Errorf("Failed to read the next start element: %s", err)}
+				glog.Warningf("Failed to read the next start element: %s", err)
 				continue
 			}
 		}
@@ -181,27 +188,29 @@ func (x *gcpXMPP) dispatchIncoming() {
 
 			if err := x.xmlDecoder.DecodeElement(&message, startElement); err != nil {
 				if strings.Contains(err.Error(), "use of closed network connection") {
-					x.printersJobs <- printerHasJobs{"", ErrClosed}
+					glog.Info("XMPP connection was closed")
+					break
+				} else if err == io.EOF {
+					glog.Info("XMPP connection failed")
 					break
 				} else {
-					x.printersJobs <- printerHasJobs{"",
-						fmt.Errorf("Error while parsing print jobs notification via XMPP: %s", err)}
+					glog.Warningf("Error while parsing print jobs notification via XMPP: %s", err)
 					continue
 				}
 			}
 
 			gcpIDbytes, err := base64.StdEncoding.DecodeString(message.Data)
 			if err != nil {
-				x.printersJobs <- printerHasJobs{"",
-					fmt.Errorf("Failed to convert XMPP message data from base64: %s", err)}
+				glog.Warningf("Failed to convert XMPP message data from base64: %s", err)
 				continue
 			}
 			gcpID := string(gcpIDbytes)
 
 			if strings.HasSuffix(gcpID, "/update_settings") {
-				x.printersUpdates <- printerHasUpdates{strings.Split(gcpID, "/")[0], nil}
+				gcpID = strings.Split(gcpID, "/")[0]
+				x.printersUpdates <- gcpID
 			} else {
-				x.printersJobs <- printerHasJobs{gcpID, nil}
+				x.printersJobs <- gcpID
 			}
 
 		} else if startElement.Name.Local == "iq" {
@@ -213,46 +222,37 @@ func (x *gcpXMPP) dispatchIncoming() {
 
 			if err := x.xmlDecoder.DecodeElement(&message, startElement); err != nil {
 				if strings.Contains(err.Error(), "use of closed network connection") {
-					x.pongs <- pong{0, ErrClosed}
+					glog.Info("XMPP connection was closed")
+					break
+				} else if err == io.EOF {
+					glog.Info("XMPP connection failed")
 					break
 				} else {
-					x.pongs <- pong{0,
-						fmt.Errorf("Error while parsing XMPP pong: %s", err)}
+					glog.Warningf("Error while parsing XMPP pong: %s", err)
 					continue
 				}
 			}
 
 			pingID, err := strconv.ParseUint(message.ID, 10, 8)
 			if err != nil {
-				x.pongs <- pong{0, fmt.Errorf("Failed to convert XMPP ping ID: %s", err)}
+				glog.Warningf("Failed to convert XMPP ping ID: %s", err)
 				continue
 			}
-			x.pongs <- pong{uint8(pingID), nil}
+			x.pongs <- uint8(pingID)
 
 		} else {
-			x.printersJobs <- printerHasJobs{"",
-				fmt.Errorf("Unexpected element while waiting for print message: %+v", startElement)}
+			glog.Warningf("Unexpected element while waiting for print message: %+v", startElement)
 		}
 	}
 
-	x.q <- true
+	dying <- new(interface{})
 }
 
-// nextPrinterWithJobs returns the GCPID of the next printer with waiting jobs.
-func (x *gcpXMPP) nextPrinterWithJobs() (string, error) {
-	np := <-x.printersJobs
-	return np.gcpID, np.err
-}
-
-// nextPrinterWithUpdates returns the GCPID of the next printer with waiting updates.
-func (x *gcpXMPP) nextPrinterWithUpdates() (string, error) {
-	np := <-x.printersUpdates
-	return np.gcpID, np.err
-}
-
-// ping sends a ping message and blocks until pong is returned. If timeout
-// time passes before pong is returned, then the returned error is not nil.
-func (x *gcpXMPP) ping(timeout time.Duration) error {
+// ping sends a ping message and blocks until pong is received.
+//
+// Returns false if timeout time passes before pong, or on any
+// other error. Errors are logged but not returned.
+func (x *XMPP) ping(timeout time.Duration) bool {
 	var ping struct {
 		XMLName xml.Name `xml:"iq"`
 		From    string   `xml:"from,attr"`
@@ -275,18 +275,19 @@ func (x *gcpXMPP) ping(timeout time.Duration) error {
 	ping.Ping.XMLNS = "urn:xmpp:ping"
 
 	if err := x.xmlEncoder.Encode(&ping); err != nil {
-		return fmt.Errorf("XMPP ping request failed: %s", err)
+		glog.Warningf("XMPP ping request failed: %s", err)
+		return false
 	}
 
 	for {
 		select {
-		case pn := <-x.pongs:
-			if pn.pingID == pingID {
-				return nil
+		case pongID := <-x.pongs:
+			if pongID == pingID {
+				return true
 			}
-			continue
 		case <-time.After(timeout):
-			return fmt.Errorf("Pong not received after %s", timeout.String())
+			glog.Warningf("Pong not received after %s", timeout.String())
+			return false
 		}
 	}
 	panic("unreachable")
@@ -544,12 +545,12 @@ type tee struct {
 
 func (t *tee) Read(p []byte) (int, error) {
 	n, err := t.r.Read(p)
-	fmt.Printf("read %d %s\n", n, p[0:n])
+	glog.Errorf("read %d %s\n", n, p[0:n])
 	return n, err
 }
 
 func (t *tee) Write(p []byte) (int, error) {
 	n, err := t.w.Write(p)
-	fmt.Printf("wrote %d %s\n", n, p[0:n])
+	glog.Errorf("wrote %d %s\n", n, p[0:n])
 	return n, err
 }

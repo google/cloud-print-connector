@@ -49,7 +49,7 @@ const (
 type GoogleCloudPrint struct {
 	baseURL     string
 	xmppJID     string
-	xmppClient  *gcpXMPP
+	xmpp        *XMPP
 	robotClient *http.Client
 	userClient  *http.Client
 	proxyName   string
@@ -58,6 +58,13 @@ type GoogleCloudPrint struct {
 	xmppPort                uint16
 	xmppPingTimeout         time.Duration
 	xmppPingIntervalDefault time.Duration
+
+	xmppPrintersJobs        chan string
+	xmppPrintersUpdates     chan string
+	xmppPingIntervalUpdates chan time.Duration
+	xmppDead                chan interface{}
+
+	quit chan interface{}
 }
 
 // NewGoogleCloudPrint establishes a connection with GCP, returns a new GoogleCloudPrint object.
@@ -75,8 +82,23 @@ func NewGoogleCloudPrint(baseURL, xmppJID, robotRefreshToken, userRefreshToken, 
 		}
 	}
 
-	gcp := &GoogleCloudPrint{baseURL, xmppJID, nil, robotClient, userClient, proxyName,
-		xmppServer, xmppPort, xmppPingTimeout, xmppPingIntervalDefault}
+	gcp := &GoogleCloudPrint{
+		baseURL:                 baseURL,
+		xmppJID:                 xmppJID,
+		xmpp:                    nil,
+		robotClient:             robotClient,
+		userClient:              userClient,
+		proxyName:               proxyName,
+		xmppServer:              xmppServer,
+		xmppPort:                xmppPort,
+		xmppPingTimeout:         xmppPingTimeout,
+		xmppPingIntervalDefault: xmppPingIntervalDefault,
+		xmppPrintersJobs:        make(chan string, 10),
+		xmppPrintersUpdates:     make(chan string, 10),
+		xmppPingIntervalUpdates: make(chan time.Duration, 1),
+		xmppDead:                make(chan interface{}),
+		quit:                    make(chan interface{}),
+	}
 
 	return gcp, nil
 }
@@ -111,7 +133,17 @@ func marshalLocalSettings(xmppInterval time.Duration) (string, error) {
 
 // Quit terminates the XMPP conversation so that new jobs stop arriving.
 func (gcp *GoogleCloudPrint) Quit() {
-	gcp.xmppClient.quit()
+	if gcp.xmpp != nil {
+		// Signal to KeepXMPPAlive.
+		gcp.quit <- new(interface{})
+		select {
+		case <-gcp.xmppDead:
+			// Wait for XMPP to die.
+		case <-time.After(5 * time.Second):
+			// But not too long.
+			glog.Error("XMPP taking a while to close, so giving up")
+		}
+	}
 }
 
 // CanShare answers the question "can we share printers when they are registered?"
@@ -122,8 +154,8 @@ func (gcp *GoogleCloudPrint) CanShare() bool {
 // StartXMPP tries to start an XMPP conversation.
 // Tries multiple times before returning an error.
 func (gcp *GoogleCloudPrint) StartXMPP() error {
-	if gcp.xmppClient != nil {
-		go gcp.xmppClient.quit()
+	if gcp.xmpp != nil {
+		go gcp.xmpp.Quit()
 	}
 
 	var err error
@@ -131,14 +163,17 @@ func (gcp *GoogleCloudPrint) StartXMPP() error {
 		// The current access token is the XMPP password.
 		var token *oauth2.Token
 		token, err = gcp.robotClient.Transport.(*oauth2.Transport).Source.Token()
-
 		if err == nil {
-			var xmpp *gcpXMPP
-			xmpp, err = newXMPP(gcp.xmppJID, token.AccessToken, gcp.proxyName,
-				gcp.xmppServer, gcp.xmppPort, gcp.xmppPingTimeout, gcp.xmppPingIntervalDefault)
+			var xmpp *XMPP
+			xmpp, err = NewXMPP(gcp.xmppJID, token.AccessToken, gcp.proxyName,
+				gcp.xmppServer, gcp.xmppPort, gcp.xmppPingTimeout, gcp.xmppPingIntervalDefault,
+				gcp.xmppPrintersJobs, gcp.xmppPrintersUpdates, gcp.xmppPingIntervalUpdates, gcp.xmppDead)
 
 			if err == nil {
-				gcp.xmppClient = xmpp
+				// Success!
+				gcp.xmpp = xmpp
+				// Don't give up.
+				go gcp.keepXMPPAlive()
 				return nil
 			}
 		}
@@ -150,52 +185,34 @@ func (gcp *GoogleCloudPrint) StartXMPP() error {
 	return fmt.Errorf("Failed to start XMPP conversation: %s", err)
 }
 
-// NextJobBatch gets the next batch of print jobs from GCP. Blocks on XMPP until
-// batch notification arrives. Calls google.com/cloudprint/fetch to get the jobs.
-//
-// Returns ErrClosed if the XMPP connection closes; the caller should assume
-// that life is gracefully ending.
-//
-// If any other error is returned, then there's probably no reason to go on living.
-func (gcp *GoogleCloudPrint) NextJobBatch() ([]lib.Job, error) {
-	var lastFailure time.Time
-
-	var gcpID string
-	var err error
+// KeepXMPPAlive restarts XMPP when it fails.
+func (gcp *GoogleCloudPrint) keepXMPPAlive() {
 	for {
-		gcpID, err = gcp.xmppClient.nextPrinterWithJobs()
-		if err == nil {
-			// Success!
-			break
+		select {
+		case <-gcp.xmppDead:
+			glog.Error("XMPP conversation died; restarting")
+			if err := gcp.StartXMPP(); err != nil {
+				glog.Fatalf("Failed to keep XMPP conversation alive: %s", err)
+			}
+		case <-gcp.quit:
+			// Close XMPP.
+			gcp.xmpp.Quit()
+			return
 		}
-
-		if err == ErrClosed {
-			// The connection is closed.
-			return nil, err
-		}
-
-		if strings.Contains(err.Error(), "Unexpected element") {
-			// Not really an error, but interesting, so log and try again.
-			glog.Warningf("While waiting for print jobs: %s", err)
-			continue
-		}
-
-		if time.Since(lastFailure) < time.Duration(minTimeBetweenXMPPFailures) {
-			// We have seen two unaccounted-for errors in a short period of time.
-			// This suggests that the XMPP conversation has failed, so let's
-			// give up.
-			return nil, fmt.Errorf("XMPP conversation failed: %s", err)
-		}
-		lastFailure = time.Now()
 	}
+}
 
+// NextJobBatch gets the next batch of print jobs from GCP. Blocks on XMPP until
+// batch notification arrives. Calls Fetch to get the jobs.
+func (gcp *GoogleCloudPrint) NextJobBatch() ([]lib.Job, error) {
+	gcpID := <-gcp.xmppPrintersJobs
 	return gcp.Fetch(gcpID)
 }
 
 // NextPrinterWithUpdates gets the GCPID of the next printer with updates
 // in the pending state.
-func (gcp *GoogleCloudPrint) NextPrinterWithUpdates() (string, error) {
-	return gcp.xmppClient.nextPrinterWithUpdates()
+func (gcp *GoogleCloudPrint) NextPrinterWithUpdates() string {
+	return <-gcp.xmppPrintersUpdates
 }
 
 // Control calls google.com/cloudprint/control to set the status of a
@@ -473,7 +490,7 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 // SetConnectorXMPPPingInterval sets the interval at which this connector will
 // ping the XMPP server.
 func (gcp *GoogleCloudPrint) SetConnectorXMPPPingInterval(interval time.Duration) {
-	gcp.xmppClient.setPingInterval(interval)
+	gcp.xmppPingIntervalUpdates <- interval
 }
 
 // SetPrinterXMPPPingInterval checks GCP for a pending XMPP interval change,
