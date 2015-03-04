@@ -30,6 +30,8 @@ var (
 
 func main() {
 	flag.Parse()
+	fmt.Println("Google Cloud Print CUPS Connector version", lib.GetBuildDate())
+
 	if *deleteAllGCPPrintersFlag {
 		deleteAllGCPPrinters()
 	} else if *updateConfigFileFlag {

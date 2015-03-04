@@ -11,7 +11,7 @@ https://developers.google.com/open-source/licenses/bsd
 # Install
 ```
 $ cd ~/go/src
-$ go get TODO/cups-connector
+$ go get github.com/google/cups-connector
 $ go get github.com/golang/oauth2
 $ go get github.com/golang/glog
 $ cd cups-connector/connector

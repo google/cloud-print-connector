@@ -23,7 +23,7 @@ var timeoutFlag = flag.Duration(
 
 func main() {
 	flag.Parse()
-	fmt.Printf("CUPS Connector version %s\n", lib.GetBuildDate())
+	fmt.Println("Google Cloud Print CUPS Connector version", lib.GetBuildDate())
 
 	config, err := lib.ConfigFromFile()
 	if err != nil {

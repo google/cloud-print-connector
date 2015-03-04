@@ -26,8 +26,8 @@ import (
 func main() {
 	flag.Parse()
 	defer glog.Flush()
-
-	glog.Errorf("CUPS Connector version %s", lib.GetBuildDate())
+	glog.Errorf("Google Cloud Print CUPS Connector version %s", lib.GetBuildDate())
+	fmt.Println("Google Cloud Print CUPS Connector version", lib.GetBuildDate())
 
 	config, err := lib.ConfigFromFile()
 	if err != nil {
@@ -76,7 +76,6 @@ func main() {
 	if err := gcp.StartXMPP(); err != nil {
 		glog.Fatal(err)
 	}
-	glog.Info("Started XMPP successfully")
 
 	pm, err := manager.NewPrinterManager(cups, gcp, config.CUPSPrinterPollInterval,
 		config.GCPMaxConcurrentDownloads, config.CUPSJobQueueSize, config.CUPSJobFullUsername,
@@ -92,12 +91,14 @@ func main() {
 	}
 	defer m.Quit()
 
-	fmt.Printf("Google Cloud Print CUPS Connector ready to rock as proxy '%s'\n", config.ProxyName)
+	glog.Errorf("Ready to rock as proxy '%s'\n", config.ProxyName)
+	fmt.Printf("Ready to rock as proxy '%s'\n", config.ProxyName)
 
 	waitIndefinitely()
 
+	glog.Error("Shutting down")
 	fmt.Println("")
-	fmt.Println("shutting down normally")
+	fmt.Println("Shutting down")
 }
 
 // Blocks until Ctrl-C or SIGTERM.
