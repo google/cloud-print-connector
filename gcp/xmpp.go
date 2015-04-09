@@ -169,16 +169,11 @@ func (x *XMPP) dispatchIncoming(dying chan<- interface{}) {
 		// The xml.StartElement tells us what is coming up.
 		startElement, err := readStartElement(x.xmlDecoder)
 		if err != nil {
-			if strings.Contains(err.Error(), "use of closed network connection") {
-				glog.Info("XMPP connection was closed")
+			if isXMLErrorClosedConnection(err) {
 				break
-			} else if err == io.EOF {
-				glog.Info("XMPP connection failed")
-				break
-			} else {
-				glog.Warningf("Failed to read the next start element: %s", err)
-				continue
 			}
+			glog.Warningf("Failed to read the next start element: %s", err)
+			continue
 		}
 
 		// Parse the message.
@@ -189,16 +184,11 @@ func (x *XMPP) dispatchIncoming(dying chan<- interface{}) {
 			}
 
 			if err := x.xmlDecoder.DecodeElement(&message, startElement); err != nil {
-				if strings.Contains(err.Error(), "use of closed network connection") {
-					glog.Info("XMPP connection was closed")
+				if isXMLErrorClosedConnection(err) {
 					break
-				} else if err == io.EOF {
-					glog.Info("XMPP connection failed")
-					break
-				} else {
-					glog.Warningf("Error while parsing print jobs notification via XMPP: %s", err)
-					continue
 				}
+				glog.Warningf("Error while parsing print jobs notification via XMPP: %s", err)
+				continue
 			}
 
 			gcpIDbytes, err := base64.StdEncoding.DecodeString(message.Data)
@@ -223,16 +213,11 @@ func (x *XMPP) dispatchIncoming(dying chan<- interface{}) {
 			}
 
 			if err := x.xmlDecoder.DecodeElement(&message, startElement); err != nil {
-				if strings.Contains(err.Error(), "use of closed network connection") {
-					glog.Info("XMPP connection was closed")
+				if isXMLErrorClosedConnection(err) {
 					break
-				} else if err == io.EOF {
-					glog.Info("XMPP connection failed")
-					break
-				} else {
-					glog.Warningf("Error while parsing XMPP pong: %s", err)
-					continue
 				}
+				glog.Warningf("Error while parsing XMPP pong: %s", err)
+				continue
 			}
 
 			pingID, err := strconv.ParseUint(message.ID, 10, 8)
@@ -536,6 +521,24 @@ func readStartElement(d *xml.Decoder) (*xml.StartElement, error) {
 		}
 	}
 	panic("unreachable")
+}
+
+// isXMLErrorClosedConnection simplifies an xml.Decoder error.
+//
+// If the error is a variation of "connection closed" then logs a suitable error and returns true.
+// Otherwise, returns false.
+func isXMLErrorClosedConnection(err error) bool {
+	if strings.Contains(err.Error(), "use of closed network connection") {
+		glog.Info("XMPP connection was closed")
+		return true
+	} else if strings.Contains(err.Error(), "connection reset by peer") {
+		glog.Info("XMPP connection was forcibly closed by server")
+		return true
+	} else if err == io.EOF {
+		glog.Info("XMPP connection failed")
+		return true
+	}
+	return false
 }
 
 type tee struct {
