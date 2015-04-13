@@ -121,8 +121,8 @@ func NewXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16
 	go x.pingPeriodically(pingTimeout, pingInterval, dying)
 
 	// Check by ping
-	if !x.ping(pingTimeout) {
-		return nil, errors.New("XMPP conversation started, but initial ping failed")
+	if success, err := x.ping(pingTimeout); !success {
+		return nil, fmt.Errorf("XMPP conversation started, but initial ping failed: %s", err)
 	}
 
 	return &x, nil
@@ -143,12 +143,14 @@ func (x *XMPP) pingPeriodically(timeout, interval time.Duration, dying <-chan in
 	for {
 		select {
 		case <-t.C:
-			if x.ping(timeout) {
+			if success, err := x.ping(timeout); success {
 				t.Reset(interval)
 			} else {
-				// Ping failed; try again soon.
-				t.Reset(time.Second)
-				// TODO abort connection if too many failures
+				glog.Infof("XMPP ping failed; trying once more: %s", err)
+				// Ping failed; give it another try, then restart the XMPP conversation.
+				if success, _ := x.ping(timeout); !success {
+					x.Quit()
+				}
 			}
 		case interval = <-x.pingIntervalUpdates:
 			t.Reset(time.Nanosecond) // Induce ping and interval reset now.
@@ -252,7 +254,7 @@ func (x *XMPP) dispatchIncoming(dying chan<- interface{}) {
 //
 // Returns false if timeout time passes before pong, or on any
 // other error. Errors are logged but not returned.
-func (x *XMPP) ping(timeout time.Duration) bool {
+func (x *XMPP) ping(timeout time.Duration) (bool, error) {
 	var ping struct {
 		XMLName xml.Name `xml:"iq"`
 		From    string   `xml:"from,attr"`
@@ -275,19 +277,17 @@ func (x *XMPP) ping(timeout time.Duration) bool {
 	ping.Ping.XMLNS = "urn:xmpp:ping"
 
 	if err := x.xmlEncoder.Encode(&ping); err != nil {
-		glog.Warningf("XMPP ping request failed: %s", err)
-		return false
+		return false, fmt.Errorf("XMPP ping request failed: %s", err)
 	}
 
 	for {
 		select {
 		case pongID := <-x.pongs:
 			if pongID == pingID {
-				return true
+				return true, nil
 			}
 		case <-time.After(timeout):
-			glog.Warningf("Pong not received after %s", timeout.String())
-			return false
+			return false, fmt.Errorf("Pong not received after %s", timeout.String())
 		}
 	}
 	panic("unreachable")
