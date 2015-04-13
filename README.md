@@ -12,7 +12,7 @@ https://developers.google.com/open-source/licenses/bsd
 ```
 $ cd ~/go/src
 $ go get github.com/google/cups-connector
-$ go get github.com/golang/oauth2
+$ go get golang.org/x/oauth2
 $ go get github.com/golang/glog
 $ cd cups-connector/connector
 $ go install
