@@ -15,35 +15,61 @@ import (
 	"time"
 )
 
-type PrinterStatus string
+type PrinterState uint8
 
-func PrinterStatusFromString(ss string) PrinterStatus {
+// CUPS: ipp_pstate_t; GCP: CloudDeviceState.StateType
+const (
+	PrinterIdle       PrinterState = iota // CUPS: IPP_PSTATE_IDLE;       GCP: StateType.IDLE
+	PrinterProcessing              = iota // CUPS: IPP_PSTATE_PROCESSING; GCP: StateType.PROCESSING
+	PrinterStopped                 = iota // CUPS: IPP_PSTATE_STOPPED;    GCP: StateType.STOPPED
+)
+
+func PrinterStateFromCUPS(ss string) PrinterState {
 	switch strings.ToLower(ss) {
-	case "3", "idle":
+	case "3":
 		return PrinterIdle
-	case "4", "processing":
+	case "4":
 		return PrinterProcessing
-	case "5", "stopped":
+	case "5":
 		return PrinterStopped
 	default:
 		return PrinterIdle
 	}
 }
 
-// CUPS: ipp_pstate_t; GCP: CloudDeviceState.StateType
-const (
-	PrinterIdle       PrinterStatus = "3" // CUPS: IPP_PSTATE_IDLE;       GCP: StateType.IDLE
-	PrinterProcessing PrinterStatus = "4" // CUPS: IPP_PSTATE_PROCESSING; GCP: StateType.PROCESSING
-	PrinterStopped    PrinterStatus = "5" // CUPS: IPP_PSTATE_STOPPED;    GCP: StateType.STOPPED
-)
+func (ps PrinterState) GCPPrinterState() string {
+	switch ps {
+	case PrinterIdle:
+		return "IDLE"
+	case PrinterProcessing:
+		return "PROCESSING"
+	case PrinterStopped:
+		return "STOPPED"
+	default:
+		return "IDLE"
+	}
+}
+
+func PrinterStateFromGCP(ss string) PrinterState {
+	switch strings.ToLower(ss) {
+	case "IDLE":
+		return PrinterIdle
+	case "PROCESSING":
+		return PrinterProcessing
+	case "STOPPED":
+		return PrinterStopped
+	default:
+		return PrinterIdle
+	}
+}
 
 // CUPS: cups_dest_t; GCP: /register and /update interfaces
 type Printer struct {
 	GCPID              string            // CUPS: custom field;                GCP: printerid (GCP key)
 	Name               string            // CUPS: cups_dest_t.name (CUPS key); GCP: name field
 	DefaultDisplayName string            // CUPS: printer-info option;         GCP: default_display_name field
-	Description        string            // CUPS: printer-make-and-model;      GCP: description field
-	Status             PrinterStatus     // CUPS: printer-state;               GCP: status field
+	State              PrinterState      // CUPS: printer-state;               GCP: CDS.StateType
+	StateReasons       []string          // CUPS: printer-state-reasons;       GCP: CDS.PrinterStateSection fields
 	CapsHash           string            // CUPS: hash of PPD;                 GCP: capsHash field
 	Tags               map[string]string // CUPS: all printer attributes;      GCP: repeated tag field
 	XMPPPingInterval   time.Duration     //                                    GCP: local_settings/xmpp_timeout_value field
@@ -88,8 +114,7 @@ type PrinterDiff struct {
 	Printer   Printer
 
 	DefaultDisplayNameChanged bool
-	DescriptionChanged        bool
-	StatusChanged             bool
+	StateChanged              bool // Also indicates changes to StateReasons.
 	CapsHashChanged           bool
 	XMPPPingIntervalChanged   bool
 	TagsChanged               bool
@@ -172,11 +197,17 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if pg.DefaultDisplayName != pc.DefaultDisplayName {
 		d.DefaultDisplayNameChanged = true
 	}
-	if pg.Description != pc.Description {
-		d.DescriptionChanged = true
-	}
-	if pg.Status != pc.Status {
-		d.StatusChanged = true
+	if pg.State != pc.State {
+		d.StateChanged = true
+	} else if len(pg.StateReasons) != len(pc.StateReasons) {
+		d.StateChanged = true
+	} else {
+		for i := range pg.StateReasons {
+			if pg.StateReasons[i] != pc.StateReasons[i] {
+				d.StateChanged = true
+				break
+			}
+		}
 	}
 	if pg.CapsHash != pc.CapsHash {
 		d.CapsHashChanged = true
@@ -191,7 +222,7 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 		d.TagsChanged = true
 	}
 
-	if d.DefaultDisplayNameChanged || d.DescriptionChanged || d.StatusChanged ||
+	if d.DefaultDisplayNameChanged || d.StateChanged ||
 		d.CapsHashChanged || d.XMPPPingIntervalChanged || d.TagsChanged {
 		return d
 	}
@@ -216,7 +247,7 @@ func FilterRawPrinters(printers []Printer) ([]Printer, []Printer) {
 }
 
 func PrinterIsRaw(printer Printer) bool {
-	if printer.Description == "Local Raw Printer" {
+	if printer.Tags["printer-make-and-model"] == "Local Raw Printer" {
 		return true
 	}
 	return false

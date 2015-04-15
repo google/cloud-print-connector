@@ -50,6 +50,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -66,6 +67,7 @@ const (
 	attrPrinterInfo         = "printer-info"
 	attrPrinterMakeAndModel = "printer-make-and-model"
 	attrPrinterState        = "printer-state"
+	attrPrinterStateReasons = "printer-state-reasons"
 
 	attrJobState       = "job-state"
 	attrJobStateReason = "job-state-reason"
@@ -77,6 +79,7 @@ var (
 		attrPrinterInfo,
 		attrPrinterMakeAndModel,
 		attrPrinterState,
+		attrPrinterStateReasons,
 	}
 
 	jobAttributes []string = []string{
@@ -416,11 +419,17 @@ func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName 
 		tags[k] = v
 	}
 
+	var stateReasons []string
+	if len(stateReasons) > 0 {
+		stateReasons = strings.Split(printerTags[attrPrinterStateReasons], ",")
+		sort.Strings(stateReasons)
+	}
+
 	p := lib.Printer{
-		Name:        printerTags[attrPrinterName],
-		Description: printerTags[attrPrinterMakeAndModel],
-		Status:      lib.PrinterStatusFromString(printerTags[attrPrinterState]),
-		Tags:        tags,
+		Name:         printerTags[attrPrinterName],
+		State:        lib.PrinterStateFromCUPS(printerTags[attrPrinterState]),
+		StateReasons: stateReasons,
+		Tags:         tags,
 	}
 	p.SetTagshash()
 

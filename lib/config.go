@@ -13,6 +13,9 @@ import (
 	"io/ioutil"
 )
 
+// A website with user-friendly information.
+const ConnectorHomeURL string = "https://github.com/google/cups-connector"
+
 var (
 	// To be populated by something like:
 	// go install -ldflags "-X cups-connector/lib.buildDate `date +%Y.%m.%d`"
@@ -50,7 +53,7 @@ type Config struct {
 	// CUPS job queue size.
 	CUPSJobQueueSize uint `json:"cups_job_queue_size"`
 
-	// Interval (eg 10s, 1m) between CUPS printer status polls.
+	// Interval (eg 10s, 1m) between CUPS printer state polls.
 	CUPSPrinterPollInterval string `json:"cups_printer_poll_interval"`
 
 	// CUPS printer attributes to copy to GCP.

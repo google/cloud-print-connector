@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -43,6 +44,11 @@ const (
 	ScopeCloudPrint = "https://www.googleapis.com/auth/cloudprint"
 	ScopeGoogleTalk = "https://www.googleapis.com/auth/googletalk"
 	AccessType      = "offline"
+)
+
+var (
+	re_man = regexp.MustCompile(`(?m)^\*Manufacturer:\s+"(.+)"\s*$`)
+	re_mod = regexp.MustCompile(`(?m)^\*ModelName:\s+"(.+)"\s*$`)
 )
 
 // GoogleCloudPrint is the interface between Go and the Google Cloud Print API.
@@ -120,7 +126,7 @@ type localSettingsPull struct {
 	Pending localSettingsSettings `json:"pending"`
 }
 
-// Turn arguments into a JSON-encoded GCP LocalSettings object.
+// Turn arguments into a JSON-encoded GCP LocalSettings message.
 func marshalLocalSettings(xmppInterval time.Duration) (string, error) {
 	var ls localSettingsPush
 	ls.Current.XMPPPingInterval = uint32(xmppInterval.Seconds())
@@ -129,6 +135,101 @@ func marshalLocalSettings(xmppInterval time.Duration) (string, error) {
 		return "", err
 	}
 	return string(lss), nil
+}
+
+// cloudDeviceState represents a CloudDeviceState message.
+type cloudDeviceState struct {
+	Version string              `json:"version"`
+	Printer printerStateSection `json:"printer"`
+}
+
+// printerStateSection represents a CDS PrinterStateSection message.
+type printerStateSection struct {
+	State       string      `json:"state"`
+	VendorState vendorState `json:"vendor_state"`
+	// TODO add other GCP 2.0 fields.
+}
+
+// vendorState represents a CDS VendorState message.
+type vendorState struct {
+	Items []vendorStateItem `json:"item"`
+}
+
+// vendorStateItem represents a CDS VendorState.Item message.
+type vendorStateItem struct {
+	State       string `json:"state"`
+	Description string `json:"description"`
+}
+
+// marshalSemanticState turns state and reasons into a JSON-encoded GCP CloudDeviceState message.
+func marshalSemanticState(state lib.PrinterState, reasons []string) (string, error) {
+	vendorStateItems := make([]vendorStateItem, 0, len(reasons))
+	for _, reason := range reasons {
+		reasonSplit := strings.Split(reason, "-")
+		reasonSuffix := reasonSplit[len(reasonSplit)-1]
+		var vendorStateType string
+		switch reasonSuffix {
+		case "error":
+			vendorStateType = "ERROR"
+		case "warning":
+			vendorStateType = "WARNING"
+		case "report":
+			vendorStateType = "INFO"
+		default:
+			vendorStateType = "INFO"
+		}
+		item := vendorStateItem{
+			State:       vendorStateType,
+			Description: reason,
+		}
+		vendorStateItems = append(vendorStateItems, item)
+	}
+
+	semanticState := cloudDeviceState{
+		Version: "1.0",
+		Printer: printerStateSection{
+			State: state.GCPPrinterState(),
+			VendorState: vendorState{
+				Items: vendorStateItems,
+			},
+		},
+	}
+
+	ss, err := json.Marshal(semanticState)
+	if err != nil {
+		return "", err
+	}
+	return string(ss), nil
+}
+
+func unmarshalSemanticState(semanticState cloudDeviceState) (lib.PrinterState, []string) {
+	state := lib.PrinterStateFromGCP(semanticState.Printer.State)
+	stateReasons := make([]string, len(semanticState.Printer.VendorState.Items))
+	for _, item := range semanticState.Printer.VendorState.Items {
+		stateReasons = append(stateReasons, item.Description)
+	}
+	return state, stateReasons
+}
+
+// parseManufacturerAndModel finds the *Manufacturer and *ModelName values in a PPD string.
+func parseManufacturerAndModel(ppd string) (string, string) {
+	res := re_man.FindStringSubmatch(ppd)
+	man := res[1]
+	res = re_mod.FindStringSubmatch(ppd)
+	mod := res[1]
+
+	if man == "" {
+		man = "Unknown"
+	} else if mod == "" {
+		mod = "Unknown"
+	} else if strings.HasPrefix(mod, man) && len(mod) > len(man) {
+		// ModelName starts with Manufacturer (as it should).
+		// Remove Manufacturer from ModelName.
+		mod = strings.TrimPrefix(mod, man)
+		mod = strings.TrimSpace(mod)
+	}
+
+	return man, mod
 }
 
 // Quit terminates the XMPP conversation so that new jobs stop arriving.
@@ -220,6 +321,7 @@ func (gcp *GoogleCloudPrint) NextPrinterWithUpdates() string {
 func (gcp *GoogleCloudPrint) Control(jobID string, status lib.GCPJobStatus, code, message string) error {
 	form := url.Values{}
 	form.Set("jobid", jobID)
+	// TODO: Replace status, code, message with semantic_state_diff.
 	form.Set("status", string(status))
 	form.Set("code", code)
 	form.Set("message", message)
@@ -296,7 +398,7 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, map[string]time.Duration, error) {
 	form := url.Values{}
 	form.Set("proxy", gcp.proxyName)
-	form.Set("extra_fields", "queuedJobsCount")
+	form.Set("extra_fields", "queuedJobsCount,semanticState")
 
 	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"list", form)
 	if err != nil {
@@ -308,12 +410,11 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, map[string]
 			ID                 string
 			Name               string
 			DefaultDisplayName string
-			Description        string
-			Status             string
 			CapsHash           string
 			LocalSettings      localSettingsPull `json:"local_settings"`
 			Tags               []string
 			QueuedJobsCount    uint
+			SemanticState      cloudDeviceState `json:"semantic_state"`
 		}
 	}
 	if err = json.Unmarshal(responseBody, &listData); err != nil {
@@ -350,12 +451,14 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, map[string]
 			xmppPingInterval = time.Second * time.Duration(xmppPingIntervalSeconds)
 		}
 
+		state, stateReasons := unmarshalSemanticState(p.SemanticState)
+
 		printer := lib.Printer{
 			GCPID:              p.ID,
 			Name:               p.Name,
 			DefaultDisplayName: p.DefaultDisplayName,
-			Description:        p.Description,
-			Status:             lib.PrinterStatusFromString(p.Status),
+			State:              state,
+			StateReasons:       stateReasons,
 			CapsHash:           p.CapsHash,
 			XMPPPingInterval:   xmppPingInterval,
 			Tags:               tags,
@@ -383,7 +486,14 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 		return err
 	}
 
+	manufacturer, model := parseManufacturerAndModel(ppd)
+
 	localSettings, err := marshalLocalSettings(gcp.xmppPingIntervalDefault)
+	if err != nil {
+		return err
+	}
+
+	semanticState, err := marshalSemanticState(printer.State, printer.StateReasons)
 	if err != nil {
 		return err
 	}
@@ -392,13 +502,19 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 	form.Set("name", printer.Name)
 	form.Set("default_display_name", printer.DefaultDisplayName)
 	form.Set("proxy", gcp.proxyName)
+	form.Set("uuid", printer.Name) // CUPS doesn't provide serial number.
+	form.Set("manufacturer", manufacturer)
+	form.Set("model", model)
+	form.Set("gcp_version", "2.0")
+	form.Set("setup_url", lib.ConnectorHomeURL)
+	form.Set("support_url", lib.ConnectorHomeURL)
+	form.Set("update_url", lib.ConnectorHomeURL)
+	form.Set("firmware", "CUPS Connector "+lib.GetBuildDate())
 	form.Set("local_settings", localSettings)
+	form.Set("semantic_state", semanticState)
 	form.Set("use_cdd", "true")
 	form.Set("capabilities", cdd)
-	form.Set("description", printer.Description)
-	form.Set("status", string(printer.Status))
 	form.Set("capsHash", printer.CapsHash)
-	form.Set("content_types", "application/pdf")
 
 	sortedKeys := make([]string, 0, len(printer.Tags))
 	for key := range printer.Tags {
@@ -433,18 +549,20 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 	form := url.Values{}
 	form.Set("printerid", diff.Printer.GCPID)
 	form.Set("proxy", gcp.proxyName)
+	form.Set("gcp_version", "2.0")
+	form.Set("firmware", "CUPS Connector "+lib.GetBuildDate())
 
 	// Ignore Name field because it never changes.
 	if diff.DefaultDisplayNameChanged {
 		form.Set("default_display_name", diff.Printer.DefaultDisplayName)
 	}
 
-	if diff.DescriptionChanged {
-		form.Set("description", diff.Printer.Description)
-	}
-
-	if diff.StatusChanged {
-		form.Set("status", string(diff.Printer.Status))
+	if diff.StateChanged {
+		semanticState, err := marshalSemanticState(diff.Printer.State, diff.Printer.StateReasons)
+		if err != nil {
+			return err
+		}
+		form.Set("semantic_state", semanticState)
 	}
 
 	if diff.CapsHashChanged {
@@ -453,6 +571,10 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 			return err
 		}
 
+		manufacturer, model := parseManufacturerAndModel(ppd)
+
+		form.Set("manufacturer", manufacturer)
+		form.Set("model", model)
 		form.Set("use_cdd", "true")
 		form.Set("capsHash", diff.Printer.CapsHash)
 		form.Set("capabilities", cdd)
@@ -513,6 +635,8 @@ func (gcp *GoogleCloudPrint) SetPrinterXMPPPingInterval(printer lib.Printer) err
 func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, error) {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
+	form.Set("use_cdd", "true")
+	form.Set("extra_fields", "semanticState")
 
 	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"printer", form)
 	if err != nil {
@@ -524,16 +648,17 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, error) {
 			ID                 string
 			Name               string
 			DefaultDisplayName string
-			Description        string
-			Status             string
 			CapsHash           string
 			LocalSettings      localSettingsPull `json:"local_settings"`
 			Tags               []string
+			SemanticState      cloudDeviceState `json:"semantic_state"`
 		}
 	}
 	if err = json.Unmarshal(responseBody, &printersData); err != nil {
 		return nil, err
 	}
+
+	state, stateReasons := unmarshalSemanticState(printersData.Printers[0].SemanticState)
 
 	tags := make(map[string]string)
 	for _, tag := range printersData.Printers[0].Tags {
@@ -559,11 +684,11 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, error) {
 		GCPID:              printersData.Printers[0].ID,
 		Name:               printersData.Printers[0].Name,
 		DefaultDisplayName: printersData.Printers[0].DefaultDisplayName,
-		Description:        printersData.Printers[0].Description,
-		Status:             lib.PrinterStatusFromString(printersData.Printers[0].Status),
+		State:              state,
+		StateReasons:       stateReasons,
 		CapsHash:           printersData.Printers[0].CapsHash,
-		XMPPPingInterval:   xmppPingInterval,
 		Tags:               tags,
+		XMPPPingInterval:   xmppPingInterval,
 	}
 
 	return printer, err
@@ -606,6 +731,11 @@ func (gcp *GoogleCloudPrint) Translate(ppd string) (string, error) {
 	}
 	p["collate"] = map[string]bool{
 		"default": true,
+	}
+	p["supported_content_type"] = []map[string]string{
+		map[string]string{
+			"content_type": "application/pdf",
+		},
 	}
 
 	cddString, err := json.Marshal(cdd)
