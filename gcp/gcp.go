@@ -362,11 +362,10 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 
 	var jobsData struct {
 		Jobs []struct {
-			ID        string
-			Title     string
-			FileURL   string
-			TicketURL string
-			OwnerID   string
+			ID      string
+			Title   string
+			FileURL string
+			OwnerID string
 		}
 	}
 	if err = json.Unmarshal(responseBody, &jobsData); err != nil {
@@ -380,7 +379,6 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 			GCPPrinterID: gcpID,
 			GCPJobID:     jobData.ID,
 			FileURL:      jobData.FileURL,
-			TicketURL:    jobData.TicketURL,
 			OwnerID:      jobData.OwnerID,
 			Title:        jobData.Title,
 		}

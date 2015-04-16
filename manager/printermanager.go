@@ -370,7 +370,7 @@ func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, map[string]str
 			fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID)
 	}
 
-	options, err := pm.gcp.Ticket(job.TicketURL)
+	options, err := pm.gcp.Ticket(job.GCPJobID)
 	if err != nil {
 		return lib.Printer{}, nil, nil,
 			fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err)
