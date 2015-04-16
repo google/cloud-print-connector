@@ -51,7 +51,7 @@ var (
 		"CUPS job queue size")
 	cupsPrinterPollIntervalFlag = flag.String(
 		"cups-printer-poll-interval", "",
-		"Interval, in seconds, between CUPS printer status polls")
+		"Interval, in seconds, between CUPS printer state polls")
 	cupsJobFullUsernameFlag = flag.String(
 		"cups-job-full-username", "",
 		"Whether to use the full username (joe@example.com) in CUPS jobs")

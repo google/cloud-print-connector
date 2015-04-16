@@ -232,7 +232,7 @@ func (cc *cupsCore) getJobAttributes(jobID C.int, attributes **C.char) (*C.ipp_t
 }
 
 // createJobURI creates a uri string for the job-uri attribute, used to get the
-// status of a CUPS job.
+// state of a CUPS job.
 func createJobURI(jobID C.int) (*C.char, error) {
 	length := C.size_t(urlMaxLength)
 	uri := (*C.char)(C.malloc(length))

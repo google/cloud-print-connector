@@ -316,15 +316,70 @@ func (gcp *GoogleCloudPrint) NextPrinterWithUpdates() string {
 	return <-gcp.xmppPrintersUpdates
 }
 
-// Control calls google.com/cloudprint/control to set the status of a
+// printJobStateDiff represents a CJS PrintJobStateDiff message.
+type printJobStateDiff struct {
+	State        jobState `json:"state"`
+	PagesPrinted uint32   `json:"pages_printed"`
+}
+
+// jobState represents a CJS JobState message.
+type jobState struct {
+	Type              string             `json:"type"`
+	UserActionCause   *userActionCause   `json:"user_action_cause,omitempty"`
+	DeviceActionCause *deviceActionCause `json:"device_action_cause,omitempty"`
+}
+
+// userActionCause represents a CJS JobState.UserActionCause message.
+type userActionCause struct {
+	ActionCode string `json:"action_code"`
+}
+
+// deviceActionCause represents a CJS JobState.DeviceActionCause message.
+type deviceActionCause struct {
+	ErrorCode string `json:"error_code"`
+}
+
+// Control calls google.com/cloudprint/control to set the state of a
 // GCP print job.
-func (gcp *GoogleCloudPrint) Control(jobID string, status lib.GCPJobStatus, code, message string) error {
+func (gcp *GoogleCloudPrint) Control(jobID string, state lib.GCPJobState, cause lib.GCPJobStateCause, pages uint32) error {
+	var semanticState printJobStateDiff
+	if cause == lib.GCPJobCanceled {
+		semanticState = printJobStateDiff{
+			State: jobState{
+				Type: state.String(),
+				UserActionCause: &userActionCause{
+					ActionCode: cause.String(),
+				},
+			},
+			PagesPrinted: pages,
+		}
+	} else if state == lib.GCPJobAborted || state == lib.GCPJobStopped {
+		semanticState = printJobStateDiff{
+			State: jobState{
+				Type: state.String(),
+				DeviceActionCause: &deviceActionCause{
+					ErrorCode: cause.String(),
+				},
+			},
+			PagesPrinted: pages,
+		}
+	} else {
+		semanticState = printJobStateDiff{
+			State: jobState{
+				Type: state.String(),
+			},
+			PagesPrinted: pages,
+		}
+	}
+
+	ss, err := json.Marshal(semanticState)
+	if err != nil {
+		return err
+	}
+
 	form := url.Values{}
 	form.Set("jobid", jobID)
-	// TODO: Replace status, code, message with semantic_state_diff.
-	form.Set("status", string(status))
-	form.Set("code", code)
-	form.Set("message", message)
+	form.Set("semantic_state_diff", string(ss))
 
 	if _, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"control", form); err != nil {
 		return err

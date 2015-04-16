@@ -363,23 +363,26 @@ func (pm *PrinterManager) deleteInFlightJob(gcpID string) {
 //
 // Errors are returned as a string (last return value), for reporting
 // to GCP and local logging.
-func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, map[string]string, *os.File, string) {
+func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, map[string]string, *os.File, string, lib.GCPJobStateCause) {
 	printer, exists := pm.gcpPrintersByGCPID.Get(job.GCPPrinterID)
 	if !exists {
 		return lib.Printer{}, nil, nil,
-			fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID)
+			fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID),
+			lib.GCPJobOther
 	}
 
 	options, err := pm.gcp.Ticket(job.GCPJobID)
 	if err != nil {
 		return lib.Printer{}, nil, nil,
-			fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err)
+			fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err),
+			lib.GCPJobInvalidTicket
 	}
 
 	pdfFile, err := cups.CreateTempFile()
 	if err != nil {
 		return lib.Printer{}, nil, nil,
-			fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err)
+			fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err),
+			lib.GCPJobOther
 	}
 
 	pm.downloadSemaphore.Acquire()
@@ -392,20 +395,21 @@ func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, map[string]str
 		// Clean up this temporary file so the caller doesn't need extra logic.
 		os.Remove(pdfFile.Name())
 		return lib.Printer{}, nil, nil,
-			fmt.Sprintf("Failed to download PDF for job %s: %s", job.GCPJobID, err)
+			fmt.Sprintf("Failed to download PDF for job %s: %s", job.GCPJobID, err),
+			lib.GCPJobPrintFailure
 	}
 
 	glog.Infof("Downloaded job %s in %s", job.GCPJobID, dt.String())
 	pdfFile.Close()
 
-	return printer, options, pdfFile, ""
+	return printer, options, pdfFile, "", 100
 }
 
 // processJob performs these steps:
 //
 // 1) Assembles the job resources (printer, ticket, PDF)
 // 2) Creates a new job in CUPS.
-// 3) Follows up with the job status until done or error.
+// 3) Follows up with the job state until done or error.
 // 4) Deletes temporary file.
 //
 // Nothing is returned; intended for use as goroutine.
@@ -420,11 +424,11 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 
 	glog.Infof("Received job %s", job.GCPJobID)
 
-	printer, options, pdfFile, message := pm.assembleJob(job)
+	printer, options, pdfFile, message, gcpJobStateCause := pm.assembleJob(job)
 	if message != "" {
 		pm.incrementJobsProcessed(false)
 		glog.Error(message)
-		if err := pm.gcp.Control(job.GCPJobID, lib.JobError, "NONE", message); err != nil {
+		if err := pm.gcp.Control(job.GCPJobID, lib.GCPJobAborted, gcpJobStateCause, 0); err != nil {
 			glog.Error(err)
 		}
 		return
@@ -449,7 +453,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		pm.incrementJobsProcessed(false)
 		message = fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)
 		glog.Error(message)
-		if err := pm.gcp.Control(job.GCPJobID, lib.JobError, "NONE", message); err != nil {
+		if err := pm.gcp.Control(job.GCPJobID, lib.GCPJobAborted, lib.GCPJobPrintFailure, 0); err != nil {
 			glog.Error(err)
 		}
 		return
@@ -460,44 +464,43 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 	pm.followJob(job, cupsJobID)
 }
 
-// followJob polls a CUPS job status to update the GCP job status and
-// returns when the job status is DONE or ERROR.
+// followJob polls a CUPS job state to update the GCP job state and
+// returns when the job state is DONE or ERROR.
 //
 // Nothing is returned, as all errors are reported and logged from
 // this function.
 func (pm *PrinterManager) followJob(job *lib.Job, cupsJobID uint32) {
-	var cupsStatus lib.CUPSJobStatus
-	var gcpStatus lib.GCPJobStatus
-	var message string
+	var cupsState lib.CUPSJobState
+	var gcpState lib.GCPJobState
+	var pages uint32
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	for _ = range ticker.C {
-		latestCUPSStatus, latestMessage, err := pm.cups.GetJobStatus(cupsJobID)
+		latestCUPSState, latestPages, err := pm.cups.GetJobState(cupsJobID)
 		if err != nil {
-			gcpStatus = lib.JobError
-			cupsStatus = "UNKNOWN"
-			message = fmt.Sprintf("Failed to get status of CUPS job %d: %s", cupsJobID, err)
-			if err := pm.gcp.Control(job.GCPJobID, lib.JobError, "NONE", message); err != nil {
+			glog.Warningf("Failed to get state of CUPS job %d: %s", cupsJobID, err)
+			if err := pm.gcp.Control(job.GCPJobID, lib.GCPJobAborted, lib.GCPJobOther, pages); err != nil {
 				glog.Error(err)
 			}
 			pm.incrementJobsProcessed(false)
 			break
 		}
 
-		if latestCUPSStatus != cupsStatus || latestMessage != message {
-			cupsStatus = latestCUPSStatus
-			gcpStatus = latestCUPSStatus.GCPJobStatus()
-			message = latestMessage
-			if err = pm.gcp.Control(job.GCPJobID, gcpStatus, string(cupsStatus), message); err != nil {
+		if latestCUPSState != cupsState || latestPages != pages {
+			cupsState = latestCUPSState
+			var gcpCause lib.GCPJobStateCause
+			gcpState, gcpCause = latestCUPSState.GCPJobState()
+			pages = latestPages
+			if err = pm.gcp.Control(job.GCPJobID, gcpState, gcpCause, pages); err != nil {
 				glog.Error(err)
 			}
-			glog.Infof("Job %s status is now: %s/%s", job.GCPJobID, cupsStatus, gcpStatus)
+			glog.Infof("Job %s state is now: %s/%s", job.GCPJobID, cupsState, gcpState)
 		}
 
-		if gcpStatus != lib.JobInProgress {
-			if gcpStatus == lib.JobDone {
+		if gcpState != lib.GCPJobInProgress {
+			if gcpState == lib.GCPJobDone {
 				pm.incrementJobsProcessed(true)
 			} else {
 				pm.incrementJobsProcessed(false)
