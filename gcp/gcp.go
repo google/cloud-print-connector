@@ -555,7 +555,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 	form.Set("name", printer.Name)
 	form.Set("default_display_name", printer.DefaultDisplayName)
 	form.Set("proxy", gcp.proxyName)
-	form.Set("uuid", printer.Name) // CUPS doesn't provide serial number.
+	form.Set("uuid", printer.UUID)
 	form.Set("manufacturer", manufacturer)
 	form.Set("model", model)
 	form.Set("gcp_version", "2.0")
@@ -608,6 +608,10 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 	// Ignore Name field because it never changes.
 	if diff.DefaultDisplayNameChanged {
 		form.Set("default_display_name", diff.Printer.DefaultDisplayName)
+	}
+
+	if diff.UUIDChanged {
+		form.Set("uuid", diff.Printer.UUID)
 	}
 
 	if diff.StateChanged {

@@ -65,9 +65,10 @@ func PrinterStateFromGCP(ss string) PrinterState {
 
 // CUPS: cups_dest_t; GCP: /register and /update interfaces
 type Printer struct {
-	GCPID              string            // CUPS: custom field;                GCP: printerid (GCP key)
+	GCPID              string            //                                    GCP: printerid (GCP key)
 	Name               string            // CUPS: cups_dest_t.name (CUPS key); GCP: name field
-	DefaultDisplayName string            // CUPS: printer-info option;         GCP: default_display_name field
+	DefaultDisplayName string            // CUPS: printer-info;                GCP: default_display_name field
+	UUID               string            // CUPS: printer-uuid;                GCP: uuid field
 	State              PrinterState      // CUPS: printer-state;               GCP: CDS.StateType
 	StateReasons       []string          // CUPS: printer-state-reasons;       GCP: CDS.PrinterStateSection fields
 	CapsHash           string            // CUPS: hash of PPD;                 GCP: capsHash field
@@ -114,6 +115,7 @@ type PrinterDiff struct {
 	Printer   Printer
 
 	DefaultDisplayNameChanged bool
+	UUIDChanged               bool
 	StateChanged              bool // Also indicates changes to StateReasons.
 	CapsHashChanged           bool
 	XMPPPingIntervalChanged   bool
@@ -197,6 +199,9 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if pg.DefaultDisplayName != pc.DefaultDisplayName {
 		d.DefaultDisplayNameChanged = true
 	}
+	if pg.UUID != pc.UUID {
+		d.UUIDChanged = true
+	}
 	if pg.State != pc.State {
 		d.StateChanged = true
 	} else if len(pg.StateReasons) != len(pc.StateReasons) {
@@ -222,7 +227,7 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 		d.TagsChanged = true
 	}
 
-	if d.DefaultDisplayNameChanged || d.StateChanged ||
+	if d.DefaultDisplayNameChanged || d.UUIDChanged || d.StateChanged ||
 		d.CapsHashChanged || d.XMPPPingIntervalChanged || d.TagsChanged {
 		return d
 	}

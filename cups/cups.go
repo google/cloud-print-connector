@@ -66,6 +66,7 @@ const (
 	attrPrinterName         = "printer-name"
 	attrPrinterInfo         = "printer-info"
 	attrPrinterMakeAndModel = "printer-make-and-model"
+	attrPrinterUUID         = "printer-uuid"
 	attrPrinterState        = "printer-state"
 	attrPrinterStateReasons = "printer-state-reasons"
 
@@ -78,6 +79,7 @@ var (
 		attrPrinterName,
 		attrPrinterInfo,
 		attrPrinterMakeAndModel,
+		attrPrinterUUID,
 		attrPrinterState,
 		attrPrinterStateReasons,
 	}
@@ -426,6 +428,7 @@ func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName 
 
 	p := lib.Printer{
 		Name:         printerTags[attrPrinterName],
+		UUID:         printerTags[attrPrinterUUID],
 		State:        lib.PrinterStateFromCUPS(printerTags[attrPrinterState]),
 		StateReasons: stateReasons,
 		Tags:         tags,

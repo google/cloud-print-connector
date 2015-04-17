@@ -118,6 +118,7 @@ var DefaultConfig = Config{
 		"printer-make-and-model",
 		"printer-state",
 		"printer-state-reasons",
+		"printer-uuid",
 	},
 	CUPSJobFullUsername:          false,
 	CUPSIgnoreRawPrinters:        true,
