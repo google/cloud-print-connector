@@ -465,6 +465,7 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, map[string]
 			DefaultDisplayName string            `json:"defaultDisplayName"`
 			UUID               string            `json:"uuid"`
 			GCPVersion         string            `json:"gcpVersion"`
+			Firmware           string            `json:"firmware"`
 			CapsHash           string            `json:"capsHash"`
 			LocalSettings      localSettingsPull `json:"local_settings"`
 			Tags               []string          `json:"tags"`
@@ -514,6 +515,7 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, map[string]
 			DefaultDisplayName: p.DefaultDisplayName,
 			UUID:               p.UUID,
 			GCPVersion:         p.GCPVersion,
+			ConnectorVersion:   p.Firmware,
 			State:              state,
 			StateReasons:       stateReasons,
 			CapsHash:           p.CapsHash,
@@ -566,7 +568,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 	form.Set("setup_url", lib.ConnectorHomeURL)
 	form.Set("support_url", lib.ConnectorHomeURL)
 	form.Set("update_url", lib.ConnectorHomeURL)
-	form.Set("firmware", lib.ShortName)
+	form.Set("firmware", printer.ConnectorVersion)
 	form.Set("local_settings", localSettings)
 	form.Set("semantic_state", semanticState)
 	form.Set("use_cdd", "true")
@@ -608,8 +610,6 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string
 	form := url.Values{}
 	form.Set("printerid", diff.Printer.GCPID)
 	form.Set("proxy", gcp.proxyName)
-	// TODO: check and update firmware version
-	form.Set("firmware", lib.ShortName)
 
 	if diff.DefaultDisplayNameChanged {
 		form.Set("default_display_name", diff.Printer.DefaultDisplayName)
@@ -624,6 +624,10 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string
 		form.Set("setup_url", lib.ConnectorHomeURL)
 		form.Set("support_url", lib.ConnectorHomeURL)
 		form.Set("update_url", lib.ConnectorHomeURL)
+	}
+
+	if diff.ConnectorVersionChanged {
+		form.Set("firmware", diff.Printer.ConnectorVersion)
 	}
 
 	if diff.StateChanged || diff.GCPVersionChanged {
@@ -724,6 +728,7 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, error) {
 			DefaultDisplayName string            `json:"defaultDisplayName"`
 			UUID               string            `json:"uuid"`
 			GCPVersion         string            `json:"gcpVersion"`
+			Firmware           string            `json:"firmware"`
 			CapsHash           string            `json:"capsHash"`
 			LocalSettings      localSettingsPull `json:"local_settings"`
 			Tags               []string          `json:"tags"`
@@ -762,6 +767,7 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, error) {
 		DefaultDisplayName: printersData.Printers[0].DefaultDisplayName,
 		UUID:               printersData.Printers[0].UUID,
 		GCPVersion:         printersData.Printers[0].GCPVersion,
+		ConnectorVersion:   printersData.Printers[0].Firmware,
 		State:              state,
 		StateReasons:       stateReasons,
 		CapsHash:           printersData.Printers[0].CapsHash,

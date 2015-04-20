@@ -158,6 +158,7 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	printers := c.responseToPrinters(response)
 	for i := range printers {
 		printers[i].GCPVersion = lib.GCPAPIVersion
+		printers[i].ConnectorVersion = lib.ShortName
 	}
 	c.addPPDHashToPrinters(printers)
 

@@ -70,8 +70,9 @@ type Printer struct {
 	DefaultDisplayName string            // CUPS: printer-info;                GCP: default_display_name field
 	UUID               string            // CUPS: printer-uuid;                GCP: uuid field
 	GCPVersion         string            //                                    GCP: gcpVersion field
-	State              PrinterState      // CUPS: printer-state;               GCP: CDS.StateType
-	StateReasons       []string          // CUPS: printer-state-reasons;       GCP: CDS.PrinterStateSection fields
+	ConnectorVersion   string            //                                    GCP: firmware field
+	State              PrinterState      // CUPS: printer-state;               GCP: semantic_state field; CDS.StateType
+	StateReasons       []string          // CUPS: printer-state-reasons;       GCP: semantic_state field; CDS.PrinterStateSection fields
 	CapsHash           string            // CUPS: hash of PPD;                 GCP: capsHash field
 	Tags               map[string]string // CUPS: all printer attributes;      GCP: repeated tag field
 	XMPPPingInterval   time.Duration     //                                    GCP: local_settings/xmpp_timeout_value field
@@ -118,6 +119,7 @@ type PrinterDiff struct {
 	DefaultDisplayNameChanged bool
 	UUIDChanged               bool
 	GCPVersionChanged         bool
+	ConnectorVersionChanged   bool
 	StateChanged              bool // Also indicates changes to StateReasons.
 	CapsHashChanged           bool
 	XMPPPingIntervalChanged   bool
@@ -210,6 +212,9 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 		}
 		d.GCPVersionChanged = true
 	}
+	if pg.ConnectorVersion != pc.ConnectorVersion {
+		d.ConnectorVersionChanged = true
+	}
 	if pg.State != pc.State {
 		d.StateChanged = true
 	} else if len(pg.StateReasons) != len(pc.StateReasons) {
@@ -235,8 +240,9 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 		d.TagsChanged = true
 	}
 
-	if d.DefaultDisplayNameChanged || d.UUIDChanged || d.GCPVersionChanged || d.StateChanged ||
-		d.CapsHashChanged || d.XMPPPingIntervalChanged || d.TagsChanged {
+	if d.DefaultDisplayNameChanged || d.UUIDChanged || d.GCPVersionChanged ||
+		d.ConnectorVersionChanged || d.StateChanged || d.CapsHashChanged ||
+		d.XMPPPingIntervalChanged || d.TagsChanged {
 		return d
 	}
 
