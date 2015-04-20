@@ -201,13 +201,10 @@ func (pm *PrinterManager) syncPrinters() error {
 func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer) {
 	switch diff.Operation {
 	case lib.RegisterPrinter:
-		ppd, err := pm.cups.GetPPD(diff.Printer.Name)
-		if err != nil {
-			glog.Errorf("Failed to call GetPPD() while registering printer %s: %s",
-				diff.Printer.Name, err)
-			break
+		getPPD := func() (string, string, string, error) {
+			return pm.cups.GetPPD(diff.Printer.Name)
 		}
-		if err := pm.gcp.Register(&diff.Printer, ppd); err != nil {
+		if err := pm.gcp.Register(&diff.Printer, getPPD); err != nil {
 			glog.Errorf("Failed to register printer %s: %s", diff.Printer.Name, err)
 			break
 		}
@@ -227,7 +224,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		return
 
 	case lib.UpdatePrinter:
-		getPPD := func() (string, error) {
+		getPPD := func() (string, string, string, error) {
 			return pm.cups.GetPPD(diff.Printer.Name)
 		}
 

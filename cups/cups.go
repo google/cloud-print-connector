@@ -236,8 +236,15 @@ func getSystemTags() (map[string]string, error) {
 }
 
 // GetPPD gets the PPD for the specified printer.
-func (c *CUPS) GetPPD(printername string) (string, error) {
-	return c.pc.getPPD(printername)
+func (c *CUPS) GetPPD(printername string) (string, string, string, error) {
+	ppd, err := c.pc.getPPD(printername)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	manufacturer, model := parseManufacturerAndModel(ppd)
+
+	return ppd, manufacturer, model, nil
 }
 
 // RemoveCachedPPD removes a printer's PPD from the cache.

@@ -18,7 +18,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -44,11 +43,6 @@ const (
 	ScopeCloudPrint = "https://www.googleapis.com/auth/cloudprint"
 	ScopeGoogleTalk = "https://www.googleapis.com/auth/googletalk"
 	AccessType      = "offline"
-)
-
-var (
-	re_man = regexp.MustCompile(`(?m)^\*Manufacturer:\s+"(.+)"\s*$`)
-	re_mod = regexp.MustCompile(`(?m)^\*ModelName:\s+"(.+)"\s*$`)
 )
 
 // GoogleCloudPrint is the interface between Go and the Google Cloud Print API.
@@ -209,27 +203,6 @@ func unmarshalSemanticState(semanticState cloudDeviceState) (lib.PrinterState, [
 		stateReasons = append(stateReasons, item.Description)
 	}
 	return state, stateReasons
-}
-
-// parseManufacturerAndModel finds the *Manufacturer and *ModelName values in a PPD string.
-func parseManufacturerAndModel(ppd string) (string, string) {
-	res := re_man.FindStringSubmatch(ppd)
-	man := res[1]
-	res = re_mod.FindStringSubmatch(ppd)
-	mod := res[1]
-
-	if man == "" {
-		man = "Unknown"
-	} else if mod == "" {
-		mod = "Unknown"
-	} else if strings.HasPrefix(mod, man) && len(mod) > len(man) {
-		// ModelName starts with Manufacturer (as it should).
-		// Remove Manufacturer from ModelName.
-		mod = strings.TrimPrefix(mod, man)
-		mod = strings.TrimSpace(mod)
-	}
-
-	return man, mod
 }
 
 // Quit terminates the XMPP conversation so that new jobs stop arriving.
@@ -535,17 +508,16 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, map[string]
 // Register calls google.com/cloudprint/register to register a GCP printer.
 //
 // Sets the GCPID field in the printer arg.
-func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
-	if len(ppd) <= 0 {
-		return errors.New("GCP requires a non-empty PPD")
+func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, getPPD func() (string, string, string, error)) error {
+	ppd, manufacturer, model, err := getPPD()
+	if err != nil {
+		return err
 	}
 
 	cdd, err := gcp.Translate(ppd)
 	if err != nil {
 		return err
 	}
-
-	manufacturer, model := parseManufacturerAndModel(ppd)
 
 	localSettings, err := marshalLocalSettings(gcp.xmppPingIntervalDefault)
 	if err != nil {
@@ -604,7 +576,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 }
 
 // Update calls google.com/cloudprint/update to update a GCP printer.
-func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string, error)) error {
+func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string, string, string, error)) error {
 	// Ignores Name field because it never changes.
 
 	form := url.Values{}
@@ -639,7 +611,7 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string
 	}
 
 	if diff.CapsHashChanged || diff.GCPVersionChanged {
-		ppd, err := getPPD()
+		ppd, manufacturer, model, err := getPPD()
 		if err != nil {
 			return err
 		}
@@ -648,8 +620,6 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string
 		if err != nil {
 			return err
 		}
-
-		manufacturer, model := parseManufacturerAndModel(ppd)
 
 		form.Set("manufacturer", manufacturer)
 		form.Set("model", model)
