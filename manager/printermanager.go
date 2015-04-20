@@ -227,19 +227,11 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		return
 
 	case lib.UpdatePrinter:
-		var ppd string
-		if diff.CapsHashChanged {
-			var err error
-			ppd, err = pm.cups.GetPPD(diff.Printer.Name)
-			if err != nil {
-				glog.Errorf("Failed to call GetPPD() while updating printer %s: %s",
-					diff.Printer.Name, err)
-				ch <- diff.Printer
-				return
-			}
+		getPPD := func() (string, error) {
+			return pm.cups.GetPPD(diff.Printer.Name)
 		}
 
-		if err := pm.gcp.Update(diff, ppd); err != nil {
+		if err := pm.gcp.Update(diff, getPPD); err != nil {
 			glog.Errorf("Failed to update a printer: %s", err)
 		} else {
 			glog.Infof("Updated %s", diff.Printer.Name)

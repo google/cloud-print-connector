@@ -460,14 +460,16 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, map[string]
 
 	var listData struct {
 		Printers []struct {
-			ID                 string
-			Name               string
-			DefaultDisplayName string
-			CapsHash           string
+			ID                 string            `json:"id"`
+			Name               string            `json:"name"`
+			DefaultDisplayName string            `json:"defaultDisplayName"`
+			UUID               string            `json:"uuid"`
+			GCPVersion         string            `json:"gcpVersion"`
+			CapsHash           string            `json:"capsHash"`
 			LocalSettings      localSettingsPull `json:"local_settings"`
-			Tags               []string
-			QueuedJobsCount    uint
-			SemanticState      cloudDeviceState `json:"semantic_state"`
+			Tags               []string          `json:"tags"`
+			QueuedJobsCount    uint              `json:"queuedJobsCount"`
+			SemanticState      cloudDeviceState  `json:"semantic_state"`
 		}
 	}
 	if err = json.Unmarshal(responseBody, &listData); err != nil {
@@ -510,6 +512,8 @@ func (gcp *GoogleCloudPrint) List() ([]lib.Printer, map[string]uint, map[string]
 			GCPID:              p.ID,
 			Name:               p.Name,
 			DefaultDisplayName: p.DefaultDisplayName,
+			UUID:               p.UUID,
+			GCPVersion:         p.GCPVersion,
 			State:              state,
 			StateReasons:       stateReasons,
 			CapsHash:           p.CapsHash,
@@ -558,11 +562,11 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 	form.Set("uuid", printer.UUID)
 	form.Set("manufacturer", manufacturer)
 	form.Set("model", model)
-	form.Set("gcp_version", "2.0")
+	form.Set("gcp_version", printer.GCPVersion)
 	form.Set("setup_url", lib.ConnectorHomeURL)
 	form.Set("support_url", lib.ConnectorHomeURL)
 	form.Set("update_url", lib.ConnectorHomeURL)
-	form.Set("firmware", "CUPS Connector "+lib.GetBuildDate())
+	form.Set("firmware", lib.ShortName)
 	form.Set("local_settings", localSettings)
 	form.Set("semantic_state", semanticState)
 	form.Set("use_cdd", "true")
@@ -598,14 +602,15 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, ppd string) error {
 }
 
 // Update calls google.com/cloudprint/update to update a GCP printer.
-func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
+func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string, error)) error {
+	// Ignores Name field because it never changes.
+
 	form := url.Values{}
 	form.Set("printerid", diff.Printer.GCPID)
 	form.Set("proxy", gcp.proxyName)
-	form.Set("gcp_version", "2.0")
-	form.Set("firmware", "CUPS Connector "+lib.GetBuildDate())
+	// TODO: check and update firmware version
+	form.Set("firmware", lib.ShortName)
 
-	// Ignore Name field because it never changes.
 	if diff.DefaultDisplayNameChanged {
 		form.Set("default_display_name", diff.Printer.DefaultDisplayName)
 	}
@@ -614,7 +619,14 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 		form.Set("uuid", diff.Printer.UUID)
 	}
 
-	if diff.StateChanged {
+	if diff.GCPVersionChanged {
+		form.Set("gcp_version", diff.Printer.GCPVersion)
+		form.Set("setup_url", lib.ConnectorHomeURL)
+		form.Set("support_url", lib.ConnectorHomeURL)
+		form.Set("update_url", lib.ConnectorHomeURL)
+	}
+
+	if diff.StateChanged || diff.GCPVersionChanged {
 		semanticState, err := marshalSemanticState(diff.Printer.State, diff.Printer.StateReasons)
 		if err != nil {
 			return err
@@ -622,7 +634,12 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, ppd string) error {
 		form.Set("semantic_state", semanticState)
 	}
 
-	if diff.CapsHashChanged {
+	if diff.CapsHashChanged || diff.GCPVersionChanged {
+		ppd, err := getPPD()
+		if err != nil {
+			return err
+		}
+
 		cdd, err := gcp.Translate(ppd)
 		if err != nil {
 			return err
@@ -681,7 +698,7 @@ func (gcp *GoogleCloudPrint) SetPrinterXMPPPingInterval(printer lib.Printer) err
 		XMPPPingIntervalChanged: true,
 	}
 
-	if err := gcp.Update(&diff, ""); err != nil {
+	if err := gcp.Update(&diff, nil); err != nil {
 		return err
 	}
 
@@ -702,13 +719,15 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, error) {
 
 	var printersData struct {
 		Printers []struct {
-			ID                 string
-			Name               string
-			DefaultDisplayName string
-			CapsHash           string
+			ID                 string            `json:"id"`
+			Name               string            `json:"name"`
+			DefaultDisplayName string            `json:"defaultDisplayName"`
+			UUID               string            `json:"uuid"`
+			GCPVersion         string            `json:"gcpVersion"`
+			CapsHash           string            `json:"capsHash"`
 			LocalSettings      localSettingsPull `json:"local_settings"`
-			Tags               []string
-			SemanticState      cloudDeviceState `json:"semantic_state"`
+			Tags               []string          `json:"tags"`
+			SemanticState      cloudDeviceState  `json:"semantic_state"`
 		}
 	}
 	if err = json.Unmarshal(responseBody, &printersData); err != nil {
@@ -741,6 +760,8 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, error) {
 		GCPID:              printersData.Printers[0].ID,
 		Name:               printersData.Printers[0].Name,
 		DefaultDisplayName: printersData.Printers[0].DefaultDisplayName,
+		UUID:               printersData.Printers[0].UUID,
+		GCPVersion:         printersData.Printers[0].GCPVersion,
 		State:              state,
 		StateReasons:       stateReasons,
 		CapsHash:           printersData.Printers[0].CapsHash,

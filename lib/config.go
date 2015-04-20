@@ -11,15 +11,24 @@ import (
 	"encoding/json"
 	"flag"
 	"io/ioutil"
+	"runtime"
 )
 
-// A website with user-friendly information.
-const ConnectorHomeURL string = "https://github.com/google/cups-connector"
+const (
+	// A website with user-friendly information.
+	ConnectorHomeURL string = "https://github.com/google/cups-connector"
+
+	GCPAPIVersion string = "2.0"
+)
 
 var (
 	// To be populated by something like:
-	// go install -ldflags "-X cups-connector/lib.buildDate `date +%Y.%m.%d`"
-	buildDate string
+	// go install -ldflags "-X cups-connector/lib.BuildDate `date +%Y.%m.%d`"
+	BuildDate string = "DEV"
+
+	ShortName string = "CUPS Connector " + BuildDate + "-" + runtime.GOOS
+
+	FullName string = "Google Cloud Print CUPS Connector version " + BuildDate + "-" + runtime.GOOS
 
 	ConfigFilename = flag.String(
 		"config-filename", "cups-connector.config.json", "Name of config file")
@@ -171,11 +180,4 @@ func (c *Config) ToFile() error {
 	}
 
 	return nil
-}
-
-func GetBuildDate() string {
-	if buildDate == "" {
-		return "DEV"
-	}
-	return buildDate
 }

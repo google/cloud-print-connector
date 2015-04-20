@@ -156,6 +156,9 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	}
 
 	printers := c.responseToPrinters(response)
+	for i := range printers {
+		printers[i].GCPVersion = lib.GCPAPIVersion
+	}
 	c.addPPDHashToPrinters(printers)
 
 	return printers, nil
@@ -207,7 +210,7 @@ func (c *CUPS) addPPDHashToPrinters(printers []lib.Printer) {
 func getSystemTags() (map[string]string, error) {
 	tags := make(map[string]string)
 
-	tags["connector-version"] = lib.GetBuildDate()
+	tags["connector-version"] = lib.BuildDate
 	hostname, err := os.Hostname()
 	if err == nil {
 		tags["system-hostname"] = hostname

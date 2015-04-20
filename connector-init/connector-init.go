@@ -383,7 +383,7 @@ func stringToBool(val string) (bool, bool) {
 
 func main() {
 	flag.Parse()
-	fmt.Println("Google Cloud Print CUPS Connector version", lib.GetBuildDate())
+	fmt.Println(lib.FullName)
 
 	var parsed bool
 	var retainUserOAuthToken bool

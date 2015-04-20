@@ -30,7 +30,7 @@ var (
 
 func main() {
 	flag.Parse()
-	fmt.Println("Google Cloud Print CUPS Connector version", lib.GetBuildDate())
+	fmt.Println(lib.FullName)
 
 	if *deleteAllGCPPrintersFlag {
 		deleteAllGCPPrinters()
@@ -94,6 +94,19 @@ func updateConfigFile() {
 		dirty = true
 		fmt.Println("Added cups_printer_attributes")
 		config.CUPSPrinterAttributes = lib.DefaultConfig.CUPSPrinterAttributes
+	} else {
+		// Make sure all required attributes are present.
+		s := make(map[string]interface{}, len(config.CUPSPrinterAttributes))
+		for _, a := range config.CUPSPrinterAttributes {
+			s[a] = new(interface{})
+		}
+		for _, a := range lib.DefaultConfig.CUPSPrinterAttributes {
+			if _, exists := s[a]; !exists {
+				dirty = true
+				fmt.Printf("Added %s to cups_printer_attributes\n", a)
+				config.CUPSPrinterAttributes = append(config.CUPSPrinterAttributes, a)
+			}
+		}
 	}
 	if _, exists := configMap["cups_job_full_username"]; !exists {
 		dirty = true
