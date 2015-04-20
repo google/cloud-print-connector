@@ -96,9 +96,9 @@ func updateConfigFile() {
 		config.CUPSPrinterAttributes = lib.DefaultConfig.CUPSPrinterAttributes
 	} else {
 		// Make sure all required attributes are present.
-		s := make(map[string]interface{}, len(config.CUPSPrinterAttributes))
+		s := make(map[string]struct{}, len(config.CUPSPrinterAttributes))
 		for _, a := range config.CUPSPrinterAttributes {
-			s[a] = new(interface{})
+			s[a] = struct{}{}
 		}
 		for _, a := range lib.DefaultConfig.CUPSPrinterAttributes {
 			if _, exists := s[a]; !exists {

@@ -62,9 +62,9 @@ type GoogleCloudPrint struct {
 	xmppPrintersJobs        chan string
 	xmppPrintersUpdates     chan string
 	xmppPingIntervalUpdates chan time.Duration
-	xmppDead                chan interface{}
+	xmppDead                chan struct{}
 
-	quit chan interface{}
+	quit chan struct{}
 }
 
 // NewGoogleCloudPrint establishes a connection with GCP, returns a new GoogleCloudPrint object.
@@ -96,8 +96,8 @@ func NewGoogleCloudPrint(baseURL, xmppJID, robotRefreshToken, userRefreshToken, 
 		xmppPrintersJobs:        make(chan string, 10),
 		xmppPrintersUpdates:     make(chan string, 10),
 		xmppPingIntervalUpdates: make(chan time.Duration, 1),
-		xmppDead:                make(chan interface{}),
-		quit:                    make(chan interface{}),
+		xmppDead:                make(chan struct{}),
+		quit:                    make(chan struct{}),
 	}
 
 	return gcp, nil
@@ -209,7 +209,7 @@ func unmarshalSemanticState(semanticState cloudDeviceState) (lib.PrinterState, [
 func (gcp *GoogleCloudPrint) Quit() {
 	if gcp.xmpp != nil {
 		// Signal to KeepXMPPAlive.
-		gcp.quit <- new(interface{})
+		gcp.quit <- struct{}{}
 		select {
 		case <-gcp.xmppDead:
 			// Wait for XMPP to die.
