@@ -221,7 +221,7 @@ func getSystemTags() (map[string]string, error) {
 	tags["system-uname-version"] = version
 	tags["system-uname-machine"] = machine
 
-	tags["connector-cups-api-version"] = fmt.Sprintf("%d.%d.%d",
+	tags["connector-cups-client-version"] = fmt.Sprintf("%d.%d.%d",
 		C.CUPS_VERSION_MAJOR, C.CUPS_VERSION_MINOR, C.CUPS_VERSION_PATCH)
 
 	return tags, nil
