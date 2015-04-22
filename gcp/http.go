@@ -14,7 +14,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"runtime"
 	"strings"
 
 	"golang.org/x/oauth2"
@@ -60,7 +59,7 @@ func get(hc *http.Client, url string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	request.Header.Set("X-CloudPrint-Proxy", fmt.Sprintf("cups-connector-%s-%s", runtime.GOOS, lib.GetBuildDate()))
+	request.Header.Set("X-CloudPrint-Proxy", lib.ShortName)
 
 	response, err := hc.Do(request)
 	if err != nil {
@@ -95,7 +94,7 @@ func post(hc *http.Client, url string, form url.Values) ([]byte, uint, int, erro
 		return nil, 0, 0, err
 	}
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	request.Header.Set("X-CloudPrint-Proxy", fmt.Sprintf("cups-connector-%s-%s", runtime.GOOS, lib.GetBuildDate()))
+	request.Header.Set("X-CloudPrint-Proxy", lib.ShortName)
 
 	response, err := hc.Do(request)
 	if err != nil {

@@ -12,8 +12,8 @@ package gcp
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math"
+	"net/url"
 	"strings"
 )
 
@@ -101,13 +101,12 @@ type reverseOrderTicketItem struct {
 }
 
 // Ticket gets a ticket, aka print job options.
-func (gcp *GoogleCloudPrint) Ticket(ticketURL string) (map[string]string, error) {
-	response, err := getWithRetry(gcp.robotClient, ticketURL+"&use_cjt=true")
-	if err != nil {
-		return nil, err
-	}
+func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (map[string]string, error) {
+	form := url.Values{}
+	form.Set("jobid", gcpJobID)
+	form.Set("use_cjt", "true")
 
-	responseBody, err := ioutil.ReadAll(response.Body)
+	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"control", form)
 	if err != nil {
 		return nil, err
 	}

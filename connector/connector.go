@@ -26,8 +26,8 @@ import (
 func main() {
 	flag.Parse()
 	defer glog.Flush()
-	glog.Errorf("Google Cloud Print CUPS Connector version %s", lib.GetBuildDate())
-	fmt.Println("Google Cloud Print CUPS Connector version", lib.GetBuildDate())
+	glog.Error(lib.FullName)
+	fmt.Println(lib.FullName)
 
 	config, err := lib.ConfigFromFile()
 	if err != nil {

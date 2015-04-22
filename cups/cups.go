@@ -13,8 +13,8 @@ package cups
 #include <stdlib.h> // free, calloc
 
 const char
-		*JOB_STATE         = "job-state",
-		*JOB_STATE_REASONS = "job-state-reasons";
+		*JOB_STATE                  = "job-state",
+		*JOB_MEDIA_SHEETS_COMPLETED = "job-media-sheets-completed";
 
 // Allocates a new char**, initializes the values to NULL.
 char **newArrayOfStrings(int size) {
@@ -50,6 +50,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -65,10 +66,12 @@ const (
 	attrPrinterName         = "printer-name"
 	attrPrinterInfo         = "printer-info"
 	attrPrinterMakeAndModel = "printer-make-and-model"
+	attrPrinterUUID         = "printer-uuid"
 	attrPrinterState        = "printer-state"
+	attrPrinterStateReasons = "printer-state-reasons"
 
-	attrJobState       = "job-state"
-	attrJobStateReason = "job-state-reason"
+	attrJobState                = "job-state"
+	attrJobMediaSheetsCompleted = "job-media-sheets-completed"
 )
 
 var (
@@ -76,12 +79,14 @@ var (
 		attrPrinterName,
 		attrPrinterInfo,
 		attrPrinterMakeAndModel,
+		attrPrinterUUID,
 		attrPrinterState,
+		attrPrinterStateReasons,
 	}
 
 	jobAttributes []string = []string{
 		attrJobState,
-		attrJobStateReason,
+		attrJobMediaSheetsCompleted,
 	}
 )
 
@@ -150,6 +155,18 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 		return make([]lib.Printer, 0), nil
 	}
 
+	printers := c.responseToPrinters(response)
+	for i := range printers {
+		printers[i].GCPVersion = lib.GCPAPIVersion
+		printers[i].ConnectorVersion = lib.ShortName
+	}
+	c.addPPDHashToPrinters(printers)
+
+	return printers, nil
+}
+
+// responseToPrinters converts a C.ipp_t to a slice of lib.Printers.
+func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 	printers := make([]lib.Printer, 0, 1)
 
 	for a := C.ippFirstAttribute(response); a != nil; a = C.ippNextAttribute(response) {
@@ -158,25 +175,16 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 		}
 
 		attributes := make([]*C.ipp_attribute_t, 0, C.int(len(c.printerAttributes)))
-
 		for ; a != nil && C.ippGetGroupTag(a) == C.IPP_TAG_PRINTER; a = C.ippNextAttribute(response) {
 			attributes = append(attributes, a)
 		}
-
 		tags := attributesToTags(attributes)
-
-		p, err := tagsToPrinter(tags, c.systemTags, c.infoToDisplayName)
-		if err != nil {
-			glog.Error(err)
-			continue
-		}
+		p := tagsToPrinter(tags, c.systemTags, c.infoToDisplayName)
 
 		printers = append(printers, p)
 	}
 
-	c.addPPDHashToPrinters(printers)
-
-	return printers, nil
+	return printers
 }
 
 // addPPDHashToPrinters fetches PPD hashes for all printers concurrently.
@@ -203,7 +211,7 @@ func (c *CUPS) addPPDHashToPrinters(printers []lib.Printer) {
 func getSystemTags() (map[string]string, error) {
 	tags := make(map[string]string)
 
-	tags["connector-version"] = lib.GetBuildDate()
+	tags["connector-version"] = lib.BuildDate
 	hostname, err := os.Hostname()
 	if err == nil {
 		tags["system-hostname"] = hostname
@@ -228,8 +236,15 @@ func getSystemTags() (map[string]string, error) {
 }
 
 // GetPPD gets the PPD for the specified printer.
-func (c *CUPS) GetPPD(printername string) (string, error) {
-	return c.pc.getPPD(printername)
+func (c *CUPS) GetPPD(printername string) (string, string, string, error) {
+	ppd, err := c.pc.getPPD(printername)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	manufacturer, model := parseManufacturerAndModel(ppd)
+
+	return ppd, manufacturer, model, nil
 }
 
 // RemoveCachedPPD removes a printer's PPD from the cache.
@@ -237,8 +252,8 @@ func (c *CUPS) RemoveCachedPPD(printername string) {
 	c.pc.removePPD(printername)
 }
 
-// GetJobStatus gets the current status of the job indicated by jobID.
-func (c *CUPS) GetJobStatus(jobID uint32) (lib.CUPSJobStatus, string, error) {
+// GetJobState gets the current state of the job indicated by jobID.
+func (c *CUPS) GetJobState(jobID uint32) (lib.CUPSJobState, uint32, error) {
 	ja := C.newArrayOfStrings(C.int(len(jobAttributes)))
 	defer C.freeStringArrayAndStrings(ja, C.int(len(jobAttributes)))
 	for i, attribute := range jobAttributes {
@@ -247,22 +262,22 @@ func (c *CUPS) GetJobStatus(jobID uint32) (lib.CUPSJobStatus, string, error) {
 
 	response, err := c.cc.getJobAttributes(C.int(jobID), ja)
 	if err != nil {
-		return "", "", err
+		return 100, 0, err
 	}
 
 	// cupsDoRequest() returned ipp_t pointer needs explicit free.
 	defer C.ippDelete(response)
 
 	s := C.ippFindAttribute(response, C.JOB_STATE, C.IPP_TAG_ENUM)
-	status := lib.CUPSJobStatusFromInt(uint8(C.ippGetInteger(s, C.int(0))))
+	state := lib.CUPSJobStateFromInt(uint8(C.ippGetInteger(s, C.int(0))))
 
-	sr := C.ippFindAttribute(response, C.JOB_STATE_REASONS, C.IPP_TAG_STRING)
-	var statusReason string
-	if sr != nil {
-		statusReason = C.GoString(C.ippGetString(sr, C.int(0), nil))
+	p := C.ippFindAttribute(response, C.JOB_MEDIA_SHEETS_COMPLETED, C.IPP_TAG_INTEGER)
+	var pages uint32
+	if p != nil {
+		pages = uint32(C.ippGetInteger(p, C.int(0)))
 	}
 
-	return status, statusReason, nil
+	return state, pages, nil
 }
 
 // Print sends a new print job to the specified printer. The job ID
@@ -406,7 +421,7 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string]string {
 }
 
 // tagsToPrinter converts a map of tags to a Printer.
-func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName bool) (lib.Printer, error) {
+func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName bool) lib.Printer {
 	tags := make(map[string]string)
 
 	for k, v := range printerTags {
@@ -416,11 +431,18 @@ func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName 
 		tags[k] = v
 	}
 
+	var stateReasons []string
+	if len(stateReasons) > 0 {
+		stateReasons = strings.Split(printerTags[attrPrinterStateReasons], ",")
+		sort.Strings(stateReasons)
+	}
+
 	p := lib.Printer{
-		Name:        printerTags[attrPrinterName],
-		Description: printerTags[attrPrinterMakeAndModel],
-		Status:      lib.PrinterStatusFromString(printerTags[attrPrinterState]),
-		Tags:        tags,
+		Name:         printerTags[attrPrinterName],
+		UUID:         printerTags[attrPrinterUUID],
+		State:        lib.PrinterStateFromCUPS(printerTags[attrPrinterState]),
+		StateReasons: stateReasons,
+		Tags:         tags,
 	}
 	p.SetTagshash()
 
@@ -428,7 +450,7 @@ func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName 
 		p.DefaultDisplayName = printerTags[attrPrinterInfo]
 	}
 
-	return p, nil
+	return p
 }
 
 func contains(haystack []string, needle string) bool {

@@ -11,12 +11,24 @@ import (
 	"encoding/json"
 	"flag"
 	"io/ioutil"
+	"runtime"
+)
+
+const (
+	// A website with user-friendly information.
+	ConnectorHomeURL string = "https://github.com/google/cups-connector"
+
+	GCPAPIVersion string = "2.0"
 )
 
 var (
 	// To be populated by something like:
-	// go install -ldflags "-X cups-connector/lib.buildDate `date +%Y.%m.%d`"
-	buildDate string
+	// go install -ldflags "-X cups-connector/lib.BuildDate `date +%Y.%m.%d`"
+	BuildDate string = "DEV"
+
+	ShortName string = "CUPS Connector " + BuildDate + "-" + runtime.GOOS
+
+	FullName string = "Google Cloud Print CUPS Connector version " + BuildDate + "-" + runtime.GOOS
 
 	ConfigFilename = flag.String(
 		"config-filename", "cups-connector.config.json", "Name of config file")
@@ -50,7 +62,7 @@ type Config struct {
 	// CUPS job queue size.
 	CUPSJobQueueSize uint `json:"cups_job_queue_size"`
 
-	// Interval (eg 10s, 1m) between CUPS printer status polls.
+	// Interval (eg 10s, 1m) between CUPS printer state polls.
 	CUPSPrinterPollInterval string `json:"cups_printer_poll_interval"`
 
 	// CUPS printer attributes to copy to GCP.
@@ -115,6 +127,7 @@ var DefaultConfig = Config{
 		"printer-make-and-model",
 		"printer-state",
 		"printer-state-reasons",
+		"printer-uuid",
 	},
 	CUPSJobFullUsername:          false,
 	CUPSIgnoreRawPrinters:        true,
@@ -167,11 +180,4 @@ func (c *Config) ToFile() error {
 	}
 
 	return nil
-}
-
-func GetBuildDate() string {
-	if buildDate == "" {
-		return "DEV"
-	}
-	return buildDate
 }

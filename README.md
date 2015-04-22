@@ -86,7 +86,3 @@ The CUPS package uses cgo to access the CUPS/IPP API. This results in lots of
 C variables, mixed in with golang variables. C variables often require explicit
 memory freeing, and often represent the same data as neighboring golang
 variables.
-
-The connector uses the GCP 1.0 API. At the time that the connector was written,
-1.0 was easier and faster to implement, plus the 2.0 API didn't provide upsides
-material to the connector.

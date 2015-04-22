@@ -48,7 +48,7 @@ type XMPP struct {
 	pongs               chan uint8
 	nextPingID          uint8
 	pingIntervalUpdates <-chan time.Duration
-	dead                chan<- interface{}
+	dead                chan<- struct{}
 }
 
 // NewXMPP creates a new XMPP connection.
@@ -60,7 +60,7 @@ type XMPP struct {
 // Updates to the ping interval are received on pingIntervalUpdates.
 //
 // If the connection dies unexpectedly, a message is sent on dead.
-func NewXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16, pingTimeout, pingInterval time.Duration, printersJobs, printersUpdates chan<- string, pingIntervalUpdates <-chan time.Duration, dead chan<- interface{}) (*XMPP, error) {
+func NewXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16, pingTimeout, pingInterval time.Duration, printersJobs, printersUpdates chan<- string, pingIntervalUpdates <-chan time.Duration, dead chan<- struct{}) (*XMPP, error) {
 	var user, domain string
 	if parts := strings.SplitN(xmppJID, "@", 2); len(parts) != 2 {
 		return nil, fmt.Errorf("Tried to use invalid XMPP JID: %s", xmppJID)
@@ -116,7 +116,7 @@ func NewXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16
 	}
 
 	// dispatchIncoming signals pingPeriodically to return via dying.
-	dying := make(chan interface{})
+	dying := make(chan struct{})
 	go x.dispatchIncoming(dying)
 	go x.pingPeriodically(pingTimeout, pingInterval, dying)
 
@@ -136,7 +136,7 @@ func (x *XMPP) Quit() {
 	// pingPeriodically signals death via x.dead channel.
 }
 
-func (x *XMPP) pingPeriodically(timeout, interval time.Duration, dying <-chan interface{}) {
+func (x *XMPP) pingPeriodically(timeout, interval time.Duration, dying <-chan struct{}) {
 	t := time.NewTimer(interval)
 	defer t.Stop()
 
@@ -156,7 +156,7 @@ func (x *XMPP) pingPeriodically(timeout, interval time.Duration, dying <-chan in
 			t.Reset(time.Nanosecond) // Induce ping and interval reset now.
 		case <-dying:
 			// Signal death externally.
-			x.dead <- new(interface{})
+			x.dead <- struct{}{}
 			return
 		}
 	}
@@ -164,7 +164,7 @@ func (x *XMPP) pingPeriodically(timeout, interval time.Duration, dying <-chan in
 
 // dispatchIncoming listens for new XMPP messages and puts them into
 // separate channels, by type of message.
-func (x *XMPP) dispatchIncoming(dying chan<- interface{}) {
+func (x *XMPP) dispatchIncoming(dying chan<- struct{}) {
 	for {
 		// The xml.StartElement tells us what is coming up.
 		startElement, err := readStartElement(x.xmlDecoder)
@@ -232,7 +232,7 @@ func (x *XMPP) dispatchIncoming(dying chan<- interface{}) {
 		}
 	}
 
-	dying <- new(interface{})
+	dying <- struct{}{}
 }
 
 // ping sends a ping message and blocks until pong is received.
