@@ -543,6 +543,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, getPPD func() (strin
 	form.Set("firmware", printer.ConnectorVersion)
 	form.Set("local_settings", localSettings)
 	form.Set("semantic_state", semanticState)
+	form.Set("use_cdd", "true")
 	form.Set("capabilities", cdd)
 	form.Set("capsHash", printer.CapsHash)
 
@@ -622,6 +623,7 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string
 
 		form.Set("manufacturer", manufacturer)
 		form.Set("model", model)
+		form.Set("use_cdd", "true")
 		form.Set("capsHash", diff.Printer.CapsHash)
 		form.Set("capabilities", cdd)
 	}
@@ -681,6 +683,7 @@ func (gcp *GoogleCloudPrint) SetPrinterXMPPPingInterval(printer lib.Printer) err
 func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, error) {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
+	form.Set("use_cdd", "true")
 	form.Set("extra_fields", "semanticState")
 
 	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"printer", form)
