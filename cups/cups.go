@@ -70,6 +70,9 @@ const (
 	attrPrinterUUID         = "printer-uuid"
 	attrPrinterState        = "printer-state"
 	attrPrinterStateReasons = "printer-state-reasons"
+	attrMarkerNames         = "marker-names"
+	attrMarkerTypes         = "marker-types"
+	attrMarkerLevels        = "marker-levels"
 
 	attrJobState                = "job-state"
 	attrJobMediaSheetsCompleted = "job-media-sheets-completed"
@@ -83,6 +86,9 @@ var (
 		attrPrinterUUID,
 		attrPrinterState,
 		attrPrinterStateReasons,
+		attrMarkerNames,
+		attrMarkerTypes,
+		attrMarkerLevels,
 	}
 
 	jobAttributes []string = []string{
@@ -436,13 +442,19 @@ func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName 
 	if len(stateReasons) > 0 {
 		stateReasons = strings.Split(printerTags[attrPrinterStateReasons], ",")
 		sort.Strings(stateReasons)
+	} else {
+		stateReasons = make([]string, 0)
 	}
+
+	markers, markerStates := lib.MarkersFromCUPS(printerTags[attrMarkerNames], printerTags[attrMarkerTypes], printerTags[attrMarkerLevels])
 
 	p := lib.Printer{
 		Name:         printerTags[attrPrinterName],
 		UUID:         printerTags[attrPrinterUUID],
 		State:        lib.PrinterStateFromCUPS(printerTags[attrPrinterState]),
 		StateReasons: stateReasons,
+		Markers:      markers,
+		MarkerStates: markerStates,
 		Tags:         tags,
 	}
 	p.SetTagshash()

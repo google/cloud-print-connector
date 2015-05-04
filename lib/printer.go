@@ -10,9 +10,13 @@ package lib
 import (
 	"crypto/md5"
 	"fmt"
+	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 type PrinterState uint8
@@ -63,6 +67,55 @@ func PrinterStateFromGCP(ss string) PrinterState {
 	}
 }
 
+// MarkersFromCUPS converts CUPS marker-names, -types, -levels to
+// map[marker-name]marker-type and map[marker-name]marker-level of equal length.
+//
+// Normalizes marker type: tonerCartridge => toner, inkCartridge => ink, inkRibbon => ink
+func MarkersFromCUPS(markerNames, markerTypes, markerLevels string) (map[string]string, map[string]uint8) {
+	names := strings.Split(markerNames, ",")
+	types := strings.Split(markerTypes, ",")
+	levels := strings.Split(markerLevels, ",")
+	if len(names) == 0 || len(types) == 0 || len(levels) == 0 {
+		return map[string]string{}, map[string]uint8{}
+	}
+	if len(names) != len(types) || len(types) != len(levels) {
+		// TODO: Change CUPS code to not join multiple attribute values together.
+		glog.Warningf("Received badly-formatted markers from CUPS: %s, %s, %s", markerNames, markerTypes, markerLevels)
+		return map[string]string{}, map[string]uint8{}
+	}
+
+	markers := make(map[string]string, len(names))
+	states := make(map[string]uint8, len(names))
+	for i := 0; i < len(names); i++ {
+		if len(names[i]) == 0 {
+			return map[string]string{}, map[string]uint8{}
+		}
+		n := names[i]
+		t := types[i]
+		switch t {
+		case "tonerCartridge":
+			t = "toner"
+		case "inkCartridge", "inkRibbon":
+			t = "ink"
+		}
+		l, err := strconv.ParseInt(levels[i], 10, 8)
+		if err != nil {
+			glog.Warningf("Failed to parse CUPS marker state %s=%s: %s", n, levels[i], err)
+			return map[string]string{}, map[string]uint8{}
+		}
+
+		if l < 0 || l > 100 {
+			// The CUPS driver doesn't know what the levels are; not useful.
+			return map[string]string{}, map[string]uint8{}
+		}
+
+		markers[n] = t
+		states[n] = uint8(l)
+	}
+
+	return markers, states
+}
+
 // CUPS: cups_dest_t; GCP: /register and /update interfaces
 type Printer struct {
 	GCPID              string            //                                    GCP: printerid (GCP key)
@@ -72,7 +125,9 @@ type Printer struct {
 	GCPVersion         string            //                                    GCP: gcpVersion field
 	ConnectorVersion   string            //                                    GCP: firmware field
 	State              PrinterState      // CUPS: printer-state;               GCP: semantic_state field; CDS.StateType
-	StateReasons       []string          // CUPS: printer-state-reasons;       GCP: semantic_state field; CDS.PrinterStateSection fields
+	StateReasons       []string          // CUPS: printer-state-reasons;       GCP: semantic_state field; CDS VendorState.Item
+	Markers            map[string]string // CUPS: marker-(names|types);        GCP: CDD marker field
+	MarkerStates       map[string]uint8  // CUPS: marker-(names|levels);       GCP: semantic_state field; CDS MarkerState.Item
 	CapsHash           string            // CUPS: hash of PPD;                 GCP: capsHash field
 	Tags               map[string]string // CUPS: all printer attributes;      GCP: repeated tag field
 	XMPPPingInterval   time.Duration     //                                    GCP: local_settings/xmpp_timeout_value field
@@ -121,6 +176,7 @@ type PrinterDiff struct {
 	GCPVersionChanged         bool
 	ConnectorVersionChanged   bool
 	StateChanged              bool // Also indicates changes to StateReasons.
+	MarkersChanged            bool
 	CapsHashChanged           bool
 	XMPPPingIntervalChanged   bool
 	TagsChanged               bool
@@ -215,17 +271,13 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if pg.ConnectorVersion != pc.ConnectorVersion {
 		d.ConnectorVersionChanged = true
 	}
-	if pg.State != pc.State {
+	if pg.State != pc.State ||
+		!reflect.DeepEqual(pg.StateReasons, pc.StateReasons) ||
+		!reflect.DeepEqual(pg.MarkerStates, pc.MarkerStates) {
 		d.StateChanged = true
-	} else if len(pg.StateReasons) != len(pc.StateReasons) {
-		d.StateChanged = true
-	} else {
-		for i := range pg.StateReasons {
-			if pg.StateReasons[i] != pc.StateReasons[i] {
-				d.StateChanged = true
-				break
-			}
-		}
+	}
+	if !reflect.DeepEqual(pg.Markers, pc.Markers) {
+		d.MarkersChanged = true
 	}
 	if pg.CapsHash != pc.CapsHash {
 		d.CapsHashChanged = true
@@ -241,8 +293,8 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	}
 
 	if d.DefaultDisplayNameChanged || d.UUIDChanged || d.GCPVersionChanged ||
-		d.ConnectorVersionChanged || d.StateChanged || d.CapsHashChanged ||
-		d.XMPPPingIntervalChanged || d.TagsChanged {
+		d.ConnectorVersionChanged || d.StateChanged || d.MarkersChanged ||
+		d.CapsHashChanged || d.XMPPPingIntervalChanged || d.TagsChanged {
 		return d
 	}
 

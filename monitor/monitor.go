@@ -112,7 +112,7 @@ func (m *Monitor) getStats() (string, error) {
 	cupsConnOpen := m.cups.ConnQtyOpen()
 	cupsConnMax := m.cups.ConnQtyMax()
 
-	if gcpPrinters, _, _, err := m.gcp.List(); err != nil {
+	if gcpPrinters, err := m.gcp.List(); err != nil {
 		return "", err
 	} else {
 		gcpPrinterQuantity = len(gcpPrinters)

@@ -52,7 +52,7 @@ type PrinterManager struct {
 
 func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string) (*PrinterManager, error) {
 	// Get the GCP printer list.
-	gcpPrinters, queuedJobsCount, xmppPingIntervalChanges, err := gcp.List()
+	gcpPrinters, queuedJobsCount, xmppPingIntervalChanges, err := gcp.AllPrinters()
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +145,7 @@ func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 				t.Reset(interval)
 
 			case gcpID := <-pm.gcpPrinterUpdates:
-				p, err := pm.gcp.Printer(gcpID)
+				p, _, _, err := pm.gcp.Printer(gcpID)
 				if err != nil {
 					glog.Error(err)
 					continue
@@ -230,7 +230,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		}
 
 		if err := pm.gcp.Update(diff, getPPD); err != nil {
-			glog.Errorf("Failed to update a printer: %s", err)
+			glog.Errorf("Failed to update %s: %s", diff.Printer.Name, err)
 		} else {
 			glog.Infof("Updated %s", diff.Printer.Name)
 		}
