@@ -346,9 +346,9 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 // List calls google.com/cloudprint/list to get all GCP printers assigned
 // to this connector.
 //
-// Returns only the GCPID of the printers. Use Printer to get details about
-// each printer.
-func (gcp *GoogleCloudPrint) List() ([]string, error) {
+// Returns map of GCPID => printer name. GCPID is unique to GCP; printer name
+// should be unique to CUPS. Use Printer to get details about each printer.
+func (gcp *GoogleCloudPrint) List() (map[string]string, error) {
 	form := url.Values{}
 	form.Set("proxy", gcp.proxyName)
 	form.Set("extra_fields", "-tags")
@@ -360,19 +360,20 @@ func (gcp *GoogleCloudPrint) List() ([]string, error) {
 
 	var listData struct {
 		Printers []struct {
-			ID string `json:"id"`
+			ID   string `json:"id"`
+			Name string `json:"name"`
 		}
 	}
 	if err = json.Unmarshal(responseBody, &listData); err != nil {
 		return nil, err
 	}
 
-	ids := make([]string, 0, len(listData.Printers))
+	printers := make(map[string]string, len(listData.Printers))
 	for _, p := range listData.Printers {
-		ids = append(ids, p.ID)
+		printers[p.ID] = p.Name
 	}
 
-	return ids, nil
+	return printers, nil
 }
 
 // AllPrinters calls List, then calls Printer, one goroutine per printer.
@@ -394,7 +395,7 @@ func (gcp *GoogleCloudPrint) AllPrinters() ([]lib.Printer, map[string]uint, map[
 		err                     error
 	}
 	ch := make(chan response)
-	for _, id := range ids {
+	for id := range ids {
 		go func(id string) {
 			printer, queuedJobsCount, xmppPingIntervalPending, err := gcp.Printer(id)
 			ch <- response{printer, queuedJobsCount, xmppPingIntervalPending, err}

@@ -208,13 +208,13 @@ func deleteAllGCPPrinters() {
 		glog.Fatal(err)
 	}
 
-	printers, _, _, err := gcp.List()
+	printers, err := gcp.List()
 	if err != nil {
 		glog.Fatal(err)
 	}
 
 	ch := make(chan bool)
-	for _, p := range printers {
+	for gcpID, name := range printers {
 		go func(gcpID, name string) {
 			err := gcp.Delete(gcpID)
 			if err != nil {
@@ -223,7 +223,7 @@ func deleteAllGCPPrinters() {
 				fmt.Printf("Deleted %s \"%s\" from GCP\n", gcpID, name)
 			}
 			ch <- true
-		}(p.GCPID, p.Name)
+		}(gcpID, name)
 	}
 
 	for _ = range printers {
