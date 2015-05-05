@@ -20,6 +20,24 @@ import (
 	"golang.org/x/oauth2"
 )
 
+/*
+glibc < 2.20 and OSX 10.10 have problems when C.getaddrinfo is called many
+times concurrently. When the connector shares more than about 230 printers, and
+GCP is called once per printer in concurrent goroutines, http.Client.Do starts
+to fail with a lookup error.
+
+This solution, a semaphore, limits the quantity of concurrent HTTP requests,
+which also limits the quantity of concurrent calls to net.LookupHost (which
+calls C.getaddrinfo()).
+
+I would rather wait for the Go compiler to solve this problem than make this a
+configurable option, hence this long-winded comment.
+
+https://github.com/golang/go/issues/3575
+https://github.com/golang/go/issues/6336
+*/
+var lock *lib.Semaphore = lib.NewSemaphore(100)
+
 // newClient creates an instance of http.Client, wrapped with OAuth
 // credentials.
 func newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, refreshToken string, scopes ...string) (*http.Client, error) {
@@ -62,7 +80,9 @@ func get(hc *http.Client, url string) (*http.Response, error) {
 	}
 	request.Header.Set("X-CloudPrint-Proxy", lib.ShortName)
 
+	lock.Acquire()
 	response, err := hc.Do(request)
+	lock.Release()
 	if err != nil {
 		return nil, fmt.Errorf("GET failure: %s", err)
 	}
@@ -97,7 +117,9 @@ func post(hc *http.Client, url string, form url.Values) ([]byte, uint, int, erro
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	request.Header.Set("X-CloudPrint-Proxy", lib.ShortName)
 
+	lock.Acquire()
 	response, err := hc.Do(request)
+	lock.Release()
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("POST failure: %s", err)
 	}
