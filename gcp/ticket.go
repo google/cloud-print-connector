@@ -106,7 +106,7 @@ func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (map[string]string, error) 
 	form.Set("jobid", gcpJobID)
 	form.Set("use_cjt", "true")
 
-	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"control", form)
+	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"ticket", form)
 	if err != nil {
 		return nil, err
 	}
