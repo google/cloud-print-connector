@@ -93,20 +93,27 @@ func MarkersFromCUPS(markerNames, markerTypes, markerLevels string) (map[string]
 		n := names[i]
 		t := types[i]
 		switch t {
-		case "tonerCartridge":
+		case "tonerCartridge", "toner-cartridge":
 			t = "toner"
-		case "inkCartridge", "inkRibbon":
+		case "inkCartridge", "ink-cartridge", "ink-ribbon", "inkRibbon":
 			t = "ink"
 		}
-		l, err := strconv.ParseInt(levels[i], 10, 8)
+		l, err := strconv.ParseInt(levels[i], 10, 32)
 		if err != nil {
 			glog.Warningf("Failed to parse CUPS marker state %s=%s: %s", n, levels[i], err)
 			return map[string]string{}, map[string]uint8{}
 		}
 
-		if l < 0 || l > 100 {
+		if l < 0 {
 			// The CUPS driver doesn't know what the levels are; not useful.
 			return map[string]string{}, map[string]uint8{}
+		} else if l > 100 {
+			// Lop off extra (proprietary?) bits.
+			l = l & 0x7f
+			if l > 100 {
+				// Even that didn't work.
+				return map[string]string{}, map[string]uint8{}
+			}
 		}
 
 		markers[n] = t
