@@ -8,6 +8,8 @@ https://developers.google.com/open-source/licenses/bsd
 package manager
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -52,7 +54,7 @@ type PrinterManager struct {
 
 func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string) (*PrinterManager, error) {
 	// Get the GCP printer list.
-	gcpPrinters, queuedJobsCount, xmppPingIntervalChanges, err := gcp.AllPrinters()
+	gcpPrinters, queuedJobsCount, xmppPingIntervalChanges, err := allGCPPrinters(gcp)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +131,68 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 func (pm *PrinterManager) Quit() {
 	pm.printerPollQuit <- true
 	<-pm.printerPollQuit
+}
+
+// allGCPPrinters calls gcp.List, then calls gcp.Printer, one goroutine per
+// printer. This is a fast way to fetch all printers with corresponding CDD
+// info, which the List API does not provide.
+//
+// The second return value is a map of GCPID -> queued print job quantity.
+// The third return value is a map of GCPID -> pending XMPP ping interval changes.
+func allGCPPrinters(gcp *gcp.GoogleCloudPrint) ([]lib.Printer, map[string]uint, map[string]time.Duration, error) {
+	ids, err := gcp.List()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	type response struct {
+		printer                 *lib.Printer
+		queuedJobsCount         uint
+		xmppPingIntervalPending time.Duration
+		err                     error
+	}
+	ch := make(chan response)
+	for id := range ids {
+		go func(id string) {
+			printer, queuedJobsCount, xmppPingIntervalPending, err := gcp.Printer(id)
+			ch <- response{printer, queuedJobsCount, xmppPingIntervalPending, err}
+		}(id)
+	}
+
+	errs := make([]error, 0)
+	printers := make([]lib.Printer, 0, len(ids))
+	queuedJobsCount := make(map[string]uint)
+	xmppPingIntervalChanges := make(map[string]time.Duration)
+	for _ = range ids {
+		r := <-ch
+		if r.err != nil {
+			errs = append(errs, r.err)
+			continue
+		}
+		printers = append(printers, *r.printer)
+		if r.queuedJobsCount > 0 {
+			queuedJobsCount[r.printer.GCPID] = r.queuedJobsCount
+		}
+		if r.xmppPingIntervalPending > 0 {
+			xmppPingIntervalChanges[r.printer.GCPID] = r.xmppPingIntervalPending
+		}
+	}
+
+	if len(errs) == 0 {
+		return printers, queuedJobsCount, xmppPingIntervalChanges, nil
+	} else if len(errs) == 1 {
+		return nil, nil, nil, errs[0]
+	} else {
+		// Return an error that is somewhat human-readable.
+		b := bytes.NewBufferString(fmt.Sprintf("%d errors: ", len(errs)))
+		for i, err := range errs {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(err.Error())
+		}
+		return nil, nil, nil, errors.New(b.String())
+	}
 }
 
 func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
