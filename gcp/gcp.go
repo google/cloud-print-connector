@@ -406,16 +406,17 @@ func (gcp *GoogleCloudPrint) AllPrinters() ([]lib.Printer, map[string]uint, map[
 	queuedJobsCount := make(map[string]uint)
 	xmppPingIntervalChanges := make(map[string]time.Duration)
 	for _ = range ids {
-		y := <-ch
-		if err != nil {
-			errs = append(errs, err)
+		r := <-ch
+		if r.err != nil {
+			errs = append(errs, r.err)
+			continue
 		}
-		printers = append(printers, *y.printer)
-		if y.queuedJobsCount > 0 {
-			queuedJobsCount[y.printer.GCPID] = y.queuedJobsCount
+		printers = append(printers, *r.printer)
+		if r.queuedJobsCount > 0 {
+			queuedJobsCount[r.printer.GCPID] = r.queuedJobsCount
 		}
-		if y.xmppPingIntervalPending > 0 {
-			xmppPingIntervalChanges[y.printer.GCPID] = y.xmppPingIntervalPending
+		if r.xmppPingIntervalPending > 0 {
+			xmppPingIntervalChanges[r.printer.GCPID] = r.xmppPingIntervalPending
 		}
 	}
 
