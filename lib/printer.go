@@ -71,16 +71,13 @@ func PrinterStateFromGCP(ss string) PrinterState {
 // map[marker-name]marker-type and map[marker-name]marker-level of equal length.
 //
 // Normalizes marker type: tonerCartridge => toner, inkCartridge => ink, inkRibbon => ink
-func MarkersFromCUPS(markerNames, markerTypes, markerLevels string) (map[string]string, map[string]uint8) {
-	names := strings.Split(markerNames, ",")
-	types := strings.Split(markerTypes, ",")
-	levels := strings.Split(markerLevels, ",")
+func MarkersFromCUPS(names, types, levels []string) (map[string]string, map[string]uint8) {
 	if len(names) == 0 || len(types) == 0 || len(levels) == 0 {
 		return map[string]string{}, map[string]uint8{}
 	}
 	if len(names) != len(types) || len(types) != len(levels) {
-		// TODO: Change CUPS code to not join multiple attribute values together.
-		glog.Warningf("Received badly-formatted markers from CUPS: %s, %s, %s", markerNames, markerTypes, markerLevels)
+		glog.Warningf("Received badly-formatted markers from CUPS: %s, %s, %s",
+			strings.Join(names, ";"), strings.Join(types, ";"), strings.Join(levels, ";"))
 		return map[string]string{}, map[string]uint8{}
 	}
 

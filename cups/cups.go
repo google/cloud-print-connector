@@ -50,6 +50,7 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -354,8 +355,8 @@ func convertIPPDateToTime(date *C.ipp_uchar_t) time.Time {
 // attributesToTags converts a slice of C.ipp_attribute_t to a
 // string:string "tag" map. Outside of this package, "printer attributes" are
 // known as "tags".
-func attributesToTags(attributes []*C.ipp_attribute_t) map[string]string {
-	tags := make(map[string]string)
+func attributesToTags(attributes []*C.ipp_attribute_t) map[string][]string {
+	tags := make(map[string][]string)
 
 	for _, a := range attributes {
 		key := C.GoString(C.ippGetName(a))
@@ -368,7 +369,7 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string]string {
 
 		case C.IPP_TAG_INTEGER, C.IPP_TAG_ENUM:
 			for i := 0; i < count; i++ {
-				values[i] = fmt.Sprintf("%d", int(C.ippGetInteger(a, C.int(i))))
+				values[i] = strconv.FormatInt(int64(C.ippGetInteger(a, C.int(i))), 10)
 			}
 
 		case C.IPP_TAG_BOOLEAN:
@@ -389,7 +390,7 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string]string {
 			for i := 0; i < count; i++ {
 				date := C.ippGetDate(a, C.int(i))
 				t := convertIPPDateToTime(date)
-				values[i] = fmt.Sprintf("%d", t.Unix())
+				values[i] = strconv.FormatInt(t.Unix(), 10)
 			}
 
 		case C.IPP_TAG_RESOLUTION:
@@ -417,30 +418,52 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string]string {
 			}
 		}
 
-		value := strings.Join(values, ",")
-		if value == "none" {
-			value = ""
+		if len(values) == 1 && values[0] == "none" {
+			values = []string{}
 		}
-		tags[key] = value
+		// This block fixes some drivers' marker types, which list an extra
+		// type containing a comma, which CUPS interprets as an extra type.
+		// The extra type starts with a space, so it's easy to detect.
+		if len(values) > 1 && len(values[len(values)-1]) > 1 && values[len(values)-1][0:1] == " " {
+			newValues := make([]string, len(values)-1)
+			for i := 0; i < len(values)-2; i++ {
+				newValues[i] = values[i]
+			}
+			newValues[len(newValues)-1] = strings.Join(values[len(values)-2:], ",")
+			values = newValues
+		}
+		tags[key] = values
 	}
 
 	return tags
 }
 
 // tagsToPrinter converts a map of tags to a Printer.
-func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName bool) lib.Printer {
+func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string, infoToDisplayName bool) lib.Printer {
 	tags := make(map[string]string)
 
 	for k, v := range printerTags {
-		tags[k] = v
+		tags[k] = strings.Join(v, ",")
 	}
 	for k, v := range systemTags {
 		tags[k] = v
 	}
 
+	var name string
+	if n, ok := printerTags[attrPrinterName]; ok {
+		name = n[0]
+	}
+	var uuid string
+	if u, ok := printerTags[attrPrinterUUID]; ok {
+		uuid = u[0]
+	}
+	var state string
+	if s, ok := printerTags[attrPrinterState]; ok {
+		state = s[0]
+	}
 	var stateReasons []string
-	if len(stateReasons) > 0 {
-		stateReasons = strings.Split(printerTags[attrPrinterStateReasons], ",")
+	if len(stateReasons) > 0 { // WTF len is always zero
+		stateReasons = printerTags[attrPrinterStateReasons]
 		sort.Strings(stateReasons)
 	} else {
 		stateReasons = make([]string, 0)
@@ -449,9 +472,9 @@ func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName 
 	markers, markerStates := lib.MarkersFromCUPS(printerTags[attrMarkerNames], printerTags[attrMarkerTypes], printerTags[attrMarkerLevels])
 
 	p := lib.Printer{
-		Name:         printerTags[attrPrinterName],
-		UUID:         printerTags[attrPrinterUUID],
-		State:        lib.PrinterStateFromCUPS(printerTags[attrPrinterState]),
+		Name:         name,
+		UUID:         uuid,
+		State:        lib.PrinterStateFromCUPS(state),
 		StateReasons: stateReasons,
 		Markers:      markers,
 		MarkerStates: markerStates,
@@ -459,8 +482,8 @@ func tagsToPrinter(printerTags, systemTags map[string]string, infoToDisplayName 
 	}
 	p.SetTagshash()
 
-	if infoToDisplayName {
-		p.DefaultDisplayName = printerTags[attrPrinterInfo]
+	if pi, ok := printerTags[attrPrinterInfo]; ok && infoToDisplayName {
+		p.DefaultDisplayName = pi[0]
 	}
 
 	return p
