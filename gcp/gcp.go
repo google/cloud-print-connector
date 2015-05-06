@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/cups-connector/gcp/cdd"
 	"github.com/google/cups-connector/lib"
 
 	"github.com/golang/glog"
@@ -661,77 +662,29 @@ func (gcp *GoogleCloudPrint) Translate(ppd string, markers map[string]string) (s
 	}
 
 	d := json.NewDecoder(bytes.NewReader(responseBody))
-	d.UseNumber() // Force large numbers to be formatted not in scientific notation.
+	d.UseNumber() // Force large numbers not to be formatted with scientific notation.
 
-	var cddInterface interface{}
-	if err = d.Decode(&cddInterface); err != nil {
+	var response struct {
+		CDD cdd.CloudDeviceDescription `json:"cdd"`
+	}
+	if err = d.Decode(&response); err != nil {
 		return "", fmt.Errorf("Failed to unmarshal translated CDD: %s", err)
 	}
 
-	cdd, ok := cddInterface.(map[string]interface{})
-	if !ok {
-		return "", errors.New("Failed to parse translated CDD")
+	c := response.CDD
+	c.Printer.SupportedContentType = cdd.NewSupportedContentType("application/pdf")
+	if c.Printer.Marker == nil && len(markers) > 0 {
+		c.Printer.Marker = cdd.NewMarkers(markers)
 	}
-	cdd, ok = cdd["cdd"].(map[string]interface{})
-	if !ok {
-		return "", errors.New("Failed to parse translated CDD")
-	}
-	p, ok := cdd["printer"].(map[string]interface{})
-	if !ok {
-		return "", errors.New("Failed to parse translated CDD")
-	}
+	c.Printer.Copies = &cdd.Copies{1, 100}
+	c.Printer.Collate = &cdd.Collate{true}
 
-	p["supported_content_type"] = []map[string]string{
-		map[string]string{
-			"content_type": "application/pdf",
-		},
-	}
-	p["marker"] = make([]map[string]interface{}, 0, len(markers))
-	for vendorID, vendorType := range markers {
-		p["marker"] = append(p["marker"].([]map[string]interface{}), markerToGCP(vendorID, vendorType))
-	}
-	p["copies"] = map[string]int{
-		"max":     100,
-		"default": 1,
-	}
-	p["collate"] = map[string]bool{
-		"default": true,
-	}
-
-	cddBytes, err := json.MarshalIndent(cdd, "", "  ")
+	cddBytes, err := json.Marshal(c)
 	if err != nil {
 		return "", fmt.Errorf("Failed to remarshal translated CDD: %s", err)
 	}
 
 	return string(cddBytes), nil
-}
-
-func markerToGCP(vendorID, vendorType string) map[string]interface{} {
-	m := map[string]interface{}{
-		"vendor_id": vendorID,
-	}
-
-	switch vendorType {
-	case "toner", "ink", "staples":
-		m["type"] = strings.ToUpper(vendorType)
-	default:
-		m["type"] = "CUSTOM"
-		m["custom_display_name"] = vendorType
-	}
-
-	if m["type"] == "TONER" || m["type"] == "INK" {
-		switch strings.ToLower(vendorID) {
-		case "black", "color", "cyan", "magenta", "yellow", "light_cyan", "light_magenta",
-			"gray", "light_gray", "pigment_black", "matte_black", "photo_cyan", "photo_magenta",
-			"photo_yellow", "photo_gray", "red", "green", "blue":
-			// Colors known to CDD Marker.Color enum.
-			m["color"] = map[string]string{"type": strings.ToUpper(vendorID)}
-		default:
-			m["color"] = map[string]string{"type": "CUSTOM", "custom_display_name": vendorID}
-		}
-	}
-
-	return m
 }
 
 // Share calls google.com/cloudprint/share to share a registered GCP printer.
