@@ -139,10 +139,10 @@ func post(hc *http.Client, url string, form url.Values) ([]byte, uint, int, erro
 		ErrorCode uint
 	}
 	if err = json.Unmarshal(responseBody, &responseStatus); err != nil {
-		return nil, 0, response.StatusCode, err
+		return responseBody, 0, response.StatusCode, err
 	}
 	if !responseStatus.Success {
-		return nil, responseStatus.ErrorCode, response.StatusCode, fmt.Errorf(
+		return responseBody, responseStatus.ErrorCode, response.StatusCode, fmt.Errorf(
 			"%s call failed: %s", url, responseStatus.Message)
 	}
 

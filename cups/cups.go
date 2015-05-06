@@ -56,6 +56,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/lib"
 
 	"github.com/golang/glog"
@@ -290,7 +291,7 @@ func (c *CUPS) GetJobState(jobID uint32) (lib.CUPSJobState, uint32, error) {
 
 // Print sends a new print job to the specified printer. The job ID
 // is returned.
-func (c *CUPS) Print(printername, filename, title, user string, options map[string]string) (uint32, error) {
+func (c *CUPS) Print(printername, filename, title, user string, ticket cdd.CloudJobTicket) (uint32, error) {
 	pn := C.CString(printername)
 	defer C.free(unsafe.Pointer(pn))
 	fn := C.CString(filename)
@@ -298,6 +299,7 @@ func (c *CUPS) Print(printername, filename, title, user string, options map[stri
 	t := C.CString(title)
 	defer C.free(unsafe.Pointer(t))
 
+	options := ticketToOptions(ticket)
 	numOptions := C.int(0)
 	var o *C.cups_option_t = nil
 	for key, value := range options {
@@ -317,6 +319,99 @@ func (c *CUPS) Print(printername, filename, title, user string, options map[stri
 	}
 
 	return uint32(jobID), nil
+}
+
+func ticketToOptions(ticket cdd.CloudJobTicket) map[string]string {
+	m := make(map[string]string)
+
+	for _, vti := range ticket.Print.VendorTicketItem {
+		m[vti.ID] = vti.Value
+	}
+	if ticket.Print.Color != nil {
+		switch ticket.Print.Color.Type {
+		case "CUSTOM_COLOR", "CUSTOM_MONOCHROME":
+			m["ColorModel"] = ticket.Print.Color.VendorID
+		default:
+			m["ColorModel"] = ticket.Print.Color.Type
+		}
+	}
+	if ticket.Print.Duplex != nil {
+		switch ticket.Print.Duplex.Type {
+		case "LONG_EDGE":
+			m["Duplex"] = "DuplexNoTumble"
+		case "SHORT_EDGE":
+			m["Duplex"] = "DuplexTumble"
+		case "NO_DUPLEX":
+			m["Duplex"] = "None"
+		}
+	}
+	if ticket.Print.PageOrientation != nil {
+		switch ticket.Print.PageOrientation.Type {
+		case "PORTRAIT":
+			m["orientation-requested"] = "3"
+		case "LANDSCAPE":
+			m["orientation-requested"] = "4"
+		}
+	}
+	if ticket.Print.Copies != nil {
+		m["copies"] = strconv.FormatInt(int64(ticket.Print.Copies.Copies), 10)
+	}
+	if ticket.Print.Margins != nil {
+		m["page-top"] = micronsToPoints(ticket.Print.Margins.TopMicrons)
+		m["page-right"] = micronsToPoints(ticket.Print.Margins.RightMicrons)
+		m["page-bottom"] = micronsToPoints(ticket.Print.Margins.BottomMicrons)
+		m["page-left"] = micronsToPoints(ticket.Print.Margins.LeftMicrons)
+	}
+	if ticket.Print.DPI != nil {
+		if ticket.Print.DPI.VendorID != "" {
+			m["Resolution"] = ticket.Print.DPI.VendorID
+		} else {
+			m["Resolution"] = fmt.Sprintf("%dx%xdpi",
+				ticket.Print.DPI.HorizontalDPI, ticket.Print.DPI.VerticalDPI)
+		}
+	}
+	if ticket.Print.FitToPage != nil {
+		switch ticket.Print.FitToPage.Type {
+		case "FIT_TO_PAGE":
+			m["fit-to-page"] = "true"
+		case "NO_FITTING":
+			m["fit-to-page"] = "false"
+		}
+	}
+	if ticket.Print.PageRange != nil && len(ticket.Print.PageRange.Interval) > 0 {
+		pageRanges := make([]string, 0, len(ticket.Print.PageRange.Interval))
+		for _, interval := range ticket.Print.PageRange.Interval {
+			if interval.End == 0 {
+				pageRanges = append(pageRanges, fmt.Sprintf("%d", interval.Start))
+			} else {
+				pageRanges = append(pageRanges, fmt.Sprintf("%d-%d", interval.Start, interval.End))
+			}
+		}
+		m["page-ranges"] = strings.Join(pageRanges, ",")
+	}
+	if ticket.Print.MediaSize != nil {
+		m["media"] = ticket.Print.MediaSize.VendorID
+	}
+	if ticket.Print.Collate != nil {
+		if ticket.Print.Collate.Collate {
+			m["Collate"] = "true"
+		} else {
+			m["Collate"] = "false"
+		}
+	}
+	if ticket.Print.ReverseOrder != nil {
+		if ticket.Print.ReverseOrder.ReverseOrder {
+			m["outputorder"] = "reverse"
+		} else {
+			m["outputorder"] = "normal"
+		}
+	}
+
+	return m
+}
+
+func micronsToPoints(microns int32) string {
+	return strconv.Itoa(int(float32(microns)*72/25400 + 0.5))
 }
 
 // convertIPPDateToTime converts an RFC 2579 date to a time.Time object.

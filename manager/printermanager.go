@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/cups"
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
@@ -411,30 +412,30 @@ func (pm *PrinterManager) deleteInFlightJob(gcpID string) {
 }
 
 // assembleJob prepares for printing a job by fetching the job's printer,
-// ticket (aka options), and the job's PDF (what we're printing)
+// ticket, and the job's PDF (what we're printing)
 //
 // The caller is responsible to remove the returned PDF file.
 //
 // Errors are returned as a string (last return value), for reporting
 // to GCP and local logging.
-func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, map[string]string, *os.File, string, lib.GCPJobStateCause) {
+func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, cdd.CloudJobTicket, *os.File, string, lib.GCPJobStateCause) {
 	printer, exists := pm.gcpPrintersByGCPID.Get(job.GCPPrinterID)
 	if !exists {
-		return lib.Printer{}, nil, nil,
+		return lib.Printer{}, cdd.CloudJobTicket{}, nil,
 			fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID),
 			lib.GCPJobOther
 	}
 
-	options, err := pm.gcp.Ticket(job.GCPJobID)
+	ticket, err := pm.gcp.Ticket(job.GCPJobID)
 	if err != nil {
-		return lib.Printer{}, nil, nil,
+		return lib.Printer{}, cdd.CloudJobTicket{}, nil,
 			fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err),
 			lib.GCPJobInvalidTicket
 	}
 
 	pdfFile, err := cups.CreateTempFile()
 	if err != nil {
-		return lib.Printer{}, nil, nil,
+		return lib.Printer{}, cdd.CloudJobTicket{}, nil,
 			fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err),
 			lib.GCPJobOther
 	}
@@ -448,7 +449,7 @@ func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, map[string]str
 	if err != nil {
 		// Clean up this temporary file so the caller doesn't need extra logic.
 		os.Remove(pdfFile.Name())
-		return lib.Printer{}, nil, nil,
+		return lib.Printer{}, cdd.CloudJobTicket{}, nil,
 			fmt.Sprintf("Failed to download PDF for job %s: %s", job.GCPJobID, err),
 			lib.GCPJobPrintFailure
 	}
@@ -456,7 +457,7 @@ func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, map[string]str
 	glog.Infof("Downloaded job %s in %s", job.GCPJobID, dt.String())
 	pdfFile.Close()
 
-	return printer, options, pdfFile, "", 100
+	return printer, ticket, pdfFile, "", 100
 }
 
 // processJob performs these steps:
@@ -478,7 +479,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 
 	glog.Infof("Received job %s", job.GCPJobID)
 
-	printer, options, pdfFile, message, gcpJobStateCause := pm.assembleJob(job)
+	printer, ticket, pdfFile, message, gcpJobStateCause := pm.assembleJob(job)
 	if message != "" {
 		pm.incrementJobsProcessed(false)
 		glog.Error(message)
@@ -502,7 +503,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		jobTitle = jobTitle[:255]
 	}
 
-	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), jobTitle, ownerID, options)
+	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), jobTitle, ownerID, ticket)
 	if err != nil {
 		pm.incrementJobsProcessed(false)
 		message = fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)

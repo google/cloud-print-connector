@@ -21,7 +21,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/cups-connector/gcp/cdd"
+	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/lib"
 
 	"github.com/golang/glog"
@@ -720,4 +720,29 @@ func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 	}
 
 	return nil
+}
+
+// Ticket gets a ticket, aka print job options.
+func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (cdd.CloudJobTicket, error) {
+	form := url.Values{}
+	form.Set("jobid", gcpJobID)
+	form.Set("use_cjt", "true")
+
+	responseBody, _, httpStatusCode, err := postWithRetry(gcp.robotClient, gcp.baseURL+"ticket", form)
+	// The /ticket API is different than others, because it only returns the
+	// standard GCP error information on success=false.
+	if httpStatusCode != 200 {
+		return cdd.CloudJobTicket{}, err
+	}
+
+	d := json.NewDecoder(bytes.NewReader(responseBody))
+	d.UseNumber() // Force large numbers not to be formatted with scientific notation.
+
+	var ticket cdd.CloudJobTicket
+	err = d.Decode(&ticket)
+	if err != nil {
+		return cdd.CloudJobTicket{}, fmt.Errorf("Failed to unmarshal ticket: %s", err)
+	}
+
+	return ticket, nil
 }
