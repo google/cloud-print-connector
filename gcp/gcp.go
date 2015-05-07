@@ -386,7 +386,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, getPPD func() (strin
 		return err
 	}
 
-	cdd, err := gcp.Translate(ppd, printer.Markers)
+	capabilities, err := gcp.Translate(ppd, printer.Markers)
 	if err != nil {
 		return err
 	}
@@ -396,7 +396,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, getPPD func() (strin
 		return err
 	}
 
-	semanticState, err := marshalSemanticState(printer.State, printer.StateReasons, printer.MarkerStates)
+	semanticState, err := json.Marshal(cdd.CloudDeviceState{Printer: printer.State})
 	if err != nil {
 		return err
 	}
@@ -414,9 +414,9 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, getPPD func() (strin
 	form.Set("update_url", lib.ConnectorHomeURL)
 	form.Set("firmware", printer.ConnectorVersion)
 	form.Set("local_settings", localSettings)
-	form.Set("semantic_state", semanticState)
+	form.Set("semantic_state", string(semanticState))
 	form.Set("use_cdd", "true")
-	form.Set("capabilities", cdd)
+	form.Set("capabilities", capabilities)
 	form.Set("capsHash", printer.CapsHash)
 
 	sortedKeys := make([]string, 0, len(printer.Tags))
@@ -475,11 +475,11 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string
 	}
 
 	if diff.StateChanged || diff.MarkersChanged || diff.GCPVersionChanged {
-		semanticState, err := marshalSemanticState(diff.Printer.State, diff.Printer.StateReasons, diff.Printer.MarkerStates)
+		semanticState, err := json.Marshal(cdd.CloudDeviceState{Printer: diff.Printer.State})
 		if err != nil {
 			return err
 		}
-		form.Set("semantic_state", semanticState)
+		form.Set("semantic_state", string(semanticState))
 	}
 
 	if diff.CapsHashChanged || diff.MarkersChanged || diff.GCPVersionChanged {
@@ -488,7 +488,7 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string
 			return err
 		}
 
-		cdd, err := gcp.Translate(ppd, diff.Printer.Markers)
+		capabilities, err := gcp.Translate(ppd, diff.Printer.Markers)
 		if err != nil {
 			return err
 		}
@@ -496,7 +496,7 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string
 		form.Set("manufacturer", manufacturer)
 		form.Set("model", model)
 		form.Set("use_cdd", "true")
-		form.Set("capabilities", cdd)
+		form.Set("capabilities", capabilities)
 		form.Set("capsHash", diff.Printer.CapsHash)
 	}
 
@@ -568,18 +568,18 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, time.Dur
 
 	var printersData struct {
 		Printers []struct {
-			ID                 string                 `json:"id"`
-			Name               string                 `json:"name"`
-			DefaultDisplayName string                 `json:"defaultDisplayName"`
-			UUID               string                 `json:"uuid"`
-			GCPVersion         string                 `json:"gcpVersion"`
-			Firmware           string                 `json:"firmware"`
-			Capabilities       map[string]interface{} `json:"capabilities"`
-			CapsHash           string                 `json:"capsHash"`
-			LocalSettings      localSettingsPull      `json:"local_settings"`
-			Tags               []string               `json:"tags"`
-			QueuedJobsCount    uint                   `json:"queuedJobsCount"`
-			SemanticState      cloudDeviceState       `json:"semanticState"`
+			ID                 string                     `json:"id"`
+			Name               string                     `json:"name"`
+			DefaultDisplayName string                     `json:"defaultDisplayName"`
+			UUID               string                     `json:"uuid"`
+			GCPVersion         string                     `json:"gcpVersion"`
+			Firmware           string                     `json:"firmware"`
+			Capabilities       cdd.CloudDeviceDescription `json:"capabilities"`
+			CapsHash           string                     `json:"capsHash"`
+			LocalSettings      localSettingsPull          `json:"local_settings"`
+			Tags               []string                   `json:"tags"`
+			QueuedJobsCount    uint                       `json:"queuedJobsCount"`
+			SemanticState      cdd.CloudDeviceState       `json:"semanticState"`
 		}
 	}
 	if err = json.Unmarshal(responseBody, &printersData); err != nil {
@@ -587,26 +587,6 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, time.Dur
 	}
 
 	p := printersData.Printers[0] // If the slice were empty, postWithRetry would have returned an error.
-
-	// TODO fix this mess with a proper CDD struct.
-	var markers map[string]string = map[string]string{}
-	if p, ok := p.Capabilities["printer"].(map[string]interface{}); ok {
-		if m, ok := p["marker"].([]interface{}); ok {
-			for _, marker := range m {
-				if vendorID, ok := marker.(map[string]interface{})["vendor_id"]; ok {
-					if markerType, ok := marker.(map[string]interface{})["type"]; ok {
-						if markerType.(string) == "CUSTOM" {
-							if markerType, ok = marker.(map[string]interface{})["custom_display_name"]; ok {
-								markers[vendorID.(string)] = markerType.(string)
-							}
-						} else {
-							markers[vendorID.(string)] = strings.ToLower(markerType.(string))
-						}
-					}
-				}
-			}
-		}
-	}
 
 	tags := make(map[string]string)
 	for _, tag := range p.Tags {
@@ -630,8 +610,6 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, time.Dur
 		xmppPingInterval = time.Second * time.Duration(xmppPingIntervalSeconds)
 	}
 
-	state, stateReasons, markerStates := unmarshalSemanticState(p.SemanticState)
-
 	printer := &lib.Printer{
 		GCPID:              p.ID,
 		Name:               p.Name,
@@ -639,10 +617,8 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, time.Dur
 		UUID:               p.UUID,
 		GCPVersion:         p.GCPVersion,
 		ConnectorVersion:   p.Firmware,
-		State:              state,
-		StateReasons:       stateReasons,
-		Markers:            markers,
-		MarkerStates:       markerStates,
+		State:              p.SemanticState.Printer,
+		Markers:            p.Capabilities.Printer.Marker,
 		CapsHash:           p.CapsHash,
 		Tags:               tags,
 		XMPPPingInterval:   xmppPingInterval,
@@ -652,7 +628,7 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, time.Dur
 }
 
 // Translate calls google.com/cloudprint/tools/cdd/translate to translate a PPD to CDD.
-func (gcp *GoogleCloudPrint) Translate(ppd string, markers map[string]string) (string, error) {
+func (gcp *GoogleCloudPrint) Translate(ppd string, markers *[]cdd.Marker) (string, error) {
 	form := url.Values{}
 	form.Set("capabilities", ppd)
 
@@ -673,8 +649,8 @@ func (gcp *GoogleCloudPrint) Translate(ppd string, markers map[string]string) (s
 
 	c := response.CDD
 	c.Printer.SupportedContentType = cdd.NewSupportedContentType("application/pdf")
-	if c.Printer.Marker == nil && len(markers) > 0 {
-		c.Printer.Marker = cdd.NewMarkers(markers)
+	if c.Printer.Marker == nil && markers != nil {
+		c.Printer.Marker = markers
 	}
 	c.Printer.Copies = &cdd.Copies{1, 100}
 	c.Printer.Collate = &cdd.Collate{true}

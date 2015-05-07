@@ -552,28 +552,49 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 	if u, ok := printerTags[attrPrinterUUID]; ok {
 		uuid = u[0]
 	}
-	var state string
+
+	state := cdd.PrinterStateSection{}
+
 	if s, ok := printerTags[attrPrinterState]; ok {
-		state = s[0]
-	}
-	var stateReasons []string
-	if len(stateReasons) > 0 { // WTF len is always zero
-		stateReasons = printerTags[attrPrinterStateReasons]
-		sort.Strings(stateReasons)
-	} else {
-		stateReasons = make([]string, 0)
+		switch s[0] {
+		case "3":
+			state.State = "IDLE"
+		case "4":
+			state.State = "PROCESSING"
+		case "5":
+			state.State = "STOPPED"
+		default:
+			state.State = "IDLE"
+		}
 	}
 
-	markers, markerStates := lib.MarkersFromCUPS(printerTags[attrMarkerNames], printerTags[attrMarkerTypes], printerTags[attrMarkerLevels])
+	if reasons, ok := printerTags[attrPrinterStateReasons]; ok && len(reasons) > 0 {
+		sort.Strings(reasons)
+		state.VendorState = &cdd.VendorState{Item: make([]cdd.VendorStateItem, len(reasons))}
+		for i, reason := range reasons {
+			vendorState := cdd.VendorStateItem{DescriptionLocalized: cdd.NewLocalizedString(reason)}
+			if strings.HasSuffix(reason, "-error") {
+				vendorState.State = "ERROR"
+			} else if strings.HasSuffix(reason, "-warning") {
+				vendorState.State = "WARNING"
+			} else if strings.HasSuffix(reason, "-report") {
+				vendorState.State = "INFO"
+			} else {
+				vendorState.State = "INFO"
+			}
+			state.VendorState.Item[i] = vendorState
+		}
+	}
+
+	markers, markerState := convertMarkers(printerTags[attrMarkerNames], printerTags[attrMarkerTypes], printerTags[attrMarkerLevels])
+	state.MarkerState = markerState
 
 	p := lib.Printer{
-		Name:         name,
-		UUID:         uuid,
-		State:        lib.PrinterStateFromCUPS(state),
-		StateReasons: stateReasons,
-		Markers:      markers,
-		MarkerStates: markerStates,
-		Tags:         tags,
+		Name:    name,
+		UUID:    uuid,
+		State:   state,
+		Markers: markers,
+		Tags:    tags,
 	}
 	p.SetTagshash()
 
@@ -582,6 +603,96 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 	}
 
 	return p
+}
+
+// convertMarkers converts CUPS marker-(names|types|levels) to *[]cdd.Marker and *cdd.MarkerState.
+//
+// Normalizes marker type: toner(Cartridge|-cartridge) => toner,
+// ink(Cartridge|-cartridge|Ribbon|-ribbon) => ink
+func convertMarkers(names, types, levels []string) (*[]cdd.Marker, *cdd.MarkerState) {
+	if len(names) == 0 || len(types) == 0 || len(levels) == 0 {
+		return nil, nil
+	}
+	if len(names) != len(types) || len(types) != len(levels) {
+		glog.Warningf("Received badly-formatted markers from CUPS: %s, %s, %s",
+			strings.Join(names, ";"), strings.Join(types, ";"), strings.Join(levels, ";"))
+		return nil, nil
+	}
+
+	markers := make([]cdd.Marker, len(names))
+	states := cdd.MarkerState{make([]cdd.MarkerStateItem, len(names))}
+	for i := 0; i < len(names); i++ {
+		if len(names[i]) == 0 {
+			return nil, nil
+		}
+		n := names[i]
+		t := types[i]
+		switch t {
+		case "tonerCartridge", "toner-cartridge":
+			t = "toner"
+		case "inkCartridge", "ink-cartridge", "ink-ribbon", "inkRibbon":
+			t = "ink"
+		}
+		l, err := strconv.ParseInt(levels[i], 10, 32)
+		if err != nil {
+			glog.Warningf("Failed to parse CUPS marker state %s=%s: %s", n, levels[i], err)
+			return nil, nil
+		}
+
+		if l < 0 {
+			// The CUPS driver doesn't know what the levels are; not useful.
+			return nil, nil
+		} else if l > 100 {
+			// Lop off extra (proprietary?) bits.
+			l = l & 0x7f
+			if l > 100 {
+				// Even that didn't work.
+				return nil, nil
+			}
+		}
+
+		markers[i] = newMarker(n, t)
+		states.Item[i] = newMarkerStateItem(n, int32(l))
+	}
+
+	return &markers, &states
+}
+
+func newMarker(vendorID, vendorType string) cdd.Marker {
+	marker := cdd.Marker{VendorID: vendorID}
+
+	switch vendorType {
+	case "toner", "ink", "staples":
+		marker.Type = strings.ToUpper(vendorType)
+	default:
+		marker.Type = "CUSTOM"
+		marker.CustomDisplayNameLocalized = cdd.NewLocalizedString(vendorType)
+	}
+
+	if marker.Type == "TONER" || marker.Type == "INK" {
+		switch strings.ToLower(vendorID) {
+		case "black", "color", "cyan", "magenta", "yellow", "light_cyan", "light_magenta",
+			"gray", "light_gray", "pigment_black", "matte_black", "photo_cyan", "photo_magenta",
+			"photo_yellow", "photo_gray", "red", "green", "blue":
+			// Colors known to CDD Marker.Color enum.
+			marker.Color = &cdd.MarkerColor{Type: strings.ToUpper(vendorID)}
+		default:
+			marker.Color = &cdd.MarkerColor{Type: "CUSTOM", CustomDisplayNameLocalized: cdd.NewLocalizedString(vendorID)}
+		}
+	}
+
+	return marker
+}
+
+func newMarkerStateItem(vendorID string, vendorLevel int32) cdd.MarkerStateItem {
+	var state string
+	if vendorLevel > 10 {
+		state = "OK"
+	} else {
+		state = "EXHAUSTED"
+	}
+
+	return cdd.MarkerStateItem{VendorID: vendorID, State: state, LevelPercent: vendorLevel}
 }
 
 func contains(haystack []string, needle string) bool {

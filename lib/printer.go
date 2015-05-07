@@ -12,129 +12,26 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 
-	"github.com/golang/glog"
+	"github.com/google/cups-connector/cdd"
 )
 
 type PrinterState uint8
 
-// CUPS: ipp_pstate_t; GCP: CloudDeviceState.StateType
-const (
-	PrinterIdle       PrinterState = iota // CUPS: IPP_PSTATE_IDLE;       GCP: StateType.IDLE
-	PrinterProcessing              = iota // CUPS: IPP_PSTATE_PROCESSING; GCP: StateType.PROCESSING
-	PrinterStopped                 = iota // CUPS: IPP_PSTATE_STOPPED;    GCP: StateType.STOPPED
-)
-
-func PrinterStateFromCUPS(ss string) PrinterState {
-	switch strings.ToLower(ss) {
-	case "3":
-		return PrinterIdle
-	case "4":
-		return PrinterProcessing
-	case "5":
-		return PrinterStopped
-	default:
-		return PrinterIdle
-	}
-}
-
-func (ps PrinterState) GCPPrinterState() string {
-	switch ps {
-	case PrinterIdle:
-		return "IDLE"
-	case PrinterProcessing:
-		return "PROCESSING"
-	case PrinterStopped:
-		return "STOPPED"
-	default:
-		return "IDLE"
-	}
-}
-
-func PrinterStateFromGCP(ss string) PrinterState {
-	switch strings.ToLower(ss) {
-	case "IDLE":
-		return PrinterIdle
-	case "PROCESSING":
-		return PrinterProcessing
-	case "STOPPED":
-		return PrinterStopped
-	default:
-		return PrinterIdle
-	}
-}
-
-// MarkersFromCUPS converts CUPS marker-names, -types, -levels to
-// map[marker-name]marker-type and map[marker-name]marker-level of equal length.
-//
-// Normalizes marker type: tonerCartridge => toner, inkCartridge => ink, inkRibbon => ink
-func MarkersFromCUPS(names, types, levels []string) (map[string]string, map[string]uint8) {
-	if len(names) == 0 || len(types) == 0 || len(levels) == 0 {
-		return map[string]string{}, map[string]uint8{}
-	}
-	if len(names) != len(types) || len(types) != len(levels) {
-		glog.Warningf("Received badly-formatted markers from CUPS: %s, %s, %s",
-			strings.Join(names, ";"), strings.Join(types, ";"), strings.Join(levels, ";"))
-		return map[string]string{}, map[string]uint8{}
-	}
-
-	markers := make(map[string]string, len(names))
-	states := make(map[string]uint8, len(names))
-	for i := 0; i < len(names); i++ {
-		if len(names[i]) == 0 {
-			return map[string]string{}, map[string]uint8{}
-		}
-		n := names[i]
-		t := types[i]
-		switch t {
-		case "tonerCartridge", "toner-cartridge":
-			t = "toner"
-		case "inkCartridge", "ink-cartridge", "ink-ribbon", "inkRibbon":
-			t = "ink"
-		}
-		l, err := strconv.ParseInt(levels[i], 10, 32)
-		if err != nil {
-			glog.Warningf("Failed to parse CUPS marker state %s=%s: %s", n, levels[i], err)
-			return map[string]string{}, map[string]uint8{}
-		}
-
-		if l < 0 {
-			// The CUPS driver doesn't know what the levels are; not useful.
-			return map[string]string{}, map[string]uint8{}
-		} else if l > 100 {
-			// Lop off extra (proprietary?) bits.
-			l = l & 0x7f
-			if l > 100 {
-				// Even that didn't work.
-				return map[string]string{}, map[string]uint8{}
-			}
-		}
-
-		markers[n] = t
-		states[n] = uint8(l)
-	}
-
-	return markers, states
-}
-
 // CUPS: cups_dest_t; GCP: /register and /update interfaces
 type Printer struct {
-	GCPID              string            //                                    GCP: printerid (GCP key)
-	Name               string            // CUPS: cups_dest_t.name (CUPS key); GCP: name field
-	DefaultDisplayName string            // CUPS: printer-info;                GCP: default_display_name field
-	UUID               string            // CUPS: printer-uuid;                GCP: uuid field
-	GCPVersion         string            //                                    GCP: gcpVersion field
-	ConnectorVersion   string            //                                    GCP: firmware field
-	State              PrinterState      // CUPS: printer-state;               GCP: semantic_state field; CDS.StateType
-	StateReasons       []string          // CUPS: printer-state-reasons;       GCP: semantic_state field; CDS VendorState.Item
-	Markers            map[string]string // CUPS: marker-(names|types);        GCP: CDD marker field
-	MarkerStates       map[string]uint8  // CUPS: marker-(names|levels);       GCP: semantic_state field; CDS MarkerState.Item
-	CapsHash           string            // CUPS: hash of PPD;                 GCP: capsHash field
-	Tags               map[string]string // CUPS: all printer attributes;      GCP: repeated tag field
-	XMPPPingInterval   time.Duration     //                                    GCP: local_settings/xmpp_timeout_value field
+	GCPID              string                  //                                    GCP: printerid (GCP key)
+	Name               string                  // CUPS: cups_dest_t.name (CUPS key); GCP: name field
+	DefaultDisplayName string                  // CUPS: printer-info;                GCP: default_display_name field
+	UUID               string                  // CUPS: printer-uuid;                GCP: uuid field
+	GCPVersion         string                  //                                    GCP: gcpVersion field
+	ConnectorVersion   string                  //                                    GCP: firmware field
+	State              cdd.PrinterStateSection // CUPS: printer-state(-reasons), marker-(names|levels); GCP: semantic_state field; CDS.StateType
+	Markers            *[]cdd.Marker           // CUPS: marker-(names|types);        GCP: CDD marker field
+	CapsHash           string                  // CUPS: hash of PPD;                 GCP: capsHash field
+	Tags               map[string]string       // CUPS: all printer attributes;      GCP: repeated tag field
+	XMPPPingInterval   time.Duration           //                                    GCP: local_settings/xmpp_timeout_value field
 	CUPSJobSemaphore   *Semaphore
 }
 
@@ -179,7 +76,7 @@ type PrinterDiff struct {
 	UUIDChanged               bool
 	GCPVersionChanged         bool
 	ConnectorVersionChanged   bool
-	StateChanged              bool // Also indicates changes to StateReasons.
+	StateChanged              bool
 	MarkersChanged            bool
 	CapsHashChanged           bool
 	XMPPPingIntervalChanged   bool
@@ -275,9 +172,7 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if pg.ConnectorVersion != pc.ConnectorVersion {
 		d.ConnectorVersionChanged = true
 	}
-	if pg.State != pc.State ||
-		!reflect.DeepEqual(pg.StateReasons, pc.StateReasons) ||
-		!reflect.DeepEqual(pg.MarkerStates, pc.MarkerStates) {
+	if !reflect.DeepEqual(pg.State, pc.State) {
 		d.StateChanged = true
 	}
 	if !reflect.DeepEqual(pg.Markers, pc.Markers) {

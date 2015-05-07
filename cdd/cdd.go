@@ -12,8 +12,6 @@ https://developers.google.com/open-source/licenses/bsd
 // Not-required fields are marked with the omitempty JSON attribute.
 package cdd
 
-import "strings"
-
 type CloudDeviceDescription struct {
 	Version string                    `json:"version"`
 	Printer PrinterDescriptionSection `json:"printer"`
@@ -103,40 +101,6 @@ type MarkerColor struct {
 	Type                       string             `json:"type"`
 	CustomDisplayName          string             `json:"custom_display_name,omitempty"`
 	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
-}
-
-func NewMarkers(mm map[string]string) *[]Marker {
-	markers := make([]Marker, 0, len(mm))
-	for vendorID, vendorType := range mm {
-		markers = append(markers, NewMarker(vendorID, vendorType))
-	}
-	return &markers
-}
-
-func NewMarker(vendorID, vendorType string) Marker {
-	marker := Marker{VendorID: vendorID}
-
-	switch vendorType {
-	case "toner", "ink", "staples":
-		marker.Type = strings.ToUpper(vendorType)
-	default:
-		marker.Type = "CUSTOM"
-		marker.CustomDisplayNameLocalized = NewLocalizedString(vendorType)
-	}
-
-	if marker.Type == "TONER" || marker.Type == "INK" {
-		switch strings.ToLower(vendorID) {
-		case "black", "color", "cyan", "magenta", "yellow", "light_cyan", "light_magenta",
-			"gray", "light_gray", "pigment_black", "matte_black", "photo_cyan", "photo_magenta",
-			"photo_yellow", "photo_gray", "red", "green", "blue":
-			// Colors known to CDD Marker.Color enum.
-			marker.Color = &MarkerColor{Type: strings.ToUpper(vendorID)}
-		default:
-			marker.Color = &MarkerColor{Type: "CUSTOM", CustomDisplayNameLocalized: NewLocalizedString(vendorID)}
-		}
-	}
-
-	return marker
 }
 
 type Cover struct {
