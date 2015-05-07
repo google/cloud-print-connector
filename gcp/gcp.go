@@ -242,45 +242,15 @@ type deviceActionCause struct {
 
 // Control calls google.com/cloudprint/control to set the state of a
 // GCP print job.
-func (gcp *GoogleCloudPrint) Control(jobID string, state lib.GCPJobState, cause lib.GCPJobStateCause, pages uint32) error {
-	var semanticState printJobStateDiff
-	if cause == lib.GCPJobCanceled {
-		semanticState = printJobStateDiff{
-			State: jobState{
-				Type: state.String(),
-				UserActionCause: &userActionCause{
-					ActionCode: cause.String(),
-				},
-			},
-			PagesPrinted: pages,
-		}
-	} else if state == lib.GCPJobAborted || state == lib.GCPJobStopped {
-		semanticState = printJobStateDiff{
-			State: jobState{
-				Type: state.String(),
-				DeviceActionCause: &deviceActionCause{
-					ErrorCode: cause.String(),
-				},
-			},
-			PagesPrinted: pages,
-		}
-	} else {
-		semanticState = printJobStateDiff{
-			State: jobState{
-				Type: state.String(),
-			},
-			PagesPrinted: pages,
-		}
-	}
-
-	ss, err := json.Marshal(semanticState)
+func (gcp *GoogleCloudPrint) Control(jobID string, state cdd.PrintJobStateDiff) error {
+	semanticState, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
 
 	form := url.Values{}
 	form.Set("jobid", jobID)
-	form.Set("semantic_state_diff", string(ss))
+	form.Set("semantic_state_diff", string(semanticState))
 
 	if _, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"control", form); err != nil {
 		return err
@@ -328,17 +298,16 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 		return nil, err
 	}
 
-	jobs := make([]lib.Job, 0, len(jobsData.Jobs))
+	jobs := make([]lib.Job, len(jobsData.Jobs))
 
-	for _, jobData := range jobsData.Jobs {
-		job := lib.Job{
+	for i, jobData := range jobsData.Jobs {
+		jobs[i] = lib.Job{
 			GCPPrinterID: gcpID,
 			GCPJobID:     jobData.ID,
 			FileURL:      jobData.FileURL,
 			OwnerID:      jobData.OwnerID,
 			Title:        jobData.Title,
 		}
-		jobs = append(jobs, job)
 	}
 
 	return jobs, nil

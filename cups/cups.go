@@ -262,7 +262,7 @@ func (c *CUPS) RemoveCachedPPD(printername string) {
 }
 
 // GetJobState gets the current state of the job indicated by jobID.
-func (c *CUPS) GetJobState(jobID uint32) (lib.CUPSJobState, uint32, error) {
+func (c *CUPS) GetJobState(jobID uint32) (cdd.PrintJobStateDiff, error) {
 	ja := C.newArrayOfStrings(C.int(len(jobAttributes)))
 	defer C.freeStringArrayAndStrings(ja, C.int(len(jobAttributes)))
 	for i, attribute := range jobAttributes {
@@ -271,22 +271,55 @@ func (c *CUPS) GetJobState(jobID uint32) (lib.CUPSJobState, uint32, error) {
 
 	response, err := c.cc.getJobAttributes(C.int(jobID), ja)
 	if err != nil {
-		return 100, 0, err
+		return cdd.PrintJobStateDiff{}, err
 	}
 
 	// cupsDoRequest() returned ipp_t pointer needs explicit free.
 	defer C.ippDelete(response)
 
 	s := C.ippFindAttribute(response, C.JOB_STATE, C.IPP_TAG_ENUM)
-	state := lib.CUPSJobStateFromInt(uint8(C.ippGetInteger(s, C.int(0))))
+	state := int32(C.ippGetInteger(s, C.int(0)))
 
 	p := C.ippFindAttribute(response, C.JOB_MEDIA_SHEETS_COMPLETED, C.IPP_TAG_INTEGER)
-	var pages uint32
+	var pages int32
 	if p != nil {
-		pages = uint32(C.ippGetInteger(p, C.int(0)))
+		pages = int32(C.ippGetInteger(p, C.int(0)))
 	}
 
-	return state, pages, nil
+	return convertJobState(state, pages), nil
+}
+
+// convertJobState converts CUPS job state to cdd.PrintJobStateDiff.
+func convertJobState(cupsState, pages int32) cdd.PrintJobStateDiff {
+	state := cdd.PrintJobStateDiff{PagesPrinted: pages}
+
+	switch cupsState {
+	case 3: // PENDING
+		state.State = cdd.JobState{Type: "IN_PROGRESS"}
+	case 4: // HELD
+		state.State = cdd.JobState{Type: "IN_PROGRESS"}
+	case 5: // PROCESSING
+		state.State = cdd.JobState{Type: "IN_PROGRESS"}
+	case 6: // STOPPED
+		state.State = cdd.JobState{
+			Type:              "STOPPED",
+			DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "OTHER"},
+		}
+	case 7: // CANCELED
+		state.State = cdd.JobState{
+			Type:            "ABORTED",
+			UserActionCause: &cdd.UserActionCause{ActionCode: "CANCELLED"}, // Spelled with two L's.
+		}
+	case 8: // ABORTED
+		state.State = cdd.JobState{
+			Type:              "ABORTED",
+			DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "PRINT_FAILURE"},
+		}
+	case 9: // COMPLETED
+		state.State = cdd.JobState{Type: "DONE"}
+	}
+
+	return state
 }
 
 // Print sends a new print job to the specified printer. The job ID
