@@ -23,7 +23,6 @@ const char
 */
 import "C"
 import (
-	"cups-connector/lib"
 	"errors"
 	"fmt"
 	"os"
@@ -31,6 +30,8 @@ import (
 	"strings"
 	"time"
 	"unsafe"
+
+	"github.com/google/cups-connector/lib"
 
 	"github.com/golang/glog"
 )

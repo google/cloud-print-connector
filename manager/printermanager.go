@@ -8,15 +8,16 @@ https://developers.google.com/open-source/licenses/bsd
 package manager
 
 import (
-	"cups-connector/cups"
-	"cups-connector/gcp"
-	"cups-connector/lib"
 	"fmt"
 	"math"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/cups-connector/cups"
+	"github.com/google/cups-connector/gcp"
+	"github.com/google/cups-connector/lib"
 
 	"github.com/golang/glog"
 )

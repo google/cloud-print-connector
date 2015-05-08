@@ -8,12 +8,13 @@ https://developers.google.com/open-source/licenses/bsd
 package monitor
 
 import (
-	"cups-connector/cups"
-	"cups-connector/gcp"
-	"cups-connector/lib"
-	"cups-connector/manager"
 	"fmt"
 	"net"
+
+	"github.com/google/cups-connector/cups"
+	"github.com/google/cups-connector/gcp"
+	"github.com/google/cups-connector/lib"
+	"github.com/google/cups-connector/manager"
 
 	"github.com/golang/glog"
 )

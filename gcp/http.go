@@ -8,13 +8,14 @@ https://developers.google.com/open-source/licenses/bsd
 package gcp
 
 import (
-	"cups-connector/lib"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/google/cups-connector/lib"
 
 	"golang.org/x/oauth2"
 )

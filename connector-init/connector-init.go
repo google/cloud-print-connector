@@ -8,8 +8,6 @@ https://developers.google.com/open-source/licenses/bsd
 package main
 
 import (
-	"cups-connector/gcp"
-	"cups-connector/lib"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -21,6 +19,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/cups-connector/gcp"
+	"github.com/google/cups-connector/lib"
 
 	"golang.org/x/oauth2"
 )

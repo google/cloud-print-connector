@@ -8,13 +8,14 @@ https://developers.google.com/open-source/licenses/bsd
 package main
 
 import (
-	"cups-connector/lib"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
 	"time"
+
+	"github.com/google/cups-connector/lib"
 )
 
 var timeoutFlag = flag.Duration(

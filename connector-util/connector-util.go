@@ -8,13 +8,14 @@ https://developers.google.com/open-source/licenses/bsd
 package main
 
 import (
-	"cups-connector/gcp"
-	"cups-connector/lib"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"time"
+
+	"github.com/google/cups-connector/gcp"
+	"github.com/google/cups-connector/lib"
 
 	"github.com/golang/glog"
 )

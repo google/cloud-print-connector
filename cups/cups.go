@@ -45,7 +45,6 @@ int ippGetResolutionWrapper(ipp_attribute_t *attr, int element, int *yres, int *
 import "C"
 import (
 	"bytes"
-	"cups-connector/lib"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -55,6 +54,8 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+
+	"github.com/google/cups-connector/lib"
 
 	"github.com/golang/glog"
 )

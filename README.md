@@ -10,16 +10,10 @@ https://developers.google.com/open-source/licenses/bsd
 
 # Install
 ```
-$ cd ~/go/src
-$ go get github.com/google/cups-connector
-$ go get golang.org/x/oauth2
-$ go get github.com/golang/glog
-$ cd cups-connector/connector
-$ go install
-$ cd ../connector-init
-$ go install
-$ cd ../connector-monitor
-$ go install
+$ go get github.com/google/cups-connector/connector
+$ go get github.com/google/cups-connector/connector-init
+$ go get github.com/google/cups-connector/connector-monitor
+$ go get github.com/google/cups-connector/connector-util
 ```
 
 ## Configure

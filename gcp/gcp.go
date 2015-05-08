@@ -11,7 +11,6 @@ package gcp
 
 import (
 	"bytes"
-	"cups-connector/lib"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +20,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/google/cups-connector/lib"
 
 	"github.com/golang/glog"
 	"golang.org/x/oauth2"

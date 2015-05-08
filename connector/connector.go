@@ -8,17 +8,18 @@ https://developers.google.com/open-source/licenses/bsd
 package main
 
 import (
-	"cups-connector/cups"
-	"cups-connector/gcp"
-	"cups-connector/lib"
-	"cups-connector/manager"
-	"cups-connector/monitor"
 	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/google/cups-connector/cups"
+	"github.com/google/cups-connector/gcp"
+	"github.com/google/cups-connector/lib"
+	"github.com/google/cups-connector/manager"
+	"github.com/google/cups-connector/monitor"
 
 	"github.com/golang/glog"
 )
