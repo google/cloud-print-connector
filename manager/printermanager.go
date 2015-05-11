@@ -8,13 +8,17 @@ https://developers.google.com/open-source/licenses/bsd
 package manager
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"math"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/cups"
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
@@ -52,7 +56,7 @@ type PrinterManager struct {
 
 func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string) (*PrinterManager, error) {
 	// Get the GCP printer list.
-	gcpPrinters, queuedJobsCount, xmppPingIntervalChanges, err := gcp.List()
+	gcpPrinters, queuedJobsCount, xmppPingIntervalChanges, err := allGCPPrinters(gcp)
 	if err != nil {
 		return nil, err
 	}
@@ -131,6 +135,68 @@ func (pm *PrinterManager) Quit() {
 	<-pm.printerPollQuit
 }
 
+// allGCPPrinters calls gcp.List, then calls gcp.Printer, one goroutine per
+// printer. This is a fast way to fetch all printers with corresponding CDD
+// info, which the List API does not provide.
+//
+// The second return value is a map of GCPID -> queued print job quantity.
+// The third return value is a map of GCPID -> pending XMPP ping interval changes.
+func allGCPPrinters(gcp *gcp.GoogleCloudPrint) ([]lib.Printer, map[string]uint, map[string]time.Duration, error) {
+	ids, err := gcp.List()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	type response struct {
+		printer                 *lib.Printer
+		queuedJobsCount         uint
+		xmppPingIntervalPending time.Duration
+		err                     error
+	}
+	ch := make(chan response)
+	for id := range ids {
+		go func(id string) {
+			printer, queuedJobsCount, xmppPingIntervalPending, err := gcp.Printer(id)
+			ch <- response{printer, queuedJobsCount, xmppPingIntervalPending, err}
+		}(id)
+	}
+
+	errs := make([]error, 0)
+	printers := make([]lib.Printer, 0, len(ids))
+	queuedJobsCount := make(map[string]uint)
+	xmppPingIntervalChanges := make(map[string]time.Duration)
+	for _ = range ids {
+		r := <-ch
+		if r.err != nil {
+			errs = append(errs, r.err)
+			continue
+		}
+		printers = append(printers, *r.printer)
+		if r.queuedJobsCount > 0 {
+			queuedJobsCount[r.printer.GCPID] = r.queuedJobsCount
+		}
+		if r.xmppPingIntervalPending > 0 {
+			xmppPingIntervalChanges[r.printer.GCPID] = r.xmppPingIntervalPending
+		}
+	}
+
+	if len(errs) == 0 {
+		return printers, queuedJobsCount, xmppPingIntervalChanges, nil
+	} else if len(errs) == 1 {
+		return nil, nil, nil, errs[0]
+	} else {
+		// Return an error that is somewhat human-readable.
+		b := bytes.NewBufferString(fmt.Sprintf("%d errors: ", len(errs)))
+		for i, err := range errs {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(err.Error())
+		}
+		return nil, nil, nil, errors.New(b.String())
+	}
+}
+
 func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 	go func() {
 		t := time.NewTimer(interval)
@@ -145,7 +211,7 @@ func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 				t.Reset(interval)
 
 			case gcpID := <-pm.gcpPrinterUpdates:
-				p, err := pm.gcp.Printer(gcpID)
+				p, _, _, err := pm.gcp.Printer(gcpID)
 				if err != nil {
 					glog.Error(err)
 					continue
@@ -230,7 +296,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		}
 
 		if err := pm.gcp.Update(diff, getPPD); err != nil {
-			glog.Errorf("Failed to update a printer: %s", err)
+			glog.Errorf("Failed to update %s: %s", diff.Printer.Name, err)
 		} else {
 			glog.Infof("Updated %s", diff.Printer.Name)
 		}
@@ -347,32 +413,47 @@ func (pm *PrinterManager) deleteInFlightJob(gcpID string) {
 }
 
 // assembleJob prepares for printing a job by fetching the job's printer,
-// ticket (aka options), and the job's PDF (what we're printing)
+// ticket, and the job's PDF (what we're printing)
 //
 // The caller is responsible to remove the returned PDF file.
 //
 // Errors are returned as a string (last return value), for reporting
 // to GCP and local logging.
-func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, map[string]string, *os.File, string, lib.GCPJobStateCause) {
+func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, cdd.CloudJobTicket, *os.File, string, cdd.PrintJobStateDiff) {
 	printer, exists := pm.gcpPrintersByGCPID.Get(job.GCPPrinterID)
 	if !exists {
-		return lib.Printer{}, nil, nil,
+		return lib.Printer{}, cdd.CloudJobTicket{}, nil,
 			fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID),
-			lib.GCPJobOther
+			cdd.PrintJobStateDiff{
+				State: cdd.JobState{
+					Type:               "STOPPED",
+					ServiceActionCause: &cdd.ServiceActionCause{ErrorCode: "PRINTER_DELETED"},
+				},
+			}
 	}
 
-	options, err := pm.gcp.Ticket(job.GCPJobID)
+	ticket, err := pm.gcp.Ticket(job.GCPJobID)
 	if err != nil {
-		return lib.Printer{}, nil, nil,
+		return lib.Printer{}, cdd.CloudJobTicket{}, nil,
 			fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err),
-			lib.GCPJobInvalidTicket
+			cdd.PrintJobStateDiff{
+				State: cdd.JobState{
+					Type:              "STOPPED",
+					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "INVALID_TICKET"},
+				},
+			}
 	}
 
 	pdfFile, err := cups.CreateTempFile()
 	if err != nil {
-		return lib.Printer{}, nil, nil,
+		return lib.Printer{}, cdd.CloudJobTicket{}, nil,
 			fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err),
-			lib.GCPJobOther
+			cdd.PrintJobStateDiff{
+				State: cdd.JobState{
+					Type:              "STOPPED",
+					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "OTHER"},
+				},
+			}
 	}
 
 	pm.downloadSemaphore.Acquire()
@@ -384,15 +465,20 @@ func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, map[string]str
 	if err != nil {
 		// Clean up this temporary file so the caller doesn't need extra logic.
 		os.Remove(pdfFile.Name())
-		return lib.Printer{}, nil, nil,
+		return lib.Printer{}, cdd.CloudJobTicket{}, nil,
 			fmt.Sprintf("Failed to download PDF for job %s: %s", job.GCPJobID, err),
-			lib.GCPJobPrintFailure
+			cdd.PrintJobStateDiff{
+				State: cdd.JobState{
+					Type:              "STOPPED",
+					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "DOWNLOAD_FAILURE"},
+				},
+			}
 	}
 
 	glog.Infof("Downloaded job %s in %s", job.GCPJobID, dt.String())
 	pdfFile.Close()
 
-	return printer, options, pdfFile, "", 100
+	return printer, ticket, pdfFile, "", cdd.PrintJobStateDiff{}
 }
 
 // processJob performs these steps:
@@ -414,11 +500,11 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 
 	glog.Infof("Received job %s", job.GCPJobID)
 
-	printer, options, pdfFile, message, gcpJobStateCause := pm.assembleJob(job)
+	printer, ticket, pdfFile, message, state := pm.assembleJob(job)
 	if message != "" {
 		pm.incrementJobsProcessed(false)
 		glog.Error(message)
-		if err := pm.gcp.Control(job.GCPJobID, lib.GCPJobAborted, gcpJobStateCause, 0); err != nil {
+		if err := pm.gcp.Control(job.GCPJobID, state); err != nil {
 			glog.Error(err)
 		}
 		return
@@ -438,12 +524,18 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		jobTitle = jobTitle[:255]
 	}
 
-	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), jobTitle, ownerID, options)
+	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), jobTitle, ownerID, ticket)
 	if err != nil {
 		pm.incrementJobsProcessed(false)
 		message = fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)
 		glog.Error(message)
-		if err := pm.gcp.Control(job.GCPJobID, lib.GCPJobAborted, lib.GCPJobPrintFailure, 0); err != nil {
+		state := cdd.PrintJobStateDiff{
+			State: cdd.JobState{
+				Type:              "STOPPED",
+				DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "PRINT_FAILURE"},
+			},
+		}
+		if err := pm.gcp.Control(job.GCPJobID, state); err != nil {
 			glog.Error(err)
 		}
 		return
@@ -455,47 +547,50 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 }
 
 // followJob polls a CUPS job state to update the GCP job state and
-// returns when the job state is DONE or ERROR.
+// returns when the job state is DONE, STOPPED, or ABORTED.
 //
 // Nothing is returned, as all errors are reported and logged from
 // this function.
 func (pm *PrinterManager) followJob(job *lib.Job, cupsJobID uint32) {
-	var cupsState lib.CUPSJobState
-	var gcpState lib.GCPJobState
-	var pages uint32
+	var gcpState cdd.PrintJobStateDiff
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
 	for _ = range ticker.C {
-		latestCUPSState, latestPages, err := pm.cups.GetJobState(cupsJobID)
+		cupsState, err := pm.cups.GetJobState(cupsJobID)
 		if err != nil {
 			glog.Warningf("Failed to get state of CUPS job %d: %s", cupsJobID, err)
-			if err := pm.gcp.Control(job.GCPJobID, lib.GCPJobAborted, lib.GCPJobOther, pages); err != nil {
+
+			gcpState := cdd.PrintJobStateDiff{
+				State: cdd.JobState{
+					Type:              "STOPPED",
+					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "OTHER"},
+				},
+				PagesPrinted: gcpState.PagesPrinted,
+			}
+			if err := pm.gcp.Control(job.GCPJobID, gcpState); err != nil {
 				glog.Error(err)
 			}
 			pm.incrementJobsProcessed(false)
-			break
+			return
 		}
 
-		if latestCUPSState != cupsState || latestPages != pages {
-			cupsState = latestCUPSState
-			var gcpCause lib.GCPJobStateCause
-			gcpState, gcpCause = latestCUPSState.GCPJobState()
-			pages = latestPages
-			if err = pm.gcp.Control(job.GCPJobID, gcpState, gcpCause, pages); err != nil {
+		if !reflect.DeepEqual(cupsState, gcpState) {
+			gcpState = cupsState
+			if err = pm.gcp.Control(job.GCPJobID, gcpState); err != nil {
 				glog.Error(err)
 			}
-			glog.Infof("Job %s state is now: %s/%s", job.GCPJobID, cupsState, gcpState)
+			glog.Infof("Job %s state is now: %s", job.GCPJobID, gcpState.State.Type)
 		}
 
-		if gcpState != lib.GCPJobInProgress {
-			if gcpState == lib.GCPJobDone {
+		if gcpState.State.Type != "IN_PROGRESS" {
+			if gcpState.State.Type == "DONE" {
 				pm.incrementJobsProcessed(true)
 			} else {
 				pm.incrementJobsProcessed(false)
 			}
-			break
+			return
 		}
 	}
 }

@@ -10,72 +10,28 @@ package lib
 import (
 	"crypto/md5"
 	"fmt"
+	"reflect"
 	"sort"
-	"strings"
 	"time"
+
+	"github.com/google/cups-connector/cdd"
 )
 
 type PrinterState uint8
 
-// CUPS: ipp_pstate_t; GCP: CloudDeviceState.StateType
-const (
-	PrinterIdle       PrinterState = iota // CUPS: IPP_PSTATE_IDLE;       GCP: StateType.IDLE
-	PrinterProcessing              = iota // CUPS: IPP_PSTATE_PROCESSING; GCP: StateType.PROCESSING
-	PrinterStopped                 = iota // CUPS: IPP_PSTATE_STOPPED;    GCP: StateType.STOPPED
-)
-
-func PrinterStateFromCUPS(ss string) PrinterState {
-	switch strings.ToLower(ss) {
-	case "3":
-		return PrinterIdle
-	case "4":
-		return PrinterProcessing
-	case "5":
-		return PrinterStopped
-	default:
-		return PrinterIdle
-	}
-}
-
-func (ps PrinterState) GCPPrinterState() string {
-	switch ps {
-	case PrinterIdle:
-		return "IDLE"
-	case PrinterProcessing:
-		return "PROCESSING"
-	case PrinterStopped:
-		return "STOPPED"
-	default:
-		return "IDLE"
-	}
-}
-
-func PrinterStateFromGCP(ss string) PrinterState {
-	switch strings.ToLower(ss) {
-	case "IDLE":
-		return PrinterIdle
-	case "PROCESSING":
-		return PrinterProcessing
-	case "STOPPED":
-		return PrinterStopped
-	default:
-		return PrinterIdle
-	}
-}
-
 // CUPS: cups_dest_t; GCP: /register and /update interfaces
 type Printer struct {
-	GCPID              string            //                                    GCP: printerid (GCP key)
-	Name               string            // CUPS: cups_dest_t.name (CUPS key); GCP: name field
-	DefaultDisplayName string            // CUPS: printer-info;                GCP: default_display_name field
-	UUID               string            // CUPS: printer-uuid;                GCP: uuid field
-	GCPVersion         string            //                                    GCP: gcpVersion field
-	ConnectorVersion   string            //                                    GCP: firmware field
-	State              PrinterState      // CUPS: printer-state;               GCP: semantic_state field; CDS.StateType
-	StateReasons       []string          // CUPS: printer-state-reasons;       GCP: semantic_state field; CDS.PrinterStateSection fields
-	CapsHash           string            // CUPS: hash of PPD;                 GCP: capsHash field
-	Tags               map[string]string // CUPS: all printer attributes;      GCP: repeated tag field
-	XMPPPingInterval   time.Duration     //                                    GCP: local_settings/xmpp_timeout_value field
+	GCPID              string                  //                                    GCP: printerid (GCP key)
+	Name               string                  // CUPS: cups_dest_t.name (CUPS key); GCP: name field
+	DefaultDisplayName string                  // CUPS: printer-info;                GCP: default_display_name field
+	UUID               string                  // CUPS: printer-uuid;                GCP: uuid field
+	GCPVersion         string                  //                                    GCP: gcpVersion field
+	ConnectorVersion   string                  //                                    GCP: firmware field
+	State              cdd.PrinterStateSection // CUPS: printer-state(-reasons), marker-(names|levels); GCP: semantic_state field; CDS.StateType
+	Markers            *[]cdd.Marker           // CUPS: marker-(names|types);        GCP: CDD marker field
+	CapsHash           string                  // CUPS: hash of PPD;                 GCP: capsHash field
+	Tags               map[string]string       // CUPS: all printer attributes;      GCP: repeated tag field
+	XMPPPingInterval   time.Duration           //                                    GCP: local_settings/xmpp_timeout_value field
 	CUPSJobSemaphore   *Semaphore
 }
 
@@ -120,7 +76,8 @@ type PrinterDiff struct {
 	UUIDChanged               bool
 	GCPVersionChanged         bool
 	ConnectorVersionChanged   bool
-	StateChanged              bool // Also indicates changes to StateReasons.
+	StateChanged              bool
+	MarkersChanged            bool
 	CapsHashChanged           bool
 	XMPPPingIntervalChanged   bool
 	TagsChanged               bool
@@ -215,17 +172,11 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if pg.ConnectorVersion != pc.ConnectorVersion {
 		d.ConnectorVersionChanged = true
 	}
-	if pg.State != pc.State {
+	if !reflect.DeepEqual(pg.State, pc.State) {
 		d.StateChanged = true
-	} else if len(pg.StateReasons) != len(pc.StateReasons) {
-		d.StateChanged = true
-	} else {
-		for i := range pg.StateReasons {
-			if pg.StateReasons[i] != pc.StateReasons[i] {
-				d.StateChanged = true
-				break
-			}
-		}
+	}
+	if !reflect.DeepEqual(pg.Markers, pc.Markers) {
+		d.MarkersChanged = true
 	}
 	if pg.CapsHash != pc.CapsHash {
 		d.CapsHashChanged = true
@@ -241,8 +192,8 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	}
 
 	if d.DefaultDisplayNameChanged || d.UUIDChanged || d.GCPVersionChanged ||
-		d.ConnectorVersionChanged || d.StateChanged || d.CapsHashChanged ||
-		d.XMPPPingIntervalChanged || d.TagsChanged {
+		d.ConnectorVersionChanged || d.StateChanged || d.MarkersChanged ||
+		d.CapsHashChanged || d.XMPPPingIntervalChanged || d.TagsChanged {
 		return d
 	}
 
