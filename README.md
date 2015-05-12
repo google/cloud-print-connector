@@ -9,6 +9,20 @@ license that can be found in the LICENSE file or at
 https://developers.google.com/open-source/licenses/bsd
 
 # Install
+Get a recent version of the Go compiler. This is best done without your operating system's
+package manager: https://golang.org/doc/install
+
+You'll need the CUPS development libraries. Debian, Ubuntu, etc:
+```
+$ sudo apt-get install libcups2-dev
+```
+
+We use a little bit of C to marry the CUPS client library to Go code. Debian, Ubuntu, etc:
+```
+$ sudo apt-get install build-essential
+```
+
+Install the Connector:
 ```
 $ go get github.com/google/cups-connector/connector
 $ go get github.com/google/cups-connector/connector-init
@@ -16,11 +30,9 @@ $ go get github.com/google/cups-connector/connector-monitor
 $ go get github.com/google/cups-connector/connector-util
 ```
 
-## Configure
+# Configure
 To create a basic config file called `cups-connector.config.json`, use
-`connector-init`. The default config file looks something like this; make sure
-the `/var/run/cups-connector` directory exists and is writeable by the
-connector:
+`connector-init`. The default config file looks something like this:
 
 ```
 {
@@ -30,34 +42,43 @@ connector:
   "share_scope": "somedude@gmail.com",
   "proxy_name": "joes-crab-shack",
   "gcp_max_concurrent_downloads": 5,
+  "cups_max_connections": 5,
+  "cups_connect_timeout": "5s",
   "cups_job_queue_size": 3,
-  "cups_printer_poll_interval": "1m0s",
+  "cups_printer_poll_interval": "1m",
   "cups_printer_attributes": [
     "printer-name",
     "printer-info",
-    "printer-is-accepting-jobs",
     "printer-location",
     "printer-make-and-model",
     "printer-state",
-    "printer-state-reasons"
+    "printer-state-reasons",
+    "printer-uuid",
+    "marker-names",
+    "marker-types",
+    "marker-levels"
   ],
   "cups_job_full_username": false,
   "cups_ignore_raw_printers": true,
   "copy_printer_info_to_display_name": true,
-  "monitor_socket_filename": "/var/run/cups-connector/monitor.sock"
+  "monitor_socket_filename": "/var/run/cups-connector/monitor.sock",
+  "gcp_base_url": "https://www.google.com/cloudprint/",
+  "xmpp_server": "talk.google.com",
+  "xmpp_port": 443,
+  "gcp_xmpp_ping_timeout": "5s",
+  "gcp_xmpp_ping_interval_default": "2m",
+  "gcp_oauth_client_id": "539833558011-35iq8btpgas80nrs3o7mv99hm95d4dv6.apps.googleusercontent.com",
+  "gcp_oauth_client_secret": "V9BfPOvdiYuw12hDx5Y5nR0a",
+  "gcp_oauth_auth_url": "https://accounts.google.com/o/oauth2/auth",
+  "gcp_oauth_token_url": "https://accounts.google.com/o/oauth2/token"
 }
 ```
 
-To fetch all printer attributes (there are lots), use a single attribute named
-`"all"`.
+Finally, make sure that the socket directory (see `monitor_socket_filename` above),
+exists and is writeable by the user that the connector will run as:
 ```
-{
-...
-  "cups_printer_attributes": [
-    "all",
-  ],
-...
-}
+$ sudo mkdir /var/run/cups-connector
+$ sudo chown $USER /var/run/cups-connector
 ```
 
 ## Configure CUPS client:server
