@@ -14,12 +14,7 @@ package cups
 #include <stdlib.h>     // free, malloc
 #include <sys/socket.h> // AF_UNSPEC
 #include <time.h>       // time_t
-
-const char
-    *POST_RESOURCE        = "/",
-    *REQUESTED_ATTRIBUTES = "requested-attributes",
-		*JOB_URI_ATTRIBUTE    = "job-uri",
-		*IPP                  = "ipp";
+#include "cups.h"
 */
 import "C"
 import (
