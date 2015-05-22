@@ -11,6 +11,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"time"
 
@@ -56,6 +57,24 @@ func (p *Printer) SetTagshash() {
 	}
 
 	p.Tags["tagshash"] = fmt.Sprintf("%x", tagshash.Sum(nil))
+}
+
+var rDeviceURIHostname *regexp.Regexp = regexp.MustCompile(
+	"(?i)^(?:socket|http|https|ipp|ipps|lpd)://([a-z][a-z0-9.]*)")
+
+// GetHostname gets the network hostname, parsed from Printer.Tags["device-uri"].
+func (p *Printer) GetHostname() (string, bool) {
+	deviceURI, ok := p.Tags["device-uri"]
+	if !ok {
+		return "", false
+	}
+
+	parts := rDeviceURIHostname.FindStringSubmatch(deviceURI)
+	if len(parts) == 2 {
+		return parts[1], true
+	}
+
+	return "", false
 }
 
 type PrinterDiffOperation int8

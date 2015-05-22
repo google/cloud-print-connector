@@ -37,15 +37,16 @@ const (
 	// CUPS "URL" length are always less than 40. For example: /job/1234567
 	urlMaxLength = 100
 
-	attrPrinterName         = "printer-name"
-	attrPrinterInfo         = "printer-info"
-	attrPrinterMakeAndModel = "printer-make-and-model"
-	attrPrinterUUID         = "printer-uuid"
-	attrPrinterState        = "printer-state"
-	attrPrinterStateReasons = "printer-state-reasons"
+	attrDeviceURI           = "device-uri"
+	attrMarkerLevels        = "marker-levels"
 	attrMarkerNames         = "marker-names"
 	attrMarkerTypes         = "marker-types"
-	attrMarkerLevels        = "marker-levels"
+	attrPrinterInfo         = "printer-info"
+	attrPrinterMakeAndModel = "printer-make-and-model"
+	attrPrinterName         = "printer-name"
+	attrPrinterState        = "printer-state"
+	attrPrinterStateReasons = "printer-state-reasons"
+	attrPrinterUUID         = "printer-uuid"
 
 	attrJobState                = "job-state"
 	attrJobMediaSheetsCompleted = "job-media-sheets-completed"
@@ -53,15 +54,16 @@ const (
 
 var (
 	requiredPrinterAttributes []string = []string{
-		attrPrinterName,
-		attrPrinterInfo,
-		attrPrinterMakeAndModel,
-		attrPrinterUUID,
-		attrPrinterState,
-		attrPrinterStateReasons,
+		attrDeviceURI,
+		attrMarkerLevels,
 		attrMarkerNames,
 		attrMarkerTypes,
-		attrMarkerLevels,
+		attrPrinterInfo,
+		attrPrinterMakeAndModel,
+		attrPrinterName,
+		attrPrinterState,
+		attrPrinterStateReasons,
+		attrPrinterUUID,
 	}
 
 	jobAttributes []string = []string{
