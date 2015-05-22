@@ -564,13 +564,13 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 	if s, ok := printerTags[attrPrinterState]; ok {
 		switch s[0] {
 		case "3":
-			state.State = "IDLE"
+			state.State = cdd.CloudDeviceStateIdle
 		case "4":
-			state.State = "PROCESSING"
+			state.State = cdd.CloudDeviceStateProcessing
 		case "5":
-			state.State = "STOPPED"
+			state.State = cdd.CloudDeviceStateStopped
 		default:
-			state.State = "IDLE"
+			state.State = cdd.CloudDeviceStateIdle
 		}
 	}
 
@@ -580,13 +580,13 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 		for i, reason := range reasons {
 			vendorState := cdd.VendorStateItem{DescriptionLocalized: cdd.NewLocalizedString(reason)}
 			if strings.HasSuffix(reason, "-error") {
-				vendorState.State = "ERROR"
+				vendorState.State = cdd.VendorStateError
 			} else if strings.HasSuffix(reason, "-warning") {
-				vendorState.State = "WARNING"
+				vendorState.State = cdd.VendorStateWarning
 			} else if strings.HasSuffix(reason, "-report") {
-				vendorState.State = "INFO"
+				vendorState.State = cdd.VendorStateInfo
 			} else {
-				vendorState.State = "INFO"
+				vendorState.State = cdd.VendorStateInfo
 			}
 			state.VendorState.Item[i] = vendorState
 		}
@@ -611,6 +611,27 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 	return p
 }
 
+var cupsMarkerNameToGCP map[string]cdd.MarkerColorType = map[string]cdd.MarkerColorType{
+	"black":         cdd.MarkerColorBlack,
+	"color":         cdd.MarkerColorColor,
+	"cyan":          cdd.MarkerColorCyan,
+	"magenta":       cdd.MarkerColorMagenta,
+	"yellow":        cdd.MarkerColorYellow,
+	"light cyan":    cdd.MarkerColorLightCyan,
+	"light magenta": cdd.MarkerColorLightMagenta,
+	"gray":          cdd.MarkerColorGray,
+	"light gray":    cdd.MarkerColorLightGray,
+	"pigment black": cdd.MarkerColorPigmentBlack,
+	"matte black":   cdd.MarkerColorMatteBlack,
+	"photo cyan":    cdd.MarkerColorPhotoCyan,
+	"photo magenta": cdd.MarkerColorPhotoMagenta,
+	"photo yellow":  cdd.MarkerColorPhotoYellow,
+	"photo gray":    cdd.MarkerColorPhotoGray,
+	"red":           cdd.MarkerColorRed,
+	"green":         cdd.MarkerColorGreen,
+	"blue":          cdd.MarkerColorBlue,
+}
+
 // convertMarkers converts CUPS marker-(names|types|levels) to *[]cdd.Marker and *cdd.MarkerState.
 //
 // Normalizes marker type: toner(Cartridge|-cartridge) => toner,
@@ -625,80 +646,84 @@ func convertMarkers(names, types, levels []string) (*[]cdd.Marker, *cdd.MarkerSt
 		return nil, nil
 	}
 
-	markers := make([]cdd.Marker, len(names))
-	states := cdd.MarkerState{make([]cdd.MarkerStateItem, len(names))}
+	markers := make([]cdd.Marker, 0, len(names))
+	states := cdd.MarkerState{make([]cdd.MarkerStateItem, 0, len(names))}
 	for i := 0; i < len(names); i++ {
 		if len(names[i]) == 0 {
 			return nil, nil
 		}
-		n := names[i]
-		t := types[i]
-		switch t {
-		case "tonerCartridge", "toner-cartridge":
-			t = "toner"
-		case "inkCartridge", "ink-cartridge", "ink-ribbon", "inkRibbon":
-			t = "ink"
-		}
-		l, err := strconv.ParseInt(levels[i], 10, 32)
-		if err != nil {
-			glog.Warningf("Failed to parse CUPS marker state %s=%s: %s", n, levels[i], err)
-			return nil, nil
+		var markerType cdd.MarkerType
+		switch strings.ToLower(types[i]) {
+		case "toner", "tonercartridge", "toner-cartridge":
+			markerType = cdd.MarkerToner
+		case "ink", "inkcartridge", "ink-cartridge", "ink-ribbon", "inkribbon":
+			markerType = cdd.MarkerInk
+		case "staples":
+			markerType = cdd.MarkerStaples
+		default:
+			continue
 		}
 
-		if l < 0 {
-			// The CUPS driver doesn't know what the levels are; not useful.
-			return nil, nil
-		} else if l > 100 {
-			// Lop off extra (proprietary?) bits.
-			l = l & 0x7f
-			if l > 100 {
-				// Even that didn't work.
-				return nil, nil
+		nameLowerCase := strings.ToLower(names[i])
+		colorType := cdd.MarkerColorCustom
+		for k, v := range cupsMarkerNameToGCP {
+			if strings.HasPrefix(nameLowerCase, k) {
+				colorType = v
+				break
 			}
 		}
+		color := cdd.MarkerColor{Type: colorType}
+		if colorType == cdd.MarkerColorCustom {
+			name := names[i]
+			name = strings.TrimSuffix(name, " Cartridge")
+			name = strings.TrimSuffix(name, " cartridge")
+			name = strings.TrimSuffix(name, " Ribbon")
+			name = strings.TrimSuffix(name, " ribbon")
+			name = strings.TrimSuffix(name, " Toner")
+			name = strings.TrimSuffix(name, " toner")
+			name = strings.TrimSuffix(name, " Ink")
+			name = strings.TrimSuffix(name, " ink")
+			color.CustomDisplayNameLocalized = cdd.NewLocalizedString(name)
+		}
 
-		markers[i] = newMarker(n, t)
-		states.Item[i] = newMarkerStateItem(n, int32(l))
+		marker := cdd.Marker{
+			VendorID: names[i],
+			Type:     markerType,
+			Color:    &color,
+			CustomDisplayNameLocalized: cdd.NewLocalizedString(names[i]),
+		}
+
+		level, err := strconv.ParseInt(levels[i], 10, 32)
+		if err != nil {
+			glog.Warningf("Failed to parse CUPS marker state %s=%s: %s", names[i], levels[i], err)
+			return nil, nil
+		}
+		if level > 100 {
+			// Lop off extra (proprietary?) bits.
+			level = level & 0x7f
+		}
+		if level < 0 || level > 100 {
+			return nil, nil
+		}
+
+		var state cdd.MarkerStateType
+		if level > 10 {
+			state = cdd.MarkerStateOK
+		} else {
+			state = cdd.MarkerStateExhausted
+		}
+		level32 := int32(level)
+		markerState := cdd.MarkerStateItem{
+			VendorID:     names[i],
+			State:        state,
+			LevelPercent: &level32,
+		}
+
+		markers = append(markers, marker)
+		states.Item = append(states.Item, markerState)
 	}
 
 	return &markers, &states
-}
-
-func newMarker(vendorID, vendorType string) cdd.Marker {
-	marker := cdd.Marker{VendorID: vendorID}
-
-	switch vendorType {
-	case "toner", "ink", "staples":
-		marker.Type = strings.ToUpper(vendorType)
-	default:
-		marker.Type = "CUSTOM"
-		marker.CustomDisplayNameLocalized = cdd.NewLocalizedString(vendorType)
-	}
-
-	if marker.Type == "TONER" || marker.Type == "INK" {
-		switch strings.ToLower(vendorID) {
-		case "black", "color", "cyan", "magenta", "yellow", "light_cyan", "light_magenta",
-			"gray", "light_gray", "pigment_black", "matte_black", "photo_cyan", "photo_magenta",
-			"photo_yellow", "photo_gray", "red", "green", "blue":
-			// Colors known to CDD Marker.Color enum.
-			marker.Color = &cdd.MarkerColor{Type: strings.ToUpper(vendorID)}
-		default:
-			marker.Color = &cdd.MarkerColor{Type: "CUSTOM", CustomDisplayNameLocalized: cdd.NewLocalizedString(vendorID)}
-		}
-	}
-
-	return marker
-}
-
-func newMarkerStateItem(vendorID string, vendorLevel int32) cdd.MarkerStateItem {
-	var state string
-	if vendorLevel > 10 {
-		state = "OK"
-	} else {
-		state = "EXHAUSTED"
-	}
-
-	return cdd.MarkerStateItem{VendorID: vendorID, State: state, LevelPercent: vendorLevel}
 }
 
 func contains(haystack []string, needle string) bool {
