@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -28,6 +29,9 @@ import (
 // This value should be large enough to be useful and small enough
 // to work on any platform.
 const filePathMaxLength = 1024
+
+// createTempFileLock protects C.cupsTempFd() from it's non-threadsafe-self.
+var createTempFileLock sync.Mutex
 
 // CreateTempFile calls cupsTempFd() to create a new file that (1) lives in a
 // "temporary" location (like /tmp) and (2) is readable by CUPS. The caller
@@ -39,6 +43,9 @@ func CreateTempFile() (*os.File, error) {
 		return nil, errors.New("Failed to malloc(); out of memory?")
 	}
 	defer C.free(unsafe.Pointer(filename))
+
+	createTempFileLock.Lock()
+	defer createTempFileLock.Unlock()
 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
