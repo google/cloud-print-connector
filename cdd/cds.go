@@ -20,7 +20,7 @@ const (
 type CloudDeviceState struct {
 	Version              string                    `json:"version"`
 	CloudConnectionState *CloudConnectionStateType `json:"cloud_connection_state,omitempty"`
-	Printer              PrinterStateSection       `json:"printer"`
+	Printer              *PrinterStateSection      `json:"printer"`
 }
 
 type CloudDeviceStateType string

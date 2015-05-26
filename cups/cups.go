@@ -79,9 +79,10 @@ type CUPS struct {
 	infoToDisplayName bool
 	printerAttributes []string
 	systemTags        map[string]string
+	translatePPDToCDD func(string) (*cdd.PrinterDescriptionSection, error)
 }
 
-func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections uint, connectTimeout time.Duration) (*CUPS, error) {
+func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections uint, connectTimeout time.Duration, translatePPDToCDD func(string) (*cdd.PrinterDescriptionSection, error)) (*CUPS, error) {
 	if err := checkPrinterAttributes(printerAttributes); err != nil {
 		return nil, err
 	}
@@ -90,14 +91,20 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections 
 	if err != nil {
 		return nil, err
 	}
-	pc := newPPDCache(cc)
+	pc := newPPDCache(cc, translatePPDToCDD)
 
 	systemTags, err := getSystemTags()
 	if err != nil {
 		return nil, err
 	}
 
-	c := &CUPS{cc, pc, infoToDisplayName, printerAttributes, systemTags}
+	c := &CUPS{
+		cc:                cc,
+		pc:                pc,
+		infoToDisplayName: infoToDisplayName,
+		printerAttributes: printerAttributes,
+		systemTags:        systemTags,
+	}
 
 	return c, nil
 }
@@ -142,7 +149,7 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 		printers[i].GCPVersion = lib.GCPAPIVersion
 		printers[i].ConnectorVersion = lib.ShortName
 	}
-	c.addPPDHashToPrinters(printers)
+	c.addDescriptionToPrinters(printers)
 
 	return printers, nil
 }
@@ -169,16 +176,20 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 	return printers
 }
 
-// addPPDHashToPrinters fetches PPD hashes for all printers concurrently.
-func (c *CUPS) addPPDHashToPrinters(printers []lib.Printer) {
+// addPPDHashToPrinters fetches description, PPD hash, manufacturer, model for
+// all argument printers, concurrently.
+func (c *CUPS) addDescriptionToPrinters(printers []lib.Printer) {
 	var wg sync.WaitGroup
 
 	for i := range printers {
 		if !lib.PrinterIsRaw(printers[i]) {
 			wg.Add(1)
 			go func(p *lib.Printer) {
-				if ppdHash, err := c.pc.getPPDHash(p.Name); err == nil {
+				if description, ppdHash, manufacturer, model, err := c.pc.getDescription(p.Name); err == nil {
+					p.Description.Absorb(description)
 					p.CapsHash = ppdHash
+					p.Manufacturer = manufacturer
+					p.Model = model
 				} else {
 					glog.Error(err)
 				}
@@ -215,18 +226,6 @@ func getSystemTags() (map[string]string, error) {
 		C.CUPS_VERSION_MAJOR, C.CUPS_VERSION_MINOR, C.CUPS_VERSION_PATCH)
 
 	return tags, nil
-}
-
-// GetPPD gets the PPD for the specified printer.
-func (c *CUPS) GetPPD(printername string) (string, string, string, error) {
-	ppd, err := c.pc.getPPD(printername)
-	if err != nil {
-		return "", "", "", err
-	}
-
-	manufacturer, model := parseManufacturerAndModel(ppd)
-
-	return ppd, manufacturer, model, nil
 }
 
 // RemoveCachedPPD removes a printer's PPD from the cache.
@@ -594,13 +593,14 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 
 	markers, markerState := convertMarkers(printerTags[attrMarkerNames], printerTags[attrMarkerTypes], printerTags[attrMarkerLevels])
 	state.MarkerState = markerState
+	description := cdd.PrinterDescriptionSection{Marker: markers}
 
 	p := lib.Printer{
-		Name:    name,
-		UUID:    uuid,
-		State:   state,
-		Markers: markers,
-		Tags:    tags,
+		Name:        name,
+		UUID:        uuid,
+		State:       &state,
+		Description: &description,
+		Tags:        tags,
 	}
 	p.SetTagshash()
 
@@ -612,24 +612,24 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 }
 
 var cupsMarkerNameToGCP map[string]cdd.MarkerColorType = map[string]cdd.MarkerColorType{
-	"black":         cdd.MarkerColorBlack,
-	"color":         cdd.MarkerColorColor,
-	"cyan":          cdd.MarkerColorCyan,
-	"magenta":       cdd.MarkerColorMagenta,
-	"yellow":        cdd.MarkerColorYellow,
-	"light cyan":    cdd.MarkerColorLightCyan,
-	"light magenta": cdd.MarkerColorLightMagenta,
-	"gray":          cdd.MarkerColorGray,
-	"light gray":    cdd.MarkerColorLightGray,
-	"pigment black": cdd.MarkerColorPigmentBlack,
-	"matte black":   cdd.MarkerColorMatteBlack,
-	"photo cyan":    cdd.MarkerColorPhotoCyan,
-	"photo magenta": cdd.MarkerColorPhotoMagenta,
-	"photo yellow":  cdd.MarkerColorPhotoYellow,
-	"photo gray":    cdd.MarkerColorPhotoGray,
-	"red":           cdd.MarkerColorRed,
-	"green":         cdd.MarkerColorGreen,
-	"blue":          cdd.MarkerColorBlue,
+	"black":        cdd.MarkerColorBlack,
+	"color":        cdd.MarkerColorColor,
+	"cyan":         cdd.MarkerColorCyan,
+	"magenta":      cdd.MarkerColorMagenta,
+	"yellow":       cdd.MarkerColorYellow,
+	"lightcyan":    cdd.MarkerColorLightCyan,
+	"lightmagenta": cdd.MarkerColorLightMagenta,
+	"gray":         cdd.MarkerColorGray,
+	"lightgray":    cdd.MarkerColorLightGray,
+	"pigmentblack": cdd.MarkerColorPigmentBlack,
+	"matteblack":   cdd.MarkerColorMatteBlack,
+	"photocyan":    cdd.MarkerColorPhotoCyan,
+	"photomagenta": cdd.MarkerColorPhotoMagenta,
+	"photoyellow":  cdd.MarkerColorPhotoYellow,
+	"photogray":    cdd.MarkerColorPhotoGray,
+	"red":          cdd.MarkerColorRed,
+	"green":        cdd.MarkerColorGreen,
+	"blue":         cdd.MarkerColorBlue,
 }
 
 // convertMarkers converts CUPS marker-(names|types|levels) to *[]cdd.Marker and *cdd.MarkerState.
@@ -664,10 +664,10 @@ func convertMarkers(names, types, levels []string) (*[]cdd.Marker, *cdd.MarkerSt
 			continue
 		}
 
-		nameLowerCase := strings.ToLower(names[i])
+		nameStripped := strings.Replace(strings.Replace(strings.ToLower(names[i]), " ", "", -1), "-", "", -1)
 		colorType := cdd.MarkerColorCustom
 		for k, v := range cupsMarkerNameToGCP {
-			if strings.HasPrefix(nameLowerCase, k) {
+			if strings.HasPrefix(nameStripped, k) {
 				colorType = v
 				break
 			}
@@ -683,6 +683,7 @@ func convertMarkers(names, types, levels []string) (*[]cdd.Marker, *cdd.MarkerSt
 			name = strings.TrimSuffix(name, " toner")
 			name = strings.TrimSuffix(name, " Ink")
 			name = strings.TrimSuffix(name, " ink")
+			name = strings.Replace(name, "-", " ", -1)
 			color.CustomDisplayNameLocalized = cdd.NewLocalizedString(name)
 		}
 
@@ -690,7 +691,6 @@ func convertMarkers(names, types, levels []string) (*[]cdd.Marker, *cdd.MarkerSt
 			VendorID: names[i],
 			Type:     markerType,
 			Color:    &color,
-			CustomDisplayNameLocalized: cdd.NewLocalizedString(names[i]),
 		}
 
 		level, err := strconv.ParseInt(levels[i], 10, 32)

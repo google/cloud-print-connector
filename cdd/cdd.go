@@ -13,8 +13,8 @@ https://developers.google.com/open-source/licenses/bsd
 package cdd
 
 type CloudDeviceDescription struct {
-	Version string                    `json:"version"`
-	Printer PrinterDescriptionSection `json:"printer"`
+	Version string                     `json:"version"`
+	Printer *PrinterDescriptionSection `json:"printer"`
 }
 
 type PrinterDescriptionSection struct {
@@ -38,6 +38,70 @@ type PrinterDescriptionSection struct {
 	MediaSize            *MediaSize              `json:"media_size,omitempty"`
 	Collate              *Collate                `json:"collate,omitempty"`
 	ReverseOrder         *ReverseOrder           `json:"reverse_order,omitempty"`
+}
+
+// Absorb copies all non-nil fields from the passed-in description.
+func (a *PrinterDescriptionSection) Absorb(b *PrinterDescriptionSection) {
+	if b.SupportedContentType != nil {
+		a.SupportedContentType = b.SupportedContentType
+	}
+	if b.PrintingSpeed != nil {
+		a.PrintingSpeed = b.PrintingSpeed
+	}
+	if b.PWGRasterConfig != nil {
+		a.PWGRasterConfig = b.PWGRasterConfig
+	}
+	if b.InputTrayUnit != nil {
+		a.InputTrayUnit = b.InputTrayUnit
+	}
+	if b.OutputBinUnit != nil {
+		a.OutputBinUnit = b.OutputBinUnit
+	}
+	if b.Marker != nil {
+		a.Marker = b.Marker
+	}
+	if b.Cover != nil {
+		a.Cover = b.Cover
+	}
+	if b.MediaPath != nil {
+		a.MediaPath = b.MediaPath
+	}
+	if b.VendorCapability != nil {
+		a.VendorCapability = b.VendorCapability
+	}
+	if b.Color != nil {
+		a.Color = b.Color
+	}
+	if b.Duplex != nil {
+		a.Duplex = b.Duplex
+	}
+	if b.PageOrientation != nil {
+		a.PageOrientation = b.PageOrientation
+	}
+	if b.Copies != nil {
+		a.Copies = b.Copies
+	}
+	if b.Margins != nil {
+		a.Margins = b.Margins
+	}
+	if b.DPI != nil {
+		a.DPI = b.DPI
+	}
+	if b.FitToPage != nil {
+		a.FitToPage = b.FitToPage
+	}
+	if b.PageRange != nil {
+		a.PageRange = b.PageRange
+	}
+	if b.MediaSize != nil {
+		a.MediaSize = b.MediaSize
+	}
+	if b.Collate != nil {
+		a.Collate = b.Collate
+	}
+	if b.ReverseOrder != nil {
+		a.ReverseOrder = b.ReverseOrder
+	}
 }
 
 type SupportedContentType struct {
