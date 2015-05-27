@@ -94,7 +94,6 @@ type PrinterDiff struct {
 	Printer   Printer
 
 	DefaultDisplayNameChanged bool
-	UUIDChanged               bool
 	ManufacturerChanged       bool
 	ModelChanged              bool
 	GCPVersionChanged         bool
@@ -183,9 +182,6 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if pg.DefaultDisplayName != pc.DefaultDisplayName {
 		d.DefaultDisplayNameChanged = true
 	}
-	if pg.UUID != pc.UUID {
-		d.UUIDChanged = true
-	}
 	if pg.Manufacturer != pc.Manufacturer {
 		d.ManufacturerChanged = true
 	}
@@ -220,10 +216,10 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 		d.TagsChanged = true
 	}
 
-	if d.DefaultDisplayNameChanged || d.UUIDChanged || d.ManufacturerChanged ||
-		d.ModelChanged || d.GCPVersionChanged || d.ConnectorVersionChanged ||
-		d.StateChanged || d.DescriptionChanged || d.CapsHashChanged ||
-		d.XMPPPingIntervalChanged || d.TagsChanged {
+	if d.DefaultDisplayNameChanged || d.ManufacturerChanged || d.ModelChanged ||
+		d.GCPVersionChanged || d.ConnectorVersionChanged || d.StateChanged ||
+		d.DescriptionChanged || d.CapsHashChanged || d.XMPPPingIntervalChanged ||
+		d.TagsChanged {
 		return d
 	}
 

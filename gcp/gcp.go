@@ -423,10 +423,6 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff) error {
 		form.Set("default_display_name", diff.Printer.DefaultDisplayName)
 	}
 
-	if diff.UUIDChanged {
-		form.Set("uuid", diff.Printer.UUID)
-	}
-
 	if diff.ManufacturerChanged {
 		form.Set("manufacturer", diff.Printer.Manufacturer)
 	}
