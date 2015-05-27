@@ -149,7 +149,7 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 		printers[i].GCPVersion = lib.GCPAPIVersion
 		printers[i].ConnectorVersion = lib.ShortName
 	}
-	c.addDescriptionToPrinters(printers)
+	printers = c.addDescriptionToPrinters(printers)
 
 	return printers, nil
 }
@@ -178,8 +178,12 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 
 // addPPDHashToPrinters fetches description, PPD hash, manufacturer, model for
 // all argument printers, concurrently.
-func (c *CUPS) addDescriptionToPrinters(printers []lib.Printer) {
+//
+// Returns a new printer slice, because it can shrink due to raw or
+// mis-configured printers.
+func (c *CUPS) addDescriptionToPrinters(printers []lib.Printer) []lib.Printer {
 	var wg sync.WaitGroup
+	ch := make(chan *lib.Printer, len(printers))
 
 	for i := range printers {
 		if !lib.PrinterIsRaw(printers[i]) {
@@ -190,6 +194,7 @@ func (c *CUPS) addDescriptionToPrinters(printers []lib.Printer) {
 					p.CapsHash = ppdHash
 					p.Manufacturer = manufacturer
 					p.Model = model
+					ch <- p
 				} else {
 					glog.Error(err)
 				}
@@ -199,6 +204,14 @@ func (c *CUPS) addDescriptionToPrinters(printers []lib.Printer) {
 	}
 
 	wg.Wait()
+	close(ch)
+
+	result := make([]lib.Printer, 0, len(ch))
+	for printer := range ch {
+		result = append(result, *printer)
+	}
+
+	return result
 }
 
 func getSystemTags() (map[string]string, error) {
