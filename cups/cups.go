@@ -346,12 +346,7 @@ func ticketToOptions(ticket cdd.CloudJobTicket) map[string]string {
 		m[vti.ID] = vti.Value
 	}
 	if ticket.Print.Color != nil {
-		switch ticket.Print.Color.Type {
-		case "CUSTOM_COLOR", "CUSTOM_MONOCHROME":
-			m["ColorModel"] = ticket.Print.Color.VendorID
-		default:
-			m["ColorModel"] = ticket.Print.Color.Type
-		}
+		m["ColorModel"] = ticket.Print.Color.VendorID
 	}
 	if ticket.Print.Duplex != nil {
 		switch ticket.Print.Duplex.Type {
