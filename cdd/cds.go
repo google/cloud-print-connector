@@ -59,7 +59,7 @@ type InputTrayStateItem struct {
 	VendorID      string             `json:"vendor_id"`
 	State         InputTrayStateType `json:"state"`
 	LevelPercent  *int32             `json:"level_percent,omitempty"`
-	VendorMessage string             `json:"vendor_message"`
+	VendorMessage string             `json:"vendor_message,omitempty"`
 }
 
 type OutputBinState struct {
@@ -80,7 +80,7 @@ type OutputBinStateItem struct {
 	VendorID      string             `json:"vendor_id"`
 	State         OutputBinStateType `json:"state"`
 	LevelPercent  *int32             `json:"level_percent,omitempty"`
-	VendorMessage string             `json:"vendor_message"`
+	VendorMessage string             `json:"vendor_message,omitempty"`
 }
 
 type MarkerState struct {
@@ -101,7 +101,7 @@ type MarkerStateItem struct {
 	State         MarkerStateType `json:"state"`
 	LevelPercent  *int32          `json:"level_percent,omitempty"`
 	LevelPages    *int32          `json:"level_pages,omitempty"`
-	VendorMessage string          `json:"vendor_message"`
+	VendorMessage string          `json:"vendor_message,omitempty"`
 }
 
 type CoverState struct {
@@ -119,7 +119,7 @@ const (
 type CoverStateItem struct {
 	VendorID      string         `json:"vendor_id"`
 	State         CoverStateType `json:"state"`
-	VendorMessage string         `json:"vendor_message"`
+	VendorMessage string         `json:"vendor_message,omitempty"`
 }
 
 type MediaPathState struct {
@@ -137,7 +137,7 @@ const (
 type MediaPathStateItem struct {
 	VendorID      string             `json:"vendor_id"`
 	State         MediaPathStateType `json:"state"`
-	VendorMessage string             `json:"vendor_message"`
+	VendorMessage string             `json:"vendor_message,omitempty"`
 }
 
 type VendorState struct {
