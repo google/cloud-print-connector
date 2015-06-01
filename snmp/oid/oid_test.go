@@ -137,8 +137,5 @@ func TestGetSubtree(t *testing.T) {
 	f(OID{5, 5}, o.vars[2:3])
 	f(OID{7}, o.vars[3:4])
 	f(OID{10}, o.vars[4:11])
-	f(NewOID("10.10"), o.vars[6:9])
-	f(NewOID(".10.10"), o.vars[6:9])
-	f(NewOID("10.10."), o.vars[6:9])
-	f(NewOID(".10.10."), o.vars[6:9])
+	f(OID{10, 10}, o.vars[6:9])
 }

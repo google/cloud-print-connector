@@ -12,35 +12,11 @@ package oid
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 )
 
 // OID reprents a numeric object ID.
 type OID []uint
-
-// NewOID creates a new OID from a string. If the name argument contains
-// invalid characters, like non-integers, then the returned OID is OID{}.
-func NewOID(name string) OID {
-	if strings.HasPrefix(name, ".") {
-		name = name[1:]
-	}
-	if strings.HasSuffix(name, ".") {
-		name = name[:len(name)-1]
-	}
-	q := strings.Split(name, ".")
-	var o = make([]uint, len(q))
-	for i := range q {
-		value, err := strconv.ParseUint(q[i], 10, 32)
-		if err != nil {
-			// TODO is this what I want to do?
-			return OID{}
-		}
-		o[i] = uint(value)
-	}
-
-	return o
-}
 
 // AsString formats the OID as a string.
 func (o OID) AsString() string {
