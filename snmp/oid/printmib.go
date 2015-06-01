@@ -16,9 +16,6 @@ import (
 	"github.com/google/cups-connector/cdd"
 )
 
-// TODO
-// marker (tonerWaste can go to VendorCapability with RangeType)
-
 // Some MIB definitions from Printer-MIB (RFC 3805).
 var (
 	PrinterMIB                       OID = OID{1, 3, 6, 1, 2, 1, 43}
@@ -33,7 +30,6 @@ var (
 	PrinterOutputRemainingCapacity       = append(PrinterMIB, OID{9, 2, 1, 5, 1}...)
 	PrinterOutputStatus                  = append(PrinterMIB, OID{9, 2, 1, 6, 1}...)
 	PrinterOutputName                    = append(PrinterMIB, OID{9, 2, 1, 7, 1}...)
-	PrinterMarkerStatus                  = append(PrinterMIB, OID{10, 2, 1, 15, 1}...)
 	PrinterMarkerSuppliesClass           = append(PrinterMIB, OID{11, 1, 1, 4, 1}...)
 	PrinterMarkerSuppliesType            = append(PrinterMIB, OID{11, 1, 1, 5, 1}...)
 	PrinterMarkerSuppliesDescription     = append(PrinterMIB, OID{11, 1, 1, 6, 1}...)
@@ -68,24 +64,24 @@ var PrinterCoverStatusToGCP map[string]cdd.CoverStateType = map[string]cdd.Cover
 	"6": cdd.CoverStateOK,
 }
 
-func (vs *VariableSet) GetCovers() ([]cdd.Cover, *cdd.CoverState, bool) {
+func (vs *VariableSet) GetCovers() (*[]cdd.Cover, *cdd.CoverState, bool) {
 	descriptions := vs.GetSubtree(PrinterCoverDescription).Variables()
 	statuses := vs.GetSubtree(PrinterCoverStatus).Variables()
 
 	if len(descriptions) < 1 ||
 		len(descriptions) != len(statuses) {
-		return []cdd.Cover{}, nil, false
+		return nil, nil, false
 	}
 
 	covers := make([]cdd.Cover, 0, len(descriptions))
 	coverState := cdd.CoverState{make([]cdd.CoverStateItem, 0, len(statuses))}
 
 	for i := 0; i < len(descriptions); i++ {
-		index := int64(descriptions[i].Name[len(descriptions[i].Name)-1])
+		index := cdd.NewSchizophrenicInt64(descriptions[i].Name[len(descriptions[i].Name)-1])
 		description := descriptions[i].Value
 		state := PrinterCoverStatusToGCP[statuses[i].Value]
 		cover := cdd.Cover{
-			VendorID: strconv.FormatInt(index, 10),
+			VendorID: index.String(),
 			Index:    index,
 		}
 
@@ -101,7 +97,7 @@ func (vs *VariableSet) GetCovers() ([]cdd.Cover, *cdd.CoverState, bool) {
 		covers = append(covers, cover)
 
 		coverStateItem := cdd.CoverStateItem{
-			VendorID: strconv.FormatInt(index, 10),
+			VendorID: index.String(),
 			State:    state,
 		}
 		if state == cdd.CoverStateFailure {
@@ -110,7 +106,7 @@ func (vs *VariableSet) GetCovers() ([]cdd.Cover, *cdd.CoverState, bool) {
 		coverState.Item = append(coverState.Item, coverStateItem)
 	}
 
-	return covers, &coverState, true
+	return &covers, &coverState, true
 }
 
 type PrinterSubUnitStatusTC uint8
@@ -130,7 +126,7 @@ const (
 	PrinterSubUnitTransitioning                                   = 64
 )
 
-func (vs *VariableSet) GetInputTrays() ([]cdd.InputTrayUnit, *cdd.InputTrayState, bool) {
+func (vs *VariableSet) GetInputTrays() (*[]cdd.InputTrayUnit, *cdd.InputTrayState, bool) {
 	levelsMax := vs.GetSubtree(PrinterInputMaxCapacity).Variables()
 	levelsCurrent := vs.GetSubtree(PrinterInputCurrentLevel).Variables()
 	statuses := vs.GetSubtree(PrinterInputStatus).Variables()
@@ -140,18 +136,18 @@ func (vs *VariableSet) GetInputTrays() ([]cdd.InputTrayUnit, *cdd.InputTrayState
 		len(levelsMax) != len(levelsCurrent) ||
 		len(levelsMax) != len(statuses) ||
 		len(levelsMax) != len(names) {
-		return []cdd.InputTrayUnit{}, nil, false
+		return nil, nil, false
 	}
 
 	inputTrayUnits := make([]cdd.InputTrayUnit, 0, len(statuses))
 	inputTrayState := cdd.InputTrayState{make([]cdd.InputTrayStateItem, 0, len(statuses))}
 
 	for i := 0; i < len(statuses); i++ {
-		index := int64(statuses[i].Name[len(statuses[i].Name)-1])
+		index := cdd.NewSchizophrenicInt64(statuses[i].Name[len(statuses[i].Name)-1])
 
 		status, err := strconv.ParseUint(statuses[i].Value, 10, 8)
 		if err != nil {
-			return []cdd.InputTrayUnit{}, nil, false
+			return nil, nil, false
 		}
 		state := cdd.InputTrayStateOK
 		stateMessage := []string{}
@@ -180,18 +176,18 @@ func (vs *VariableSet) GetInputTrays() ([]cdd.InputTrayUnit, *cdd.InputTrayState
 			stateMessage = append(stateMessage, "offline")
 		}
 		inputState := cdd.InputTrayStateItem{
-			VendorID:      strconv.FormatInt(index, 10),
+			VendorID:      index.String(),
 			State:         state,
-			VendorMessage: strings.Join(stateMessage, ","),
+			VendorMessage: strings.Join(stateMessage, ", "),
 		}
 
 		levelMax, err := strconv.ParseInt(levelsMax[i].Value, 10, 32)
 		if err != nil {
-			return []cdd.InputTrayUnit{}, nil, false
+			return nil, nil, false
 		}
 		levelCurrent, err := strconv.ParseInt(levelsCurrent[i].Value, 10, 32)
 		if err != nil {
-			return []cdd.InputTrayUnit{}, nil, false
+			return nil, nil, false
 		}
 		if levelMax >= 0 && levelCurrent >= 0 {
 			if levelCurrent == 0 && state == cdd.InputTrayStateOK {
@@ -200,20 +196,26 @@ func (vs *VariableSet) GetInputTrays() ([]cdd.InputTrayUnit, *cdd.InputTrayState
 			levelPercent := int32(100 * levelCurrent / levelMax)
 			inputState.LevelPercent = &levelPercent
 		}
+
+		if inputState.State == cdd.InputTrayStateOK ||
+			inputState.State == cdd.InputTrayStateEmpty {
+			// No message necessary when state says everything.
+			inputState.VendorMessage = ""
+		}
 		inputTrayState.Item = append(inputTrayState.Item, inputState)
 
 		inputTrayUnits = append(inputTrayUnits, cdd.InputTrayUnit{
-			VendorID: strconv.FormatInt(index, 10),
+			VendorID: index.String(),
 			Type:     cdd.InputTrayUnitCustom,
 			Index:    index,
 			CustomDisplayNameLocalized: cdd.NewLocalizedString(names[i].Value),
 		})
 	}
 
-	return inputTrayUnits, &inputTrayState, true
+	return &inputTrayUnits, &inputTrayState, true
 }
 
-func (vs *VariableSet) GetOutputBins() ([]cdd.OutputBinUnit, *cdd.OutputBinState, bool) {
+func (vs *VariableSet) GetOutputBins() (*[]cdd.OutputBinUnit, *cdd.OutputBinState, bool) {
 	capacitiesMax := vs.GetSubtree(PrinterOutputMaxCapacity).Variables()
 	capacitiesRemaining := vs.GetSubtree(PrinterOutputRemainingCapacity).Variables()
 	statuses := vs.GetSubtree(PrinterOutputStatus).Variables()
@@ -223,18 +225,18 @@ func (vs *VariableSet) GetOutputBins() ([]cdd.OutputBinUnit, *cdd.OutputBinState
 		len(names) != len(capacitiesMax) ||
 		len(names) != len(capacitiesRemaining) ||
 		len(names) != len(statuses) {
-		return []cdd.OutputBinUnit{}, nil, false
+		return nil, nil, false
 	}
 
 	outputBinUnits := make([]cdd.OutputBinUnit, 0, len(names))
 	outputBinState := cdd.OutputBinState{make([]cdd.OutputBinStateItem, 0, len(names))}
 
 	for i := 0; i < len(names); i++ {
-		index := int64(statuses[i].Name[len(statuses[i].Name)-1])
+		index := cdd.NewSchizophrenicInt64(statuses[i].Name[len(statuses[i].Name)-1])
 
 		status, err := strconv.ParseUint(statuses[i].Value, 10, 8)
 		if err != nil {
-			return []cdd.OutputBinUnit{}, nil, false
+			return nil, nil, false
 		}
 		state := cdd.OutputBinStateOK
 		stateMessage := []string{}
@@ -263,18 +265,18 @@ func (vs *VariableSet) GetOutputBins() ([]cdd.OutputBinUnit, *cdd.OutputBinState
 			stateMessage = append(stateMessage, "offline")
 		}
 		outputState := cdd.OutputBinStateItem{
-			VendorID:      strconv.FormatInt(index, 10),
+			VendorID:      index.String(),
 			State:         state,
 			VendorMessage: strings.Join(stateMessage, ","),
 		}
 
 		capacityMax, err := strconv.ParseInt(capacitiesMax[i].Value, 10, 32)
 		if err != nil {
-			return []cdd.OutputBinUnit{}, nil, false
+			return nil, nil, false
 		}
 		capacityRemaining, err := strconv.ParseInt(capacitiesRemaining[i].Value, 10, 32)
 		if err != nil {
-			return []cdd.OutputBinUnit{}, nil, false
+			return nil, nil, false
 		}
 		if capacityMax >= 0 && capacityRemaining >= 0 {
 			if capacityRemaining == 0 && state == cdd.OutputBinStateOK {
@@ -286,14 +288,14 @@ func (vs *VariableSet) GetOutputBins() ([]cdd.OutputBinUnit, *cdd.OutputBinState
 		outputBinState.Item = append(outputBinState.Item, outputState)
 
 		outputBinUnits = append(outputBinUnits, cdd.OutputBinUnit{
-			VendorID: strconv.FormatInt(index, 10),
+			VendorID: index.String(),
 			Type:     cdd.OutputBinUnitCustom,
 			Index:    index,
 			CustomDisplayNameLocalized: cdd.NewLocalizedString(names[i].Value),
 		})
 	}
 
-	return outputBinUnits, &outputBinState, true
+	return &outputBinUnits, &outputBinState, true
 }
 
 // Printer marker supplies supply unit TC.
@@ -398,7 +400,28 @@ const (
 	PrinterMarkerSuppliesClassFilled                                = "4" // receptacleThatIsFilled
 )
 
-func (vs *VariableSet) GetMarkers() ([]cdd.Marker, *cdd.MarkerState, *cdd.VendorState, bool) {
+var snmpMarkerColorToGCP map[string]cdd.MarkerColorType = map[string]cdd.MarkerColorType{
+	"black":        cdd.MarkerColorBlack,
+	"color":        cdd.MarkerColorColor,
+	"cyan":         cdd.MarkerColorCyan,
+	"magenta":      cdd.MarkerColorMagenta,
+	"yellow":       cdd.MarkerColorYellow,
+	"lightcyan":    cdd.MarkerColorLightCyan,
+	"lightmagenta": cdd.MarkerColorLightMagenta,
+	"gray":         cdd.MarkerColorGray,
+	"lightgray":    cdd.MarkerColorLightGray,
+	"pigmentblack": cdd.MarkerColorPigmentBlack,
+	"matteblack":   cdd.MarkerColorMatteBlack,
+	"photocyan":    cdd.MarkerColorPhotoCyan,
+	"photomagenta": cdd.MarkerColorPhotoMagenta,
+	"photoyellow":  cdd.MarkerColorPhotoYellow,
+	"photogray":    cdd.MarkerColorPhotoGray,
+	"red":          cdd.MarkerColorRed,
+	"green":        cdd.MarkerColorGreen,
+	"blue":         cdd.MarkerColorBlue,
+}
+
+func (vs *VariableSet) GetMarkers() (*[]cdd.Marker, *cdd.MarkerState, *cdd.VendorState, bool) {
 	classes := vs.GetSubtree(PrinterMarkerSuppliesClass).Variables()
 	types := vs.GetSubtree(PrinterMarkerSuppliesType).Variables()
 	descriptions := vs.GetSubtree(PrinterMarkerSuppliesDescription).Variables()
@@ -414,7 +437,7 @@ func (vs *VariableSet) GetMarkers() ([]cdd.Marker, *cdd.MarkerState, *cdd.Vendor
 		len(classes) != len(levelsMax) ||
 		len(classes) != len(levelsCurrent) ||
 		len(classes) != len(colors) {
-		return []cdd.Marker{}, nil, nil, false
+		return nil, nil, nil, false
 	}
 
 	markers := []cdd.Marker{}
@@ -426,11 +449,11 @@ func (vs *VariableSet) GetMarkers() ([]cdd.Marker, *cdd.MarkerState, *cdd.Vendor
 
 		levelMax, err := strconv.ParseInt(levelsMax[i].Value, 10, 32)
 		if err != nil {
-			return []cdd.Marker{}, nil, nil, false
+			return nil, nil, nil, false
 		}
 		levelCurrent, err := strconv.ParseInt(levelsCurrent[i].Value, 10, 32)
 		if err != nil {
-			return []cdd.Marker{}, nil, nil, false
+			return nil, nil, nil, false
 		}
 		levelPercent := int32(100 * levelCurrent / levelMax)
 
@@ -453,42 +476,70 @@ func (vs *VariableSet) GetMarkers() ([]cdd.Marker, *cdd.MarkerState, *cdd.Vendor
 				}
 			}
 
+			rawColor := strings.Replace(strings.Replace(strings.ToLower(colors[i].Value), " ", "", -1), "-", "", -1)
+			colorType := cdd.MarkerColorCustom
+			for k, v := range snmpMarkerColorToGCP {
+				if strings.HasPrefix(rawColor, k) {
+					colorType = v
+					break
+				}
+			}
+			markerColor := cdd.MarkerColor{Type: colorType}
+			if colorType == cdd.MarkerColorCustom {
+				name := colors[i].Value
+				name = strings.TrimSuffix(name, " Cartridge")
+				name = strings.TrimSuffix(name, " cartridge")
+				name = strings.TrimSuffix(name, " Ribbon")
+				name = strings.TrimSuffix(name, " ribbon")
+				name = strings.TrimSuffix(name, " Toner")
+				name = strings.TrimSuffix(name, " toner")
+				name = strings.TrimSuffix(name, " Ink")
+				name = strings.TrimSuffix(name, " ink")
+				name = strings.Replace(name, "-", " ", -1)
+				markerColor.CustomDisplayNameLocalized = cdd.NewLocalizedString(name)
+			}
+
 			marker := cdd.Marker{
 				VendorID: strconv.FormatInt(index, 10),
 				Type:     markerType,
-				Color: &cdd.MarkerColor{
-					Type: cdd.MarkerColorCustom,
-					CustomDisplayNameLocalized: cdd.NewLocalizedString(colors[i].Value),
-				},
+				Color:    &markerColor,
 			}
 
 			markerState.Item = append(markerState.Item, markerStateItem)
 			markers = append(markers, marker)
 
 		} else {
+			var state cdd.VendorStateType
+			if levelPercent <= 1 {
+				state = cdd.VendorStateError
+			} else if levelPercent <= 10 {
+				state = cdd.VendorStateWarning
+			} else {
+				state = cdd.VendorStateInfo
+			}
+
 			// GCP doesn't call this a Marker, so treat it like a VendorState.
 			class := PrinterMarkerSuppliesClassTC(classes[i].Value)
-			if levelPercent <= 10 && class != PrinterMarkerSuppliesClassOther {
-				var description string
-				if class == PrinterMarkerSuppliesClassFilled {
-					levelPercent = 100 - levelPercent
-					description = fmt.Sprintf("%s at %d%%", descriptions[i].Value)
-					if levelPercent == 100 {
-						description = fmt.Sprintf("%s full", descriptions[i].Value)
-					}
-				} else { // class == PrinterMarkerSuppliesClassConsumed
-					description = fmt.Sprintf("%s at %d%%", descriptions[i].Value)
-					if levelPercent == 0 {
-						description = fmt.Sprintf("%s empty", descriptions[i].Value)
-					}
+			var description string
+			if class == PrinterMarkerSuppliesClassFilled {
+				levelPercent = 100 - levelPercent
+				description = fmt.Sprintf("%s at %d%%", descriptions[i].Value, levelPercent)
+				if levelPercent == 100 {
+					description = fmt.Sprintf("%s full", descriptions[i].Value)
 				}
-				vendorState.Item = append(vendorState.Item, cdd.VendorStateItem{
-					State:                cdd.VendorStateError,
-					DescriptionLocalized: cdd.NewLocalizedString(description),
-				})
+			} else { // class == PrinterMarkerSuppliesClassConsumed
+				description = fmt.Sprintf("%s at %d%%", descriptions[i].Value, levelPercent)
+				if levelPercent == 0 {
+					description = fmt.Sprintf("%s empty", descriptions[i].Value)
+				}
 			}
+
+			vendorState.Item = append(vendorState.Item, cdd.VendorStateItem{
+				State:                state,
+				DescriptionLocalized: cdd.NewLocalizedString(description),
+			})
 		}
 	}
 
-	return markers, &markerState, &vendorState, true
+	return &markers, &markerState, &vendorState, true
 }
