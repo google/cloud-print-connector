@@ -108,6 +108,15 @@ type Config struct {
 
 	// OAuth2 token URL.
 	GCPOAuthTokenURL string `json:"gcp_oauth_token_url"`
+
+	// Enable SNMP to augment CUPS printer information.
+	SNMPEnable bool `json:"snmp_enable"`
+
+	// Community string to use.
+	SNMPCommunity string `json:"snmp_community"`
+
+	// Maximum quantity of open SNMP connections.
+	SNMPMaxConnections uint `json:"snmp_max_connections"`
 }
 
 // DefaultConfig represents reasonable default values for Config fields.
@@ -145,6 +154,9 @@ var DefaultConfig = Config{
 	GCPOAuthClientSecret:         "V9BfPOvdiYuw12hDx5Y5nR0a",
 	GCPOAuthAuthURL:              "https://accounts.google.com/o/oauth2/auth",
 	GCPOAuthTokenURL:             "https://accounts.google.com/o/oauth2/token",
+	SNMPEnable:                   false,
+	SNMPCommunity:                "public",
+	SNMPMaxConnections:           100,
 }
 
 // ConfigFromFile reads a Config object from the config file indicated by

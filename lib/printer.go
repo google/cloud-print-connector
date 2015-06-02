@@ -62,7 +62,7 @@ func (p *Printer) SetTagshash() {
 }
 
 var rDeviceURIHostname *regexp.Regexp = regexp.MustCompile(
-	"(?i)^(?:socket|http|https|ipp|ipps|lpd)://([a-z][a-z0-9.]*)")
+	"(?i)^(?:socket|http|https|ipp|ipps|lpd)://([a-z][a-z0-9.-]*)")
 
 // GetHostname gets the network hostname, parsed from Printer.Tags["device-uri"].
 func (p *Printer) GetHostname() (string, bool) {

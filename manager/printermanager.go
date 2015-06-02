@@ -22,6 +22,7 @@ import (
 	"github.com/google/cups-connector/cups"
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
+	"github.com/google/cups-connector/snmp"
 
 	"github.com/golang/glog"
 )
@@ -30,6 +31,7 @@ import (
 type PrinterManager struct {
 	cups *cups.CUPS
 	gcp  *gcp.GoogleCloudPrint
+	snmp *snmp.SNMPManager
 
 	// Do not mutate this map, only replace it with a new one. See syncPrinters().
 	gcpPrintersByGCPID *lib.ConcurrentPrinterMap
@@ -54,7 +56,7 @@ type PrinterManager struct {
 	shareScope        string
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string) (*PrinterManager, error) {
+func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, snmp *snmp.SNMPManager, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string) (*PrinterManager, error) {
 	// Get the GCP printer list.
 	gcpPrinters, queuedJobsCount, xmppPingIntervalChanges, err := allGCPPrinters(gcp)
 	if err != nil {
@@ -93,6 +95,7 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, printerPollIn
 	pm := PrinterManager{
 		cups: cups,
 		gcp:  gcp,
+		snmp: snmp,
 
 		gcpPrintersByGCPID: gcpPrintersByGCPID,
 		gcpJobPollQuit:     make(chan bool),
@@ -241,6 +244,13 @@ func (pm *PrinterManager) syncPrinters() error {
 		cupsPrinters, _ = lib.FilterRawPrinters(cupsPrinters)
 	}
 
+	if pm.snmp != nil {
+		pm.snmp.AugmentPrinters(cupsPrinters)
+		if err != nil {
+			glog.Warningf("Failed to augment printers with SNMP data: %s", err)
+		}
+	}
+
 	diffs := lib.DiffPrinters(cupsPrinters, pm.gcpPrintersByGCPID.GetAll())
 	if diffs == nil {
 		glog.Infof("Printers are already in sync; there are %d", len(cupsPrinters))
@@ -306,7 +316,6 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		glog.Infof("Deleted %s", diff.Printer.Name)
 
 	case lib.NoChangeToPrinter:
-		glog.Infof("No change to %s", diff.Printer.Name)
 		ch <- diff.Printer
 		return
 	}

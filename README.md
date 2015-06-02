@@ -70,7 +70,10 @@ To create a basic config file called `cups-connector.config.json`, use
   "gcp_oauth_client_id": "539833558011-35iq8btpgas80nrs3o7mv99hm95d4dv6.apps.googleusercontent.com",
   "gcp_oauth_client_secret": "V9BfPOvdiYuw12hDx5Y5nR0a",
   "gcp_oauth_auth_url": "https://accounts.google.com/o/oauth2/auth",
-  "gcp_oauth_token_url": "https://accounts.google.com/o/oauth2/token"
+  "gcp_oauth_token_url": "https://accounts.google.com/o/oauth2/token",
+  "snmp_enable": true,
+  "snmp_community": "public",
+  "snmp_max_connections": 100
 }
 ```
 
@@ -91,13 +94,3 @@ functions, which return values found in:
 - CUPS_SERVER and CUPS_ENCRYPTION environment variables
 - ~/.cups/client.conf
 - /etc/cups/client.conf
-
-# About the code
-CUPS is a mature service. When given the choice to check queues, timeouts,
-retries, etc, the connector assumes that the CUPS service will do it's job.
-When empirical evidence contradicts this assumption, checks are added.
-
-The CUPS package uses cgo to access the CUPS/IPP API. This results in lots of
-C variables, mixed in with golang variables. C variables often require explicit
-memory freeing, and often represent the same data as neighboring golang
-variables.

@@ -92,6 +92,15 @@ var (
 	gcpOAuthTokenURLFlag = flag.String(
 		"gcp-oauth-token-url", "",
 		"GCP OAuth token URL")
+	snmpEnableFlag = flag.String(
+		"snmp-enable", "",
+		"SNMP enable")
+	snmpCommunityFlag = flag.String(
+		"snmp-community", "",
+		"SNMP community (usually \"public\")")
+	snmpMaxConnectionsFlag = flag.String(
+		"snmp-max-connections", "",
+		"Max connections to SNMP agents")
 
 	gcpUserOAuthRefreshTokenFlag = flag.String(
 		"gcp-user-refresh-token", "",
@@ -333,6 +342,9 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
 		flagToString(gcpOAuthAuthURLFlag, lib.DefaultConfig.GCPOAuthAuthURL),
 		flagToString(gcpOAuthTokenURLFlag, lib.DefaultConfig.GCPOAuthTokenURL),
+		flagToBool(snmpEnableFlag, lib.DefaultConfig.SNMPEnable),
+		flagToString(snmpCommunityFlag, lib.DefaultConfig.SNMPCommunity),
+		flagToUint(snmpMaxConnectionsFlag, lib.DefaultConfig.SNMPMaxConnections),
 	}
 
 	if err := config.ToFile(); err != nil {
