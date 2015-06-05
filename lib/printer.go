@@ -11,6 +11,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"time"
 
@@ -21,17 +22,19 @@ type PrinterState uint8
 
 // CUPS: cups_dest_t; GCP: /register and /update interfaces
 type Printer struct {
-	GCPID              string                  //                                    GCP: printerid (GCP key)
-	Name               string                  // CUPS: cups_dest_t.name (CUPS key); GCP: name field
-	DefaultDisplayName string                  // CUPS: printer-info;                GCP: default_display_name field
-	UUID               string                  // CUPS: printer-uuid;                GCP: uuid field
-	GCPVersion         string                  //                                    GCP: gcpVersion field
-	ConnectorVersion   string                  //                                    GCP: firmware field
-	State              cdd.PrinterStateSection // CUPS: printer-state(-reasons), marker-(names|levels); GCP: semantic_state field; CDS.StateType
-	Markers            *[]cdd.Marker           // CUPS: marker-(names|types);        GCP: CDD marker field
-	CapsHash           string                  // CUPS: hash of PPD;                 GCP: capsHash field
-	Tags               map[string]string       // CUPS: all printer attributes;      GCP: repeated tag field
-	XMPPPingInterval   time.Duration           //                                    GCP: local_settings/xmpp_timeout_value field
+	GCPID              string                         //                                    GCP: printerid (GCP key)
+	Name               string                         // CUPS: cups_dest_t.name (CUPS key); GCP: name field
+	DefaultDisplayName string                         // CUPS: printer-info;                GCP: default_display_name field
+	UUID               string                         // CUPS: printer-uuid;                GCP: uuid field
+	Manufacturer       string                         // CUPS: PPD;                         GCP: manufacturer field
+	Model              string                         // CUPS: PPD;                         GCP: model field
+	GCPVersion         string                         //                                    GCP: gcpVersion field
+	ConnectorVersion   string                         //                                    GCP: firmware field
+	State              *cdd.PrinterStateSection       // CUPS: various;                     GCP: semantic_state field
+	Description        *cdd.PrinterDescriptionSection // CUPS: translated PPD;              GCP: capabilities field
+	CapsHash           string                         // CUPS: hash of PPD;                 GCP: capsHash field
+	Tags               map[string]string              // CUPS: all printer attributes;      GCP: repeated tag field
+	XMPPPingInterval   time.Duration                  //                                    GCP: local_settings/xmpp_timeout_value field
 	CUPSJobSemaphore   *Semaphore
 }
 
@@ -58,6 +61,24 @@ func (p *Printer) SetTagshash() {
 	p.Tags["tagshash"] = fmt.Sprintf("%x", tagshash.Sum(nil))
 }
 
+var rDeviceURIHostname *regexp.Regexp = regexp.MustCompile(
+	"(?i)^(?:socket|http|https|ipp|ipps|lpd)://([a-z][a-z0-9.]*)")
+
+// GetHostname gets the network hostname, parsed from Printer.Tags["device-uri"].
+func (p *Printer) GetHostname() (string, bool) {
+	deviceURI, ok := p.Tags["device-uri"]
+	if !ok {
+		return "", false
+	}
+
+	parts := rDeviceURIHostname.FindStringSubmatch(deviceURI)
+	if len(parts) == 2 {
+		return parts[1], true
+	}
+
+	return "", false
+}
+
 type PrinterDiffOperation int8
 
 const (
@@ -73,11 +94,12 @@ type PrinterDiff struct {
 	Printer   Printer
 
 	DefaultDisplayNameChanged bool
-	UUIDChanged               bool
+	ManufacturerChanged       bool
+	ModelChanged              bool
 	GCPVersionChanged         bool
 	ConnectorVersionChanged   bool
 	StateChanged              bool
-	MarkersChanged            bool
+	DescriptionChanged        bool
 	CapsHashChanged           bool
 	XMPPPingIntervalChanged   bool
 	TagsChanged               bool
@@ -98,17 +120,17 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 	dirty := false
 
 	diffs := make([]PrinterDiff, 0, 1)
-	printersConsidered := make(map[string]bool, len(cupsPrinters))
+	printersConsidered := make(map[string]struct{}, len(cupsPrinters))
 	cupsPrintersByName := printerSliceToMapByName(cupsPrinters)
 
 	for i := range gcpPrinters {
-		if printersConsidered[gcpPrinters[i].Name] {
+		if _, exists := printersConsidered[gcpPrinters[i].Name]; exists {
 			// GCP can have multiple printers with one name. Remove dupes.
 			diffs = append(diffs, PrinterDiff{Operation: DeletePrinter, Printer: gcpPrinters[i]})
 			dirty = true
 
 		} else {
-			printersConsidered[gcpPrinters[i].Name] = true
+			printersConsidered[gcpPrinters[i].Name] = struct{}{}
 
 			if cupsPrinter, exists := cupsPrintersByName[gcpPrinters[i].Name]; exists {
 				// CUPS printer doesn't know about GCPID yet.
@@ -133,7 +155,7 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 	}
 
 	for i := range cupsPrinters {
-		if !printersConsidered[cupsPrinters[i].Name] {
+		if _, exists := printersConsidered[cupsPrinters[i].Name]; !exists {
 			diffs = append(diffs, PrinterDiff{Operation: RegisterPrinter, Printer: cupsPrinters[i]})
 			dirty = true
 		}
@@ -160,8 +182,11 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if pg.DefaultDisplayName != pc.DefaultDisplayName {
 		d.DefaultDisplayNameChanged = true
 	}
-	if pg.UUID != pc.UUID {
-		d.UUIDChanged = true
+	if pg.Manufacturer != pc.Manufacturer {
+		d.ManufacturerChanged = true
+	}
+	if pg.Model != pc.Model {
+		d.ModelChanged = true
 	}
 	if pg.GCPVersion != pc.GCPVersion {
 		if pg.GCPVersion > pc.GCPVersion {
@@ -175,8 +200,8 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if !reflect.DeepEqual(pg.State, pc.State) {
 		d.StateChanged = true
 	}
-	if !reflect.DeepEqual(pg.Markers, pc.Markers) {
-		d.MarkersChanged = true
+	if !reflect.DeepEqual(pg.Description, pc.Description) {
+		d.DescriptionChanged = true
 	}
 	if pg.CapsHash != pc.CapsHash {
 		d.CapsHashChanged = true
@@ -191,9 +216,10 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 		d.TagsChanged = true
 	}
 
-	if d.DefaultDisplayNameChanged || d.UUIDChanged || d.GCPVersionChanged ||
-		d.ConnectorVersionChanged || d.StateChanged || d.MarkersChanged ||
-		d.CapsHashChanged || d.XMPPPingIntervalChanged || d.TagsChanged {
+	if d.DefaultDisplayNameChanged || d.ManufacturerChanged || d.ModelChanged ||
+		d.GCPVersionChanged || d.ConnectorVersionChanged || d.StateChanged ||
+		d.DescriptionChanged || d.CapsHashChanged || d.XMPPPingIntervalChanged ||
+		d.TagsChanged {
 		return d
 	}
 

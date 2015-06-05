@@ -49,13 +49,6 @@ func main() {
 		glog.Fatalf("Failed to parse cups connect timeout: %s", err)
 	}
 
-	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes,
-		config.CUPSMaxConnections, cupsConnectTimeout)
-	if err != nil {
-		glog.Fatal(err)
-	}
-	defer cups.Quit()
-
 	gcpXMPPPingTimeout, err := time.ParseDuration(config.XMPPPingTimeout)
 	if err != nil {
 		glog.Fatalf("Failed to parse xmpp ping timeout: %s", err)
@@ -73,6 +66,13 @@ func main() {
 		glog.Fatal(err)
 	}
 	defer gcp.Quit()
+
+	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes,
+		config.CUPSMaxConnections, cupsConnectTimeout, gcp.Translate)
+	if err != nil {
+		glog.Fatal(err)
+	}
+	defer cups.Quit()
 
 	if err := gcp.StartXMPP(); err != nil {
 		glog.Fatal(err)

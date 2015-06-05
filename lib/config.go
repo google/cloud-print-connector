@@ -120,6 +120,7 @@ var DefaultConfig = Config{
 	CUPSJobQueueSize:          3,
 	CUPSPrinterPollInterval:   "1m",
 	CUPSPrinterAttributes: []string{
+		"device-uri",
 		"printer-name",
 		"printer-info",
 		"printer-location",

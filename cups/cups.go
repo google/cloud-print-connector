@@ -10,37 +10,8 @@ package cups
 /*
 #cgo LDFLAGS: -lcups
 #include <cups/cups.h>
-#include <stdlib.h> // free, calloc
-
-const char
-		*JOB_STATE                  = "job-state",
-		*JOB_MEDIA_SHEETS_COMPLETED = "job-media-sheets-completed";
-
-// Allocates a new char**, initializes the values to NULL.
-char **newArrayOfStrings(int size) {
-	return calloc(size, sizeof(char *));
-}
-
-// Sets one value in a char**.
-void setStringArrayValue(char **stringArray, int index, char *value) {
-	stringArray[index] = value;
-}
-
-// Frees a char** and associated non-NULL char*.
-void freeStringArrayAndStrings(char **stringArray, int size) {
-	int i;
-	for (i = 0; i < size; i++) {
-		if (stringArray[i] != NULL)
-			free(stringArray[i]);
-	}
-	free(stringArray);
-}
-
-// Wraps ippGetResolution() until bug fixed:
-// https://code.google.com/p/go/issues/detail?id=7270
-int ippGetResolutionWrapper(ipp_attribute_t *attr, int element, int *yres, int *units) {
-	return ippGetResolution(attr, element, yres, (ipp_res_t *)units);
-}
+#include <stdlib.h> // free
+#include "cups.h"
 */
 import "C"
 import (
@@ -66,15 +37,16 @@ const (
 	// CUPS "URL" length are always less than 40. For example: /job/1234567
 	urlMaxLength = 100
 
-	attrPrinterName         = "printer-name"
-	attrPrinterInfo         = "printer-info"
-	attrPrinterMakeAndModel = "printer-make-and-model"
-	attrPrinterUUID         = "printer-uuid"
-	attrPrinterState        = "printer-state"
-	attrPrinterStateReasons = "printer-state-reasons"
+	attrDeviceURI           = "device-uri"
+	attrMarkerLevels        = "marker-levels"
 	attrMarkerNames         = "marker-names"
 	attrMarkerTypes         = "marker-types"
-	attrMarkerLevels        = "marker-levels"
+	attrPrinterInfo         = "printer-info"
+	attrPrinterMakeAndModel = "printer-make-and-model"
+	attrPrinterName         = "printer-name"
+	attrPrinterState        = "printer-state"
+	attrPrinterStateReasons = "printer-state-reasons"
+	attrPrinterUUID         = "printer-uuid"
 
 	attrJobState                = "job-state"
 	attrJobMediaSheetsCompleted = "job-media-sheets-completed"
@@ -82,15 +54,16 @@ const (
 
 var (
 	requiredPrinterAttributes []string = []string{
-		attrPrinterName,
-		attrPrinterInfo,
-		attrPrinterMakeAndModel,
-		attrPrinterUUID,
-		attrPrinterState,
-		attrPrinterStateReasons,
+		attrDeviceURI,
+		attrMarkerLevels,
 		attrMarkerNames,
 		attrMarkerTypes,
-		attrMarkerLevels,
+		attrPrinterInfo,
+		attrPrinterMakeAndModel,
+		attrPrinterName,
+		attrPrinterState,
+		attrPrinterStateReasons,
+		attrPrinterUUID,
 	}
 
 	jobAttributes []string = []string{
@@ -106,9 +79,10 @@ type CUPS struct {
 	infoToDisplayName bool
 	printerAttributes []string
 	systemTags        map[string]string
+	translatePPDToCDD func(string) (*cdd.PrinterDescriptionSection, error)
 }
 
-func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections uint, connectTimeout time.Duration) (*CUPS, error) {
+func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections uint, connectTimeout time.Duration, translatePPDToCDD func(string) (*cdd.PrinterDescriptionSection, error)) (*CUPS, error) {
 	if err := checkPrinterAttributes(printerAttributes); err != nil {
 		return nil, err
 	}
@@ -117,14 +91,20 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections 
 	if err != nil {
 		return nil, err
 	}
-	pc := newPPDCache(cc)
+	pc := newPPDCache(cc, translatePPDToCDD)
 
 	systemTags, err := getSystemTags()
 	if err != nil {
 		return nil, err
 	}
 
-	c := &CUPS{cc, pc, infoToDisplayName, printerAttributes, systemTags}
+	c := &CUPS{
+		cc:                cc,
+		pc:                pc,
+		infoToDisplayName: infoToDisplayName,
+		printerAttributes: printerAttributes,
+		systemTags:        systemTags,
+	}
 
 	return c, nil
 }
@@ -169,7 +149,7 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 		printers[i].GCPVersion = lib.GCPAPIVersion
 		printers[i].ConnectorVersion = lib.ShortName
 	}
-	c.addPPDHashToPrinters(printers)
+	printers = c.addDescriptionToPrinters(printers)
 
 	return printers, nil
 }
@@ -196,16 +176,25 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 	return printers
 }
 
-// addPPDHashToPrinters fetches PPD hashes for all printers concurrently.
-func (c *CUPS) addPPDHashToPrinters(printers []lib.Printer) {
+// addPPDHashToPrinters fetches description, PPD hash, manufacturer, model for
+// all argument printers, concurrently.
+//
+// Returns a new printer slice, because it can shrink due to raw or
+// mis-configured printers.
+func (c *CUPS) addDescriptionToPrinters(printers []lib.Printer) []lib.Printer {
 	var wg sync.WaitGroup
+	ch := make(chan *lib.Printer, len(printers))
 
 	for i := range printers {
 		if !lib.PrinterIsRaw(printers[i]) {
 			wg.Add(1)
 			go func(p *lib.Printer) {
-				if ppdHash, err := c.pc.getPPDHash(p.Name); err == nil {
+				if description, ppdHash, manufacturer, model, err := c.pc.getDescription(p.Name); err == nil {
+					p.Description.Absorb(description)
 					p.CapsHash = ppdHash
+					p.Manufacturer = manufacturer
+					p.Model = model
+					ch <- p
 				} else {
 					glog.Error(err)
 				}
@@ -215,6 +204,14 @@ func (c *CUPS) addPPDHashToPrinters(printers []lib.Printer) {
 	}
 
 	wg.Wait()
+	close(ch)
+
+	result := make([]lib.Printer, 0, len(ch))
+	for printer := range ch {
+		result = append(result, *printer)
+	}
+
+	return result
 }
 
 func getSystemTags() (map[string]string, error) {
@@ -242,18 +239,6 @@ func getSystemTags() (map[string]string, error) {
 		C.CUPS_VERSION_MAJOR, C.CUPS_VERSION_MINOR, C.CUPS_VERSION_PATCH)
 
 	return tags, nil
-}
-
-// GetPPD gets the PPD for the specified printer.
-func (c *CUPS) GetPPD(printername string) (string, string, string, error) {
-	ppd, err := c.pc.getPPD(printername)
-	if err != nil {
-		return "", "", "", err
-	}
-
-	manufacturer, model := parseManufacturerAndModel(ppd)
-
-	return ppd, manufacturer, model, nil
 }
 
 // RemoveCachedPPD removes a printer's PPD from the cache.
@@ -361,12 +346,7 @@ func ticketToOptions(ticket cdd.CloudJobTicket) map[string]string {
 		m[vti.ID] = vti.Value
 	}
 	if ticket.Print.Color != nil {
-		switch ticket.Print.Color.Type {
-		case "CUSTOM_COLOR", "CUSTOM_MONOCHROME":
-			m["ColorModel"] = ticket.Print.Color.VendorID
-		default:
-			m["ColorModel"] = ticket.Print.Color.Type
-		}
+		m["ColorModel"] = ticket.Print.Color.VendorID
 	}
 	if ticket.Print.Duplex != nil {
 		switch ticket.Print.Duplex.Type {
@@ -591,13 +571,13 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 	if s, ok := printerTags[attrPrinterState]; ok {
 		switch s[0] {
 		case "3":
-			state.State = "IDLE"
+			state.State = cdd.CloudDeviceStateIdle
 		case "4":
-			state.State = "PROCESSING"
+			state.State = cdd.CloudDeviceStateProcessing
 		case "5":
-			state.State = "STOPPED"
+			state.State = cdd.CloudDeviceStateStopped
 		default:
-			state.State = "IDLE"
+			state.State = cdd.CloudDeviceStateIdle
 		}
 	}
 
@@ -607,13 +587,13 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 		for i, reason := range reasons {
 			vendorState := cdd.VendorStateItem{DescriptionLocalized: cdd.NewLocalizedString(reason)}
 			if strings.HasSuffix(reason, "-error") {
-				vendorState.State = "ERROR"
+				vendorState.State = cdd.VendorStateError
 			} else if strings.HasSuffix(reason, "-warning") {
-				vendorState.State = "WARNING"
+				vendorState.State = cdd.VendorStateWarning
 			} else if strings.HasSuffix(reason, "-report") {
-				vendorState.State = "INFO"
+				vendorState.State = cdd.VendorStateInfo
 			} else {
-				vendorState.State = "INFO"
+				vendorState.State = cdd.VendorStateInfo
 			}
 			state.VendorState.Item[i] = vendorState
 		}
@@ -621,13 +601,14 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 
 	markers, markerState := convertMarkers(printerTags[attrMarkerNames], printerTags[attrMarkerTypes], printerTags[attrMarkerLevels])
 	state.MarkerState = markerState
+	description := cdd.PrinterDescriptionSection{Marker: markers}
 
 	p := lib.Printer{
-		Name:    name,
-		UUID:    uuid,
-		State:   state,
-		Markers: markers,
-		Tags:    tags,
+		Name:        name,
+		UUID:        uuid,
+		State:       &state,
+		Description: &description,
+		Tags:        tags,
 	}
 	p.SetTagshash()
 
@@ -636,6 +617,27 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 	}
 
 	return p
+}
+
+var cupsMarkerNameToGCP map[string]cdd.MarkerColorType = map[string]cdd.MarkerColorType{
+	"black":        cdd.MarkerColorBlack,
+	"color":        cdd.MarkerColorColor,
+	"cyan":         cdd.MarkerColorCyan,
+	"magenta":      cdd.MarkerColorMagenta,
+	"yellow":       cdd.MarkerColorYellow,
+	"lightcyan":    cdd.MarkerColorLightCyan,
+	"lightmagenta": cdd.MarkerColorLightMagenta,
+	"gray":         cdd.MarkerColorGray,
+	"lightgray":    cdd.MarkerColorLightGray,
+	"pigmentblack": cdd.MarkerColorPigmentBlack,
+	"matteblack":   cdd.MarkerColorMatteBlack,
+	"photocyan":    cdd.MarkerColorPhotoCyan,
+	"photomagenta": cdd.MarkerColorPhotoMagenta,
+	"photoyellow":  cdd.MarkerColorPhotoYellow,
+	"photogray":    cdd.MarkerColorPhotoGray,
+	"red":          cdd.MarkerColorRed,
+	"green":        cdd.MarkerColorGreen,
+	"blue":         cdd.MarkerColorBlue,
 }
 
 // convertMarkers converts CUPS marker-(names|types|levels) to *[]cdd.Marker and *cdd.MarkerState.
@@ -652,80 +654,84 @@ func convertMarkers(names, types, levels []string) (*[]cdd.Marker, *cdd.MarkerSt
 		return nil, nil
 	}
 
-	markers := make([]cdd.Marker, len(names))
-	states := cdd.MarkerState{make([]cdd.MarkerStateItem, len(names))}
+	markers := make([]cdd.Marker, 0, len(names))
+	states := cdd.MarkerState{make([]cdd.MarkerStateItem, 0, len(names))}
 	for i := 0; i < len(names); i++ {
 		if len(names[i]) == 0 {
 			return nil, nil
 		}
-		n := names[i]
-		t := types[i]
-		switch t {
-		case "tonerCartridge", "toner-cartridge":
-			t = "toner"
-		case "inkCartridge", "ink-cartridge", "ink-ribbon", "inkRibbon":
-			t = "ink"
-		}
-		l, err := strconv.ParseInt(levels[i], 10, 32)
-		if err != nil {
-			glog.Warningf("Failed to parse CUPS marker state %s=%s: %s", n, levels[i], err)
-			return nil, nil
+		var markerType cdd.MarkerType
+		switch strings.ToLower(types[i]) {
+		case "toner", "tonercartridge", "toner-cartridge":
+			markerType = cdd.MarkerToner
+		case "ink", "inkcartridge", "ink-cartridge", "ink-ribbon", "inkribbon":
+			markerType = cdd.MarkerInk
+		case "staples":
+			markerType = cdd.MarkerStaples
+		default:
+			continue
 		}
 
-		if l < 0 {
-			// The CUPS driver doesn't know what the levels are; not useful.
-			return nil, nil
-		} else if l > 100 {
-			// Lop off extra (proprietary?) bits.
-			l = l & 0x7f
-			if l > 100 {
-				// Even that didn't work.
-				return nil, nil
+		nameStripped := strings.Replace(strings.Replace(strings.ToLower(names[i]), " ", "", -1), "-", "", -1)
+		colorType := cdd.MarkerColorCustom
+		for k, v := range cupsMarkerNameToGCP {
+			if strings.HasPrefix(nameStripped, k) {
+				colorType = v
+				break
 			}
 		}
+		color := cdd.MarkerColor{Type: colorType}
+		if colorType == cdd.MarkerColorCustom {
+			name := names[i]
+			name = strings.TrimSuffix(name, " Cartridge")
+			name = strings.TrimSuffix(name, " cartridge")
+			name = strings.TrimSuffix(name, " Ribbon")
+			name = strings.TrimSuffix(name, " ribbon")
+			name = strings.TrimSuffix(name, " Toner")
+			name = strings.TrimSuffix(name, " toner")
+			name = strings.TrimSuffix(name, " Ink")
+			name = strings.TrimSuffix(name, " ink")
+			name = strings.Replace(name, "-", " ", -1)
+			color.CustomDisplayNameLocalized = cdd.NewLocalizedString(name)
+		}
 
-		markers[i] = newMarker(n, t)
-		states.Item[i] = newMarkerStateItem(n, int32(l))
+		marker := cdd.Marker{
+			VendorID: names[i],
+			Type:     markerType,
+			Color:    &color,
+		}
+
+		level, err := strconv.ParseInt(levels[i], 10, 32)
+		if err != nil {
+			glog.Warningf("Failed to parse CUPS marker state %s=%s: %s", names[i], levels[i], err)
+			return nil, nil
+		}
+		if level > 100 {
+			// Lop off extra (proprietary?) bits.
+			level = level & 0x7f
+		}
+		if level < 0 || level > 100 {
+			return nil, nil
+		}
+
+		var state cdd.MarkerStateType
+		if level > 10 {
+			state = cdd.MarkerStateOK
+		} else {
+			state = cdd.MarkerStateExhausted
+		}
+		level32 := int32(level)
+		markerState := cdd.MarkerStateItem{
+			VendorID:     names[i],
+			State:        state,
+			LevelPercent: &level32,
+		}
+
+		markers = append(markers, marker)
+		states.Item = append(states.Item, markerState)
 	}
 
 	return &markers, &states
-}
-
-func newMarker(vendorID, vendorType string) cdd.Marker {
-	marker := cdd.Marker{VendorID: vendorID}
-
-	switch vendorType {
-	case "toner", "ink", "staples":
-		marker.Type = strings.ToUpper(vendorType)
-	default:
-		marker.Type = "CUSTOM"
-		marker.CustomDisplayNameLocalized = cdd.NewLocalizedString(vendorType)
-	}
-
-	if marker.Type == "TONER" || marker.Type == "INK" {
-		switch strings.ToLower(vendorID) {
-		case "black", "color", "cyan", "magenta", "yellow", "light_cyan", "light_magenta",
-			"gray", "light_gray", "pigment_black", "matte_black", "photo_cyan", "photo_magenta",
-			"photo_yellow", "photo_gray", "red", "green", "blue":
-			// Colors known to CDD Marker.Color enum.
-			marker.Color = &cdd.MarkerColor{Type: strings.ToUpper(vendorID)}
-		default:
-			marker.Color = &cdd.MarkerColor{Type: "CUSTOM", CustomDisplayNameLocalized: cdd.NewLocalizedString(vendorID)}
-		}
-	}
-
-	return marker
-}
-
-func newMarkerStateItem(vendorID string, vendorLevel int32) cdd.MarkerStateItem {
-	var state string
-	if vendorLevel > 10 {
-		state = "OK"
-	} else {
-		state = "EXHAUSTED"
-	}
-
-	return cdd.MarkerStateItem{VendorID: vendorID, State: state, LevelPercent: vendorLevel}
 }
 
 func contains(haystack []string, needle string) bool {

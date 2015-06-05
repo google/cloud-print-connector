@@ -13,8 +13,8 @@ https://developers.google.com/open-source/licenses/bsd
 package cdd
 
 type CloudDeviceDescription struct {
-	Version string                    `json:"version"`
-	Printer PrinterDescriptionSection `json:"printer"`
+	Version string                     `json:"version"`
+	Printer *PrinterDescriptionSection `json:"printer"`
 }
 
 type PrinterDescriptionSection struct {
@@ -38,6 +38,70 @@ type PrinterDescriptionSection struct {
 	MediaSize            *MediaSize              `json:"media_size,omitempty"`
 	Collate              *Collate                `json:"collate,omitempty"`
 	ReverseOrder         *ReverseOrder           `json:"reverse_order,omitempty"`
+}
+
+// Absorb copies all non-nil fields from the passed-in description.
+func (a *PrinterDescriptionSection) Absorb(b *PrinterDescriptionSection) {
+	if b.SupportedContentType != nil {
+		a.SupportedContentType = b.SupportedContentType
+	}
+	if b.PrintingSpeed != nil {
+		a.PrintingSpeed = b.PrintingSpeed
+	}
+	if b.PWGRasterConfig != nil {
+		a.PWGRasterConfig = b.PWGRasterConfig
+	}
+	if b.InputTrayUnit != nil {
+		a.InputTrayUnit = b.InputTrayUnit
+	}
+	if b.OutputBinUnit != nil {
+		a.OutputBinUnit = b.OutputBinUnit
+	}
+	if b.Marker != nil {
+		a.Marker = b.Marker
+	}
+	if b.Cover != nil {
+		a.Cover = b.Cover
+	}
+	if b.MediaPath != nil {
+		a.MediaPath = b.MediaPath
+	}
+	if b.VendorCapability != nil {
+		a.VendorCapability = b.VendorCapability
+	}
+	if b.Color != nil {
+		a.Color = b.Color
+	}
+	if b.Duplex != nil {
+		a.Duplex = b.Duplex
+	}
+	if b.PageOrientation != nil {
+		a.PageOrientation = b.PageOrientation
+	}
+	if b.Copies != nil {
+		a.Copies = b.Copies
+	}
+	if b.Margins != nil {
+		a.Margins = b.Margins
+	}
+	if b.DPI != nil {
+		a.DPI = b.DPI
+	}
+	if b.FitToPage != nil {
+		a.FitToPage = b.FitToPage
+	}
+	if b.PageRange != nil {
+		a.PageRange = b.PageRange
+	}
+	if b.MediaSize != nil {
+		a.MediaSize = b.MediaSize
+	}
+	if b.Collate != nil {
+		a.Collate = b.Collate
+	}
+	if b.ReverseOrder != nil {
+		a.ReverseOrder = b.ReverseOrder
+	}
 }
 
 type SupportedContentType struct {
@@ -73,39 +137,101 @@ type PWGRasterConfigResolution struct {
 	FeedDir      int32 `json:"feed_dir"`
 }
 
+type InputTrayUnitType string
+
+const (
+	InputTrayUnitCustom         InputTrayUnitType = "CUSTOM"
+	InputTrayUnitInputTray                        = "INPUT_TRAY"
+	InputTrayUnitBypassTray                       = "BYPASS_TRAY"
+	InputTrayUnitManualFeedTray                   = "MANUAL_FEED_TRAY"
+	InputTrayUnitLCT                              = "LCT" // Large capacity tray.
+	InputTrayUnitEnvelopeTray                     = "ENVELOPE_TRAY"
+	InputTrayUnitRoll                             = "ROLL"
+)
+
 type InputTrayUnit struct {
 	VendorID                   string             `json:"vendor_id"`
-	Type                       string             `json:"type"` // enum
+	Type                       InputTrayUnitType  `json:"type"`
 	Index                      int64              `json:"index,omitempty"`
 	CustomDisplayName          string             `json:"custom_display_name,omitempty"`
 	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
 }
 
+type OutputBinUnitType string
+
+const (
+	OutputBinUnitCustom    OutputBinUnitType = "CUSTOM"
+	OutputBinUnitOutputBin                   = "OUTPUT_BIN"
+	OutputBinUnitMailbox                     = "MAILBOX"
+	OutputBinUnitStacker                     = "STACKER"
+)
+
 type OutputBinUnit struct {
 	VendorID                   string             `json:"vendor_id"`
-	Type                       string             `json:"type"` // enum
+	Type                       OutputBinUnitType  `json:"type"`
 	Index                      int64              `json:"index,omitempty"`
+	CustomDisplayName          string             `json:"custom_display_name,omitempty"`
+	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
+}
+
+type MarkerType string
+
+const (
+	MarkerCustom  MarkerType = "CUSTOM"
+	MarkerToner              = "TONER"
+	MarkerInk                = "INK"
+	MarkerStaples            = "STAPLES"
+)
+
+type MarkerColorType string
+
+const (
+	MarkerColorCustom       MarkerColorType = "CUSTOM"
+	MarkerColorBlack                        = "BLACK"
+	MarkerColorColor                        = "COLOR"
+	MarkerColorCyan                         = "CYAN"
+	MarkerColorMagenta                      = "MAGENTA"
+	MarkerColorYellow                       = "YELLOW"
+	MarkerColorLightCyan                    = "LIGHT_CYAN"
+	MarkerColorLightMagenta                 = "LIGHT_MAGENTA"
+	MarkerColorGray                         = "GRAY"
+	MarkerColorLightGray                    = "LIGHT_GRAY"
+	MarkerColorPigmentBlack                 = "PIGMENT_BLACK"
+	MarkerColorMatteBlack                   = "MATTE_BLACK"
+	MarkerColorPhotoCyan                    = "PHOTO_CYAN"
+	MarkerColorPhotoMagenta                 = "PHOTO_MAGENTA"
+	MarkerColorPhotoYellow                  = "PHOTO_YELLOW"
+	MarkerColorPhotoGray                    = "PHOTO_GRAY"
+	MarkerColorRed                          = "RED"
+	MarkerColorGreen                        = "GREEN"
+	MarkerColorBlue                         = "BLUE"
+)
+
+type MarkerColor struct {
+	Type                       MarkerColorType    `json:"type"`
 	CustomDisplayName          string             `json:"custom_display_name,omitempty"`
 	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
 }
 
 type Marker struct {
 	VendorID                   string             `json:"vendor_id"`
-	Type                       string             `json:"type"` // enum
+	Type                       MarkerType         `json:"type"`
 	Color                      *MarkerColor       `json:"color,omitempty"`
 	CustomDisplayName          string             `json:"custom_display_name,omitempty"`
 	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
 }
 
-type MarkerColor struct {
-	Type                       string             `json:"type"`
-	CustomDisplayName          string             `json:"custom_display_name,omitempty"`
-	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
-}
+type CoverType string
+
+const (
+	CoverTypeCustom CoverType = "CUSTOM"
+	CoverTypeDoor             = "DOOR"
+	CoverTypeCover            = "COVER"
+)
 
 type Cover struct {
 	VendorID                   string             `json:"vendor_id"`
-	Type                       string             `json:"type"` // enum
+	Type                       CoverType          `json:"type"`
 	Index                      int64              `json:"index,omitempty"`
 	CustomDisplayName          string             `json:"custom_display_name,omitempty"`
 	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
@@ -115,21 +241,36 @@ type MediaPath struct {
 	VendorID string `json:"vendor_id"`
 }
 
+type VendorCapabilityType string
+
+const (
+	VendorCapabilityRange      VendorCapabilityType = "RANGE"
+	VendorCapabilitySelect                          = "SELECT"
+	VendorCapabilityTypedValue                      = "TYPED_VALUE"
+)
+
 type VendorCapability struct {
 	ID                   string                `json:"id"`
 	DisplayName          string                `json:"display_name,omitempty"`
-	Type                 string                `json:"type"` // enum
+	Type                 VendorCapabilityType  `json:"type"`
 	RangeCap             *RangeCapability      `json:"range_cap,omitempty"`
 	SelectCap            *SelectCapability     `json:"select_cap,omitempty"`
 	TypedValueCap        *TypedValueCapability `json:"typed_value_cap,omitempty"`
 	DisplayNameLocalized *[]LocalizedString    `json:"display_name_localized,omitempty"`
 }
 
+type RangeCapabilityValueType string
+
+const (
+	RangeCapabilityValueFloat   RangeCapabilityValueType = "FLOAT"
+	RangeCapabilityValueInteger                          = "INTEGER"
+)
+
 type RangeCapability struct {
-	ValueType string `json:"value_type"`
-	Default   string `json:"default,omitempty"`
-	Min       string `json:"min,omitempty"`
-	Max       string `json:"max,omitempty"`
+	ValueType RangeCapabilityValueType `json:"value_type"`
+	Default   string                   `json:"default,omitempty"`
+	Min       string                   `json:"min,omitempty"`
+	Max       string                   `json:"max,omitempty"`
 }
 
 type SelectCapability struct {
@@ -143,18 +284,37 @@ type SelectCapabilityOption struct {
 	DisplayNameLocalized *[]LocalizedString `json:"display_name_localized,omitempty"`
 }
 
+type TypedValueCapabilityValueType string
+
+const (
+	TypedValueCapabilityValueBoolean TypedValueCapabilityValueType = "BOOLEAN"
+	TypedValueCapabilityValueFloat                                 = "FLOAT"
+	TypedValueCapabilityValueInteger                               = "INTEGER"
+	TypedValueCapabilityValueString                                = "STRING"
+)
+
 type TypedValueCapability struct {
-	ValueType string `json:"value_type"` // enum
-	Default   string `json:"default,omitempty"`
+	ValueType TypedValueCapabilityValueType `json:"value_type"`
+	Default   string                        `json:"default,omitempty"`
 }
 
 type Color struct {
 	Option []ColorOption `json:"option"`
 }
 
+type ColorType string
+
+const (
+	ColorTypeStandardColor      ColorType = "STANDARD_COLOR"
+	ColorTypeStandardMonochrome           = "STANDARD_MONOCHROME"
+	ColorTypeCustomColor                  = "CUSTOM_COLOR"
+	ColorTypeCustomMonochrome             = "CUSTOM_MONOCHROME"
+	ColorTypeAuto                         = "AUTO"
+)
+
 type ColorOption struct {
 	VendorID                   string             `json:"vendor_id"`
-	Type                       string             `json:"type"` // enum
+	Type                       ColorType          `json:"type"`
 	CustomDisplayName          string             `json:"custom_display_name,omitempty"`
 	IsDefault                  bool               `json:"is_default"` // default = false
 	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
@@ -164,18 +324,34 @@ type Duplex struct {
 	Option []DuplexOption `json:"option"`
 }
 
+type DuplexType string
+
+const (
+	DuplexNoDuplex  DuplexType = "NO_DUPLEX"
+	DuplexLongEdge             = "LONG_EDGE"
+	DuplexShortEdge            = "SHORT_EDGE"
+)
+
 type DuplexOption struct {
-	Type      string `json:"type"`       // enum; default = "NO_DUPLEX"
-	IsDefault bool   `json:"is_default"` // default = false
+	Type      DuplexType `json:"type"`       // default = "NO_DUPLEX"
+	IsDefault bool       `json:"is_default"` // default = false
 }
 
 type PageOrientation struct {
 	Option []PageOrientationOption `json:"option"`
 }
 
+type PageOrientationType string
+
+const (
+	PageOrientationPortrait  PageOrientationType = "PORTRAIT"
+	PageOrientationLandscape                     = "LANDSCAPE"
+	PageOrientationAuto                          = "AUTO"
+)
+
 type PageOrientationOption struct {
-	Type      string `json:"type"`       // enum
-	IsDefault bool   `json:"is_default"` // default = false
+	Type      PageOrientationType `json:"type"`
+	IsDefault bool                `json:"is_default"` // default = false
 }
 
 type Copies struct {
@@ -187,13 +363,21 @@ type Margins struct {
 	Option []MarginsOption `json:"option"`
 }
 
+type MarginsType string
+
+const (
+	MarginsBorderless MarginsType = "BORDERLESS"
+	MarginsStandard               = "STANDARD"
+	MarginsCustom                 = "CUSTOM"
+)
+
 type MarginsOption struct {
-	Type          string `json:"type"` // enum
-	TopMicrons    int32  `json:"top_microns"`
-	RightMicrons  int32  `json:"right_microns"`
-	BottomMicrons int32  `json:"bottom_microns"`
-	LeftMicrons   int32  `json:"left_microns"`
-	IsDefault     bool   `json:"is_default"` // default = false
+	Type          MarginsType `json:"type"`
+	TopMicrons    int32       `json:"top_microns"`
+	RightMicrons  int32       `json:"right_microns"`
+	BottomMicrons int32       `json:"bottom_microns"`
+	LeftMicrons   int32       `json:"left_microns"`
+	IsDefault     bool        `json:"is_default"` // default = false
 }
 
 type DPI struct {
@@ -217,9 +401,19 @@ type FitToPage struct {
 	Option []FitToPageOption `json:"option"`
 }
 
+type FitToPageType string
+
+const (
+	FitToPageNoFitting    FitToPageType = "NO_FITTING"
+	FitToPageFitToPage                  = "FIT_TO_PAGE"
+	FitToPageGrowToPage                 = "GROW_TO_PAGE"
+	FitToPageShrinkToPage               = "SHRINK_TO_PAGE"
+	FitToPageFillPage                   = "FILL_PAGE"
+)
+
 type FitToPageOption struct {
-	Type      string `json:"type"`       // enum
-	IsDefault bool   `json:"is_default"` // default = false
+	Type      FitToPageType `json:"type"`
+	IsDefault bool          `json:"is_default"` // default = false
 }
 
 type PageRange struct {

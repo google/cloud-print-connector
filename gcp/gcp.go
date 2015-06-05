@@ -349,13 +349,8 @@ func (gcp *GoogleCloudPrint) List() (map[string]string, error) {
 // Register calls google.com/cloudprint/register to register a GCP printer.
 //
 // Sets the GCPID field in the printer arg.
-func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, getPPD func() (string, string, string, error)) error {
-	ppd, manufacturer, model, err := getPPD()
-	if err != nil {
-		return err
-	}
-
-	capabilities, err := gcp.Translate(ppd, printer.Markers)
+func (gcp *GoogleCloudPrint) Register(printer *lib.Printer) error {
+	capabilities, err := marshalCapabilities(printer.Description)
 	if err != nil {
 		return err
 	}
@@ -375,8 +370,8 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, getPPD func() (strin
 	form.Set("default_display_name", printer.DefaultDisplayName)
 	form.Set("proxy", gcp.proxyName)
 	form.Set("uuid", printer.UUID)
-	form.Set("manufacturer", manufacturer)
-	form.Set("model", model)
+	form.Set("manufacturer", printer.Manufacturer)
+	form.Set("model", printer.Model)
 	form.Set("gcp_version", printer.GCPVersion)
 	form.Set("setup_url", lib.ConnectorHomeURL)
 	form.Set("support_url", lib.ConnectorHomeURL)
@@ -417,7 +412,7 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer, getPPD func() (strin
 }
 
 // Update calls google.com/cloudprint/update to update a GCP printer.
-func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string, string, string, error)) error {
+func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff) error {
 	// Ignores Name field because it never changes.
 
 	form := url.Values{}
@@ -428,8 +423,12 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string
 		form.Set("default_display_name", diff.Printer.DefaultDisplayName)
 	}
 
-	if diff.UUIDChanged {
-		form.Set("uuid", diff.Printer.UUID)
+	if diff.ManufacturerChanged {
+		form.Set("manufacturer", diff.Printer.Manufacturer)
+	}
+
+	if diff.ModelChanged {
+		form.Set("model", diff.Printer.Model)
 	}
 
 	if diff.GCPVersionChanged {
@@ -443,7 +442,7 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string
 		form.Set("firmware", diff.Printer.ConnectorVersion)
 	}
 
-	if diff.StateChanged || diff.MarkersChanged || diff.GCPVersionChanged {
+	if diff.StateChanged || diff.DescriptionChanged || diff.GCPVersionChanged {
 		semanticState, err := json.Marshal(cdd.CloudDeviceState{Printer: diff.Printer.State})
 		if err != nil {
 			return err
@@ -451,19 +450,12 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff, getPPD func() (string
 		form.Set("semantic_state", string(semanticState))
 	}
 
-	if diff.CapsHashChanged || diff.MarkersChanged || diff.GCPVersionChanged {
-		ppd, manufacturer, model, err := getPPD()
+	if diff.CapsHashChanged || diff.DescriptionChanged || diff.GCPVersionChanged {
+		capabilities, err := marshalCapabilities(diff.Printer.Description)
 		if err != nil {
 			return err
 		}
 
-		capabilities, err := gcp.Translate(ppd, diff.Printer.Markers)
-		if err != nil {
-			return err
-		}
-
-		form.Set("manufacturer", manufacturer)
-		form.Set("model", model)
 		form.Set("use_cdd", "true")
 		form.Set("capabilities", capabilities)
 		form.Set("capsHash", diff.Printer.CapsHash)
@@ -513,7 +505,7 @@ func (gcp *GoogleCloudPrint) SetPrinterXMPPPingInterval(printer lib.Printer) err
 		XMPPPingIntervalChanged: true,
 	}
 
-	if err := gcp.Update(&diff, nil); err != nil {
+	if err := gcp.Update(&diff); err != nil {
 		return err
 	}
 
@@ -541,6 +533,8 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, time.Dur
 			Name               string                     `json:"name"`
 			DefaultDisplayName string                     `json:"defaultDisplayName"`
 			UUID               string                     `json:"uuid"`
+			Manufacturer       string                     `json:"manufacturer"`
+			Model              string                     `json:"model"`
 			GCPVersion         string                     `json:"gcpVersion"`
 			Firmware           string                     `json:"firmware"`
 			Capabilities       cdd.CloudDeviceDescription `json:"capabilities"`
@@ -584,10 +578,12 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, time.Dur
 		Name:               p.Name,
 		DefaultDisplayName: p.DefaultDisplayName,
 		UUID:               p.UUID,
+		Manufacturer:       p.Manufacturer,
+		Model:              p.Model,
 		GCPVersion:         p.GCPVersion,
 		ConnectorVersion:   p.Firmware,
 		State:              p.SemanticState.Printer,
-		Markers:            p.Capabilities.Printer.Marker,
+		Description:        p.Capabilities.Printer,
 		CapsHash:           p.CapsHash,
 		Tags:               tags,
 		XMPPPingInterval:   xmppPingInterval,
@@ -596,14 +592,15 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, time.Dur
 	return printer, p.QueuedJobsCount, xmppPingIntervalPending, err
 }
 
-// Translate calls google.com/cloudprint/tools/cdd/translate to translate a PPD to CDD.
-func (gcp *GoogleCloudPrint) Translate(ppd string, markers *[]cdd.Marker) (string, error) {
+// Translate calls google.com/cloudprint/tools/cdd/translate to translate
+// a PPD string to cdd.PrinterDescriptionSection.
+func (gcp *GoogleCloudPrint) Translate(ppd string) (*cdd.PrinterDescriptionSection, error) {
 	form := url.Values{}
 	form.Set("capabilities", ppd)
 
 	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"tools/cdd/translate", form)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	d := json.NewDecoder(bytes.NewReader(responseBody))
@@ -613,23 +610,24 @@ func (gcp *GoogleCloudPrint) Translate(ppd string, markers *[]cdd.Marker) (strin
 		CDD cdd.CloudDeviceDescription `json:"cdd"`
 	}
 	if err = d.Decode(&response); err != nil {
-		return "", fmt.Errorf("Failed to unmarshal translated CDD: %s", err)
+		return nil, fmt.Errorf("Failed to unmarshal translated CDD: %s", err)
 	}
 
-	c := response.CDD
-	c.Printer.SupportedContentType = cdd.NewSupportedContentType("application/pdf")
-	if c.Printer.Marker == nil && markers != nil {
-		c.Printer.Marker = markers
-	}
-	c.Printer.Copies = &cdd.Copies{1, 100}
-	c.Printer.Collate = &cdd.Collate{true}
+	return response.CDD.Printer, nil
+}
 
-	cddBytes, err := json.Marshal(c)
+func marshalCapabilities(description *cdd.PrinterDescriptionSection) (string, error) {
+	capabilities := cdd.CloudDeviceDescription{
+		Version: "1.0",
+		Printer: description,
+	}
+
+	cdd, err := json.Marshal(capabilities)
 	if err != nil {
 		return "", fmt.Errorf("Failed to remarshal translated CDD: %s", err)
 	}
 
-	return string(cddBytes), nil
+	return string(cdd), nil
 }
 
 // Share calls google.com/cloudprint/share to share a registered GCP printer.

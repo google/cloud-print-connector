@@ -15,13 +15,15 @@ package cups
 */
 import "C"
 import (
+	"bytes"
 	"crypto/md5"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"sync"
 	"unsafe"
+
+	"github.com/google/cups-connector/cdd"
 )
 
 // This isn't really a cache, but an interface to CUPS' quirky PPD interface.
@@ -33,14 +35,19 @@ import (
 // (2) updates those PPD files as necessary
 // (3) and keeps MD5 hashes of the PPD contents, to minimize disk I/O.
 type ppdCache struct {
-	cc         *cupsCore
-	cache      map[string]*ppdCacheEntry
-	cacheMutex sync.RWMutex
+	cc                *cupsCore
+	cache             map[string]*ppdCacheEntry
+	cacheMutex        sync.RWMutex
+	translatePPDToCDD func(string) (*cdd.PrinterDescriptionSection, error)
 }
 
-func newPPDCache(cc *cupsCore) *ppdCache {
+func newPPDCache(cc *cupsCore, translatePPDToCDD func(string) (*cdd.PrinterDescriptionSection, error)) *ppdCache {
 	cache := make(map[string]*ppdCacheEntry)
-	pc := ppdCache{cc, cache, sync.RWMutex{}}
+	pc := ppdCache{
+		cc:                cc,
+		cache:             cache,
+		translatePPDToCDD: translatePPDToCDD,
+	}
 	return &pc
 }
 
@@ -65,26 +72,15 @@ func (pc *ppdCache) removePPD(printername string) {
 	}
 }
 
-func (pc *ppdCache) getPPD(printername string) (string, error) {
-	filename, _, err := pc.getPPDCacheEntry(printername)
+func (pc *ppdCache) getDescription(printername string) (*cdd.PrinterDescriptionSection, string, string, string, error) {
+	description, hash, manufacturer, model, err := pc.getPPDCacheEntry(printername)
 	if err != nil {
-		return "", err
+		return nil, "", "", "", err
 	}
-
-	ppd, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return "", err
-	}
-
-	return string(ppd), nil
+	return description, hash, manufacturer, model, nil
 }
 
-func (pc *ppdCache) getPPDHash(printername string) (string, error) {
-	_, hash, err := pc.getPPDCacheEntry(printername)
-	return hash, err
-}
-
-func (pc *ppdCache) getPPDCacheEntry(printername string) (string, string, error) {
+func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptionSection, string, string, string, error) {
 	pc.cacheMutex.RLock()
 	pce, exists := pc.cache[printername]
 	pc.cacheMutex.RUnlock()
@@ -92,10 +88,10 @@ func (pc *ppdCache) getPPDCacheEntry(printername string) (string, string, error)
 	if !exists {
 		pce, err := createPPDCacheEntry(printername)
 		if err != nil {
-			return "", "", err
+			return nil, "", "", "", err
 		}
-		if err = pce.refresh(pc.cc); err != nil {
-			return "", "", err
+		if err = pce.refresh(pc.cc, pc.translatePPDToCDD); err != nil {
+			return nil, "", "", "", err
 		}
 
 		pc.cacheMutex.Lock()
@@ -107,26 +103,28 @@ func (pc *ppdCache) getPPDCacheEntry(printername string) (string, string, error)
 			go firstPCE.free()
 		}
 		pc.cache[printername] = pce
-		filename, hash := pce.getFilenameAndHash()
-		return filename, hash, nil
+		description, hash, manufacturer, model := pce.getFields()
+		return &description, hash, manufacturer, model, nil
 
 	} else {
-		if err := pce.refresh(pc.cc); err != nil {
-			return "", "", err
+		if err := pce.refresh(pc.cc, pc.translatePPDToCDD); err != nil {
+			return nil, "", "", "", err
 		}
-		filename, hash := pce.getFilenameAndHash()
-		return filename, hash, nil
+		description, hash, manufacturer, model := pce.getFields()
+		return &description, hash, manufacturer, model, nil
 	}
 }
 
 // Holds persistent data needed for calling C.cupsGetPPD3.
 type ppdCacheEntry struct {
-	printername *C.char
-	modtime     C.time_t
-	filename    string
-	hash        string
-	// mutex protects fields modtime, filename, and hash.
-	mutex sync.Mutex
+	printername  *C.char
+	modtime      C.time_t
+	filename     string
+	hash         string
+	description  cdd.PrinterDescriptionSection
+	manufacturer string
+	model        string
+	mutex        sync.Mutex
 }
 
 // createPPDCacheEntry creates an instance of ppdCache with the name field set,
@@ -140,15 +138,21 @@ func createPPDCacheEntry(name string) (*ppdCacheEntry, error) {
 	defer file.Close()
 	filename := file.Name()
 
-	pce := &ppdCacheEntry{C.CString(name), C.time_t(0), filename, "", sync.Mutex{}}
+	pce := &ppdCacheEntry{
+		printername: C.CString(name),
+		modtime:     C.time_t(0),
+		filename:    filename,
+	}
 
 	return pce, nil
 }
 
-func (pce *ppdCacheEntry) getFilenameAndHash() (string, string) {
+// getFields gets externally-interesting fields from this ppdCacheEntry under
+// a lock. The description is passed as a value (copy), to protect the cached copy.
+func (pce *ppdCacheEntry) getFields() (cdd.PrinterDescriptionSection, string, string, string) {
 	pce.mutex.Lock()
 	defer pce.mutex.Unlock()
-	return pce.filename, pce.hash
+	return pce.description, pce.hash, pce.manufacturer, pce.model
 }
 
 // free frees the memory that stores the name and buffer fields, and deletes
@@ -164,7 +168,7 @@ func (pce *ppdCacheEntry) free() {
 
 // refresh calls cupsGetPPD3() to refresh this PPD information, in
 // case CUPS has a new PPD for the printer.
-func (pce *ppdCacheEntry) refresh(cc *cupsCore) error {
+func (pce *ppdCacheEntry) refresh(cc *cupsCore, translatePPDToCDD func(string) (*cdd.PrinterDescriptionSection, error)) error {
 	pce.mutex.Lock()
 	defer pce.mutex.Unlock()
 
@@ -200,10 +204,38 @@ func (pce *ppdCacheEntry) refresh(cc *cupsCore) error {
 	hash := md5.New()
 	w := io.MultiWriter(hash, file)
 
+	// Also write to a buffer for translation.
+	var content bytes.Buffer
+	w = io.MultiWriter(&content, w)
+
 	if _, err := io.Copy(w, r); err != nil {
 		return err
 	}
+
+	contentString := content.String()
+	description, err := translatePPDToCDD(contentString)
+	if err != nil {
+		return err
+	}
+	manufacturer, model := parseManufacturerAndModel(contentString)
+
+	description.SupportedContentType = &[]cdd.SupportedContentType{
+		cdd.SupportedContentType{
+			ContentType: "application/pdf",
+		},
+	}
+	description.Copies = &cdd.Copies{
+		Default: 1,
+		Max:     1000,
+	}
+	description.Collate = &cdd.Collate{
+		Default: true,
+	}
+
+	pce.description = *description
 	pce.hash = fmt.Sprintf("%x", hash.Sum(nil))
+	pce.manufacturer = manufacturer
+	pce.model = model
 
 	return nil
 }
