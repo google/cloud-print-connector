@@ -6,15 +6,8 @@ license that can be found in the LICENSE file or at
 https://developers.google.com/open-source/licenses/bsd
 */
 
-#include <CFNetwork/CFNetServices.h>
-#include <CoreFoundation/CFString.h>
-#include <CoreFoundation/CFStream.h>
-
-#include <stdio.h>  // asprintf
-#include <stdlib.h> // free
-
-// TODO: Uncomment when implemented in Go.
-//#include "_cgo_export.h"
+#include "bonjour.h"
+#include "_cgo_export.h"
 
 // streamErrorToString converts a CFStreamError to a string.
 char *streamErrorToString(CFStreamError *error) {
@@ -47,8 +40,7 @@ void registerCallback(CFNetServiceRef service, CFStreamError *streamError, void 
 	asprintf(&error, "Error while announcing Bonjour service for printer %s: %s",
 			printerNameC, streamErrorC);
 
-	// TODO: Uncomment when implemented in Go.
-	//logBonjourError(error);
+	logBonjourError(error);
 
 	CFRelease(printerName);
 	free(printerNameC);
@@ -59,7 +51,7 @@ void registerCallback(CFNetServiceRef service, CFStreamError *streamError, void 
 // startBonjour starts and returns a bonjour service.
 //
 // Returns a registered service. Returns NULL and sets err on failure.
-CFNetServiceRef startBonjour(char *name, char *type, char *domain, int port, char *url, char *id, char *cs, char **err) {
+CFNetServiceRef startBonjour(char *name, char *type, char *domain, unsigned short int port, char *url, char *id, char *cs, char **err) {
 	CFStringRef n = CFStringCreateWithCString(NULL, name, kCFStringEncodingASCII);
 	CFStringRef t = CFStringCreateWithCString(NULL, type, kCFStringEncodingASCII);
 	CFStringRef d = CFStringCreateWithCString(NULL, domain, kCFStringEncodingASCII);
