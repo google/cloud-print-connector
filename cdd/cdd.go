@@ -467,7 +467,7 @@ func NewLocalizedString(value string) *[]LocalizedString {
 }
 
 // SchizophrenicInt64 is an int64 value that encodes to JSON without quotes,
-// but decodes with quotes. GCP requires this for int64 values.
+// but decodes with-or-without quotes. GCP requires this for int64 values.
 type SchizophrenicInt64 int64
 
 func NewSchizophrenicInt64(i uint) *SchizophrenicInt64 {
