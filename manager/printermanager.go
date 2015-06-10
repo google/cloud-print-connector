@@ -46,7 +46,7 @@ type PrinterManager struct {
 	// Jobs in flight are jobs that have been received, and are not
 	// finished printing yet. Key is the GCP Job ID; value is meaningless.
 	jobsInFlightMutex sync.Mutex
-	jobsInFlight      map[string]bool
+	jobsInFlight      map[string]struct{}
 
 	cupsQueueSize     uint
 	jobFullUsername   bool
@@ -83,7 +83,7 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, xmpp *xmpp.XM
 		jobsError:     0,
 
 		jobsInFlightMutex: sync.Mutex{},
-		jobsInFlight:      make(map[string]bool),
+		jobsInFlight:      make(map[string]struct{}),
 
 		cupsQueueSize:     cupsQueueSize,
 		jobFullUsername:   jobFullUsername,
@@ -333,11 +333,11 @@ func (pm *PrinterManager) addInFlightJob(gcpJobID string) bool {
 	pm.jobsInFlightMutex.Lock()
 	defer pm.jobsInFlightMutex.Unlock()
 
-	if pm.jobsInFlight[gcpJobID] {
+	if _, exists := pm.jobsInFlight[gcpJobID]; exists {
 		return false
 	}
 
-	pm.jobsInFlight[gcpJobID] = true
+	pm.jobsInFlight[gcpJobID] = struct{}{}
 
 	return true
 }
