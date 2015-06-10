@@ -517,3 +517,23 @@ func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (cdd.CloudJobTicket, error)
 
 	return ticket, nil
 }
+
+// ProximityToken gets a proximity token for Privet users to access a printer
+// through the cloud.
+func (gcp *GoogleCloudPrint) ProximityToken(gcpID, user string) (*cdd.ProximityToken, error) {
+	form := url.Values{}
+	form.Set("printerid", gcpID)
+	form.Set("user", user)
+
+	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"proximitytoken", form)
+	if err != nil {
+		return nil, err
+	}
+
+	var token cdd.ProximityToken
+	if err = json.Unmarshal(responseBody, &token); err != nil {
+		return nil, err
+	}
+
+	return &token, nil
+}
