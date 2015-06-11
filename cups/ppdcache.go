@@ -253,24 +253,14 @@ func (pce *ppdCacheEntry) refresh(cc *cupsCore, translatePPDToCDD func(string) (
 	}
 
 	contentString := content.String()
+	manufacturer, model := parseManufacturerAndModel(contentString)
 	description, err := translatePPDToCDD(contentString)
 	if err != nil {
 		return err
 	}
-	manufacturer, model := parseManufacturerAndModel(contentString)
 
-	description.SupportedContentType = &[]cdd.SupportedContentType{
-		cdd.SupportedContentType{
-			ContentType: "application/pdf",
-		},
-	}
-	description.Copies = &cdd.Copies{
-		Default: 1,
-		Max:     1000,
-	}
-	description.Collate = &cdd.Collate{
-		Default: true,
-	}
+	description.SupportedContentType = nil
+
 	if description.VendorCapability == nil {
 		description.VendorCapability = &[]cdd.VendorCapability{}
 	}

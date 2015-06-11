@@ -37,16 +37,17 @@ const (
 	// CUPS "URL" length are always less than 40. For example: /job/1234567
 	urlMaxLength = 100
 
-	attrDeviceURI           = "device-uri"
-	attrMarkerLevels        = "marker-levels"
-	attrMarkerNames         = "marker-names"
-	attrMarkerTypes         = "marker-types"
-	attrPrinterInfo         = "printer-info"
-	attrPrinterMakeAndModel = "printer-make-and-model"
-	attrPrinterName         = "printer-name"
-	attrPrinterState        = "printer-state"
-	attrPrinterStateReasons = "printer-state-reasons"
-	attrPrinterUUID         = "printer-uuid"
+	attrDeviceURI               = "device-uri"
+	attrDocumentFormatSupported = "document-format-supported"
+	attrMarkerLevels            = "marker-levels"
+	attrMarkerNames             = "marker-names"
+	attrMarkerTypes             = "marker-types"
+	attrPrinterInfo             = "printer-info"
+	attrPrinterMakeAndModel     = "printer-make-and-model"
+	attrPrinterName             = "printer-name"
+	attrPrinterState            = "printer-state"
+	attrPrinterStateReasons     = "printer-state-reasons"
+	attrPrinterUUID             = "printer-uuid"
 
 	attrJobState                = "job-state"
 	attrJobMediaSheetsCompleted = "job-media-sheets-completed"
@@ -55,6 +56,7 @@ const (
 var (
 	requiredPrinterAttributes []string = []string{
 		attrDeviceURI,
+		attrDocumentFormatSupported,
 		attrMarkerLevels,
 		attrMarkerNames,
 		attrMarkerTypes,
@@ -597,9 +599,47 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 		}
 	}
 
+	description := cdd.PrinterDescriptionSection{
+		Copies: &cdd.Copies{
+			Default: 1,
+			Max:     1000,
+		},
+		Collate: &cdd.Collate{
+			Default: true,
+		},
+	}
+
+	if mimeTypes, ok := printerTags[attrDocumentFormatSupported]; ok && len(mimeTypes) > 0 {
+		// Preferred order:
+		//  1) PDF because it's small.
+		//  2) Postscript because it's a vector format.
+		//  3) Any "native" formats so that they don't need conversion.
+		//  4) PWG-Raster because it should work any time, but it's huge.
+
+		sct := append(make([]cdd.SupportedContentType, 0, len(mimeTypes)),
+			cdd.SupportedContentType{ContentType: "application/pdf"},
+			cdd.SupportedContentType{ContentType: "application/postscript"})
+		for i := range mimeTypes {
+			if mimeTypes[i] == "application/octet-stream" || // Avoid random byte blobs.
+				mimeTypes[i] == "application/pdf" ||
+				mimeTypes[i] == "application/postscript" ||
+				mimeTypes[i] == "image/pwg-raster" {
+				continue
+			}
+			sct = append(sct, cdd.SupportedContentType{ContentType: mimeTypes[i]})
+		}
+		/*
+			TODO: Consider adding pwg-raster with config option to enable/disable.
+			- All clients authored by Google do not create PWG Raster jobs.
+			- cups-filters only supports pwg-raster input in recent versions.
+			  https://www.cups.org/pipermail/cups/2015-July/026927.html
+		*/
+		description.SupportedContentType = &sct
+	}
+
 	markers, markerState := convertMarkers(printerTags[attrMarkerNames], printerTags[attrMarkerTypes], printerTags[attrMarkerLevels])
 	state.MarkerState = markerState
-	description := cdd.PrinterDescriptionSection{Marker: markers}
+	description.Marker = markers
 
 	p := lib.Printer{
 		Name:        name,

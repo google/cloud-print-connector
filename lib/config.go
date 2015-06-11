@@ -130,6 +130,7 @@ var DefaultConfig = Config{
 	CUPSPrinterPollInterval:   "1m",
 	CUPSPrinterAttributes: []string{
 		"device-uri",
+		"document-format-supported",
 		"printer-name",
 		"printer-info",
 		"printer-location",
