@@ -12,6 +12,11 @@ https://developers.google.com/open-source/licenses/bsd
 // Not-required fields are marked with the omitempty JSON attribute.
 package cdd
 
+import (
+	"strconv"
+	"strings"
+)
+
 type CloudDeviceDescription struct {
 	Version string                     `json:"version"`
 	Printer *PrinterDescriptionSection `json:"printer"`
@@ -150,11 +155,11 @@ const (
 )
 
 type InputTrayUnit struct {
-	VendorID                   string             `json:"vendor_id"`
-	Type                       InputTrayUnitType  `json:"type"`
-	Index                      int64              `json:"index,omitempty"`
-	CustomDisplayName          string             `json:"custom_display_name,omitempty"`
-	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
+	VendorID                   string              `json:"vendor_id"`
+	Type                       InputTrayUnitType   `json:"type"`
+	Index                      *SchizophrenicInt64 `json:"index,omitempty"`
+	CustomDisplayName          string              `json:"custom_display_name,omitempty"`
+	CustomDisplayNameLocalized *[]LocalizedString  `json:"custom_display_name_localized,omitempty"`
 }
 
 type OutputBinUnitType string
@@ -167,11 +172,11 @@ const (
 )
 
 type OutputBinUnit struct {
-	VendorID                   string             `json:"vendor_id"`
-	Type                       OutputBinUnitType  `json:"type"`
-	Index                      int64              `json:"index,omitempty"`
-	CustomDisplayName          string             `json:"custom_display_name,omitempty"`
-	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
+	VendorID                   string              `json:"vendor_id"`
+	Type                       OutputBinUnitType   `json:"type"`
+	Index                      *SchizophrenicInt64 `json:"index,omitempty"`
+	CustomDisplayName          string              `json:"custom_display_name,omitempty"`
+	CustomDisplayNameLocalized *[]LocalizedString  `json:"custom_display_name_localized,omitempty"`
 }
 
 type MarkerType string
@@ -230,11 +235,11 @@ const (
 )
 
 type Cover struct {
-	VendorID                   string             `json:"vendor_id"`
-	Type                       CoverType          `json:"type"`
-	Index                      int64              `json:"index,omitempty"`
-	CustomDisplayName          string             `json:"custom_display_name,omitempty"`
-	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
+	VendorID                   string              `json:"vendor_id"`
+	Type                       CoverType           `json:"type"`
+	Index                      *SchizophrenicInt64 `json:"index,omitempty"`
+	CustomDisplayName          string              `json:"custom_display_name,omitempty"`
+	CustomDisplayNameLocalized *[]LocalizedString  `json:"custom_display_name_localized,omitempty"`
 }
 
 type MediaPath struct {
@@ -459,4 +464,40 @@ type LocalizedString struct {
 
 func NewLocalizedString(value string) *[]LocalizedString {
 	return &[]LocalizedString{LocalizedString{"EN", value}}
+}
+
+// SchizophrenicInt64 is an int64 value that encodes to JSON without quotes,
+// but decodes with-or-without quotes. GCP requires this for int64 values.
+type SchizophrenicInt64 int64
+
+func NewSchizophrenicInt64(i uint) *SchizophrenicInt64 {
+	x := SchizophrenicInt64(i)
+	return &x
+}
+
+// MarshalJSON marshals without quotes.
+func (i SchizophrenicInt64) MarshalJSON() ([]byte, error) {
+	return []byte(i.String()), nil
+}
+
+// UnmarshalJSON unmarshals with or without quotes.
+func (i *SchizophrenicInt64) UnmarshalJSON(data []byte) error {
+	s := string(data)
+	if len(s) >= 2 &&
+		strings.HasPrefix(s, "\"") &&
+		strings.HasSuffix(s, "\"") {
+		s = s[1 : len(s)-1]
+	}
+
+	j, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return err
+	}
+
+	*i = SchizophrenicInt64(j)
+	return nil
+}
+
+func (i *SchizophrenicInt64) String() string {
+	return strconv.FormatInt(int64(*i), 10)
 }

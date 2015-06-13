@@ -20,6 +20,7 @@ import (
 	"github.com/google/cups-connector/lib"
 	"github.com/google/cups-connector/manager"
 	"github.com/google/cups-connector/monitor"
+	"github.com/google/cups-connector/snmp"
 
 	"github.com/golang/glog"
 )
@@ -74,11 +75,21 @@ func main() {
 	}
 	defer cups.Quit()
 
+	var snmpManager *snmp.SNMPManager
+	if config.SNMPEnable {
+		glog.Info("SNMP enabled")
+		snmpManager, err = snmp.NewSNMPManager(config.SNMPCommunity, config.SNMPMaxConnections)
+		if err != nil {
+			glog.Fatal(err)
+		}
+		defer snmpManager.Quit()
+	}
+
 	if err := gcp.StartXMPP(); err != nil {
 		glog.Fatal(err)
 	}
 
-	pm, err := manager.NewPrinterManager(cups, gcp, config.CUPSPrinterPollInterval,
+	pm, err := manager.NewPrinterManager(cups, gcp, snmpManager, config.CUPSPrinterPollInterval,
 		config.GCPMaxConcurrentDownloads, config.CUPSJobQueueSize, config.CUPSJobFullUsername,
 		config.CUPSIgnoreRawPrinters, config.ShareScope)
 	if err != nil {

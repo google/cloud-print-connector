@@ -174,6 +174,21 @@ func updateConfigFile() {
 		fmt.Println("Added gcp_oauth_token_url")
 		config.GCPOAuthTokenURL = lib.DefaultConfig.GCPOAuthTokenURL
 	}
+	if _, exists := configMap["snmp_enable"]; !exists {
+		dirty = true
+		fmt.Println("Added snmp_enable")
+		config.SNMPEnable = lib.DefaultConfig.SNMPEnable
+	}
+	if _, exists := configMap["snmp_community"]; !exists {
+		dirty = true
+		fmt.Println("Added snmp_community")
+		config.SNMPCommunity = lib.DefaultConfig.SNMPCommunity
+	}
+	if _, exists := configMap["snmp_max_connections"]; !exists {
+		dirty = true
+		fmt.Println("Added snmp_max_connections")
+		config.SNMPMaxConnections = lib.DefaultConfig.SNMPMaxConnections
+	}
 
 	if dirty {
 		config.ToFile()
