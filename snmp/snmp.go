@@ -8,6 +8,7 @@ https://developers.google.com/open-source/licenses/bsd
 package snmp
 
 /*
+#cgo CFLAGS: -std=gnu99
 #cgo LDFLAGS: -lnetsnmp
 #include <net-snmp/net-snmp-config.h>
 #include <net-snmp/net-snmp-includes.h>
