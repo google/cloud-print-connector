@@ -23,7 +23,7 @@ const (
 
 var (
 	// To be populated by something like:
-	// go install -ldflags "-X cups-connector/lib.BuildDate `date +%Y.%m.%d`"
+	// go install -ldflags "-X github.com/google/cups-connector/lib.BuildDate `date +%Y.%m.%d`"
 	BuildDate string = "DEV"
 
 	ShortName string = "CUPS Connector " + BuildDate + "-" + runtime.GOOS
