@@ -58,8 +58,12 @@ char *request(void *sessp, long max_repetitions, oid *name, size_t name_length, 
 	if (status != STAT_SUCCESS) {
 		char *errstr = session_error(sessp);
 		char *err = NULL;
-		asprintf(&err, "SNMP request error: %s", errstr);
-		free(errstr);
+		int failure = asprintf(&err, "SNMP request error: %s", errstr);
+		if (failure == -1) {
+			err = errstr;
+		} else {
+			free(errstr);
+		}
 		return err;
 	}
 
@@ -119,8 +123,12 @@ struct bulkwalk_response *bulkwalk(char *peername, char *community) {
 	if ((sessp = snmp_sess_open(&session)) == NULL) {
 		char *errstr = open_error(&session);
 		char *err = NULL;
-		asprintf(&err, "Open SNMP session error: %s", errstr);
-		free(errstr);
+		int failure = asprintf(&err, "Open SNMP session error: %s", errstr);
+		if (failure == -1) {
+			err = errstr;
+		} else {
+			free(errstr);
+		}
 		add_error(response, err);
 		return response;
 	}
@@ -163,8 +171,12 @@ struct bulkwalk_response *bulkwalk(char *peername, char *community) {
 
 		char *errstr = session_error(sessp);
 		err = NULL;
-		asprintf(&err, "SNMP response error (%ld): %s", subtree->errstat, errstr);
-		free(errstr);
+		int failure = asprintf(&err, "SNMP response error (%ld): %s", subtree->errstat, errstr);
+		if (failure == -1) {
+			err = errstr;
+		} else {
+			free(errstr);
+		}
 		add_error(response, err);
 		snmp_free_pdu(subtree);
 		break;
