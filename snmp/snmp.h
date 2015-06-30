@@ -6,6 +6,13 @@ license that can be found in the LICENSE file or at
 https://developers.google.com/open-source/licenses/bsd
 */
 
+// This makes asprintf work properly under GNU.
+#ifdef __GNUC__
+# ifndef _GNU_SOURCE
+#  define _GNU_SOURCE
+# endif // _GNU_SOURCE
+#endif //__GNUC__
+
 #include <stddef.h> // size_t
 #include <stdio.h>  // asprintf
 #include <stdlib.h> // calloc, realloc, free
