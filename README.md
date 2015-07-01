@@ -9,17 +9,16 @@ license that can be found in the LICENSE file or at
 https://developers.google.com/open-source/licenses/bsd
 
 # Install
-Get a recent version of the Go compiler. This is best done without your operating system's
-package manager: https://golang.org/doc/install
+Get a recent version of the Go compiler: https://golang.org/doc/install
 
-You'll need the CUPS development libraries. Debian, Ubuntu, etc:
-```
-$ sudo apt-get install libcups2-dev
-```
-
-We use a little bit of C to marry the CUPS client library to Go code. Debian, Ubuntu, etc:
+We use a little bit of cgo to use C libraries from Go code. Debian, Ubuntu, etc:
 ```
 $ sudo apt-get install build-essential
+```
+
+You'll need the CUPS and Net-SNMP development libraries:
+```
+$ sudo apt-get install libcups2-dev libsnmp-dev
 ```
 
 Install the Connector:
