@@ -391,17 +391,6 @@ func ticketToOptions(ticket cdd.CloudJobTicket) map[string]string {
 			m["fit-to-page"] = "false"
 		}
 	}
-	if ticket.Print.PageRange != nil && len(ticket.Print.PageRange.Interval) > 0 {
-		pageRanges := make([]string, 0, len(ticket.Print.PageRange.Interval))
-		for _, interval := range ticket.Print.PageRange.Interval {
-			if interval.End == 0 {
-				pageRanges = append(pageRanges, fmt.Sprintf("%d", interval.Start))
-			} else {
-				pageRanges = append(pageRanges, fmt.Sprintf("%d-%d", interval.Start, interval.End))
-			}
-		}
-		m["page-ranges"] = strings.Join(pageRanges, ",")
-	}
 	if ticket.Print.MediaSize != nil {
 		m["media"] = ticket.Print.MediaSize.VendorID
 	}
