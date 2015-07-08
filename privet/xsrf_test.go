@@ -15,13 +15,13 @@ import (
 )
 
 var (
-	deviceSecret = []byte("secretsecretsecretsecret")
-	testTime     = time.Unix(1234567890123456789, 0)
-	testToken    = "/8IVybcmeL9NPBBJgaZEa0r+GIkVgel99BAiEQ=="
+	deviceSecret xsrfSecret = []byte("secretsecretsecretsecret")
+	testTime                = time.Unix(1234567890123456789, 0)
+	testToken               = "/8IVybcmeL9NPBBJgaZEa0r+GIkVgel99BAiEQ=="
 )
 
 func TestNewToken(t *testing.T) {
-	x := &xsrf{deviceSecret}
+	x := deviceSecret
 	token := x.newTokenProvideTime(testTime)
 	if token != testToken {
 		t.Errorf("new token was %s should be %s", token, testToken)
@@ -29,7 +29,7 @@ func TestNewToken(t *testing.T) {
 }
 
 func TestIsTokenValid(t *testing.T) {
-	x := &xsrf{deviceSecret}
+	x := deviceSecret
 	if !x.isTokenValidProvideTime(testToken, testTime) {
 		t.Errorf("valid token reported as invalid (+0ns)")
 	}

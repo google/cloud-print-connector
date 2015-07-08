@@ -21,35 +21,33 @@ const (
 	tokenTimeout       = 24 * time.Hour // Specified in GCP Privet doc.
 )
 
-// xsrf generates and validates XSRF tokens.
-type xsrf struct {
-	deviceSecret []byte
-}
+// xsrfSecret generates and validates XSRF tokens.
+type xsrfSecret []byte
 
-func newXSRF() *xsrf {
+func newXSRFSecret() xsrfSecret {
 	// Generate a random device secret.
 	deviceSecret := make([]byte, deviceSecretLength)
 	rand.Read(deviceSecret)
-	return &xsrf{deviceSecret}
+	return deviceSecret
 }
 
-func (x *xsrf) newToken() string {
+func (x xsrfSecret) newToken() string {
 	t := time.Now()
 	return x.newTokenProvideTime(t)
 }
 
-func (x *xsrf) newTokenProvideTime(t time.Time) string {
+func (x xsrfSecret) newTokenProvideTime(t time.Time) string {
 	tb := int64ToBytes(t.Unix())
-	sum := sha1.Sum(append(x.deviceSecret, tb...))
+	sum := sha1.Sum(append(x, tb...))
 	token := append(sum[:], tb...)
 	return base64.StdEncoding.EncodeToString(token)
 }
 
-func (x *xsrf) isTokenValid(token string) bool {
+func (x xsrfSecret) isTokenValid(token string) bool {
 	return x.isTokenValidProvideTime(token, time.Now())
 }
 
-func (x *xsrf) isTokenValidProvideTime(token string, now time.Time) bool {
+func (x xsrfSecret) isTokenValidProvideTime(token string, now time.Time) bool {
 	tokenBytes, err := base64.StdEncoding.DecodeString(token)
 	if err != nil {
 		return false
@@ -64,7 +62,7 @@ func (x *xsrf) isTokenValidProvideTime(token string, now time.Time) bool {
 		return false
 	}
 
-	sum := sha1.Sum(append(x.deviceSecret, tb...))
+	sum := sha1.Sum(append(x, tb...))
 	if 0 != bytes.Compare(sum[:], tokenBytes[:sha1.Size]) {
 		return false
 	}
