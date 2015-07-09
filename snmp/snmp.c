@@ -20,8 +20,10 @@ void initialize() {
 	netsnmp_ds_set_boolean(NETSNMP_DS_LIBRARY_ID, NETSNMP_DS_LIB_QUICK_PRINT, 1);
 	// Omit type error when converting OID variable value to string.
 	netsnmp_ds_set_boolean(NETSNMP_DS_LIBRARY_ID, NETSNMP_DS_LIB_QUICKE_PRINT, 1);
+#ifdef NETSNMP_DS_LIB_DONT_LOAD_HOST_FILES
 	// Don't try to open a .conf file for every getbulk request.
 	netsnmp_ds_set_boolean(NETSNMP_DS_LIBRARY_ID, NETSNMP_DS_LIB_DONT_LOAD_HOST_FILES, 1);
+#endif
 	// Disable Net-SNMP logging; this library logs errors.
 	netsnmp_register_loghandler(NETSNMP_LOGHANDLER_NONE, 0);
 }
