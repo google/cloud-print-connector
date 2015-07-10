@@ -422,22 +422,24 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff) error {
 	if diff.DefaultDisplayNameChanged {
 		form.Set("default_display_name", diff.Printer.DefaultDisplayName)
 	}
-
 	if diff.ManufacturerChanged {
 		form.Set("manufacturer", diff.Printer.Manufacturer)
 	}
-
 	if diff.ModelChanged {
 		form.Set("model", diff.Printer.Model)
 	}
-
 	if diff.GCPVersionChanged {
 		form.Set("gcp_version", diff.Printer.GCPVersion)
-		form.Set("setup_url", lib.ConnectorHomeURL)
-		form.Set("support_url", lib.ConnectorHomeURL)
-		form.Set("update_url", lib.ConnectorHomeURL)
 	}
-
+	if diff.SetupURLChanged {
+		form.Set("setup_url", diff.Printer.SetupURL)
+	}
+	if diff.SupportURLChanged {
+		form.Set("support_url", diff.Printer.SupportURL)
+	}
+	if diff.UpdateURLChanged {
+		form.Set("update_url", diff.Printer.UpdateURL)
+	}
 	if diff.ConnectorVersionChanged {
 		form.Set("firmware", diff.Printer.ConnectorVersion)
 	}
@@ -536,6 +538,9 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, time.Dur
 			Manufacturer       string                     `json:"manufacturer"`
 			Model              string                     `json:"model"`
 			GCPVersion         string                     `json:"gcpVersion"`
+			SetupURL           string                     `json:"setupUrl"`
+			SupportURL         string                     `json:"supportUrl"`
+			UpdateURL          string                     `json:"updateUrl"`
 			Firmware           string                     `json:"firmware"`
 			Capabilities       cdd.CloudDeviceDescription `json:"capabilities"`
 			CapsHash           string                     `json:"capsHash"`
@@ -581,6 +586,9 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, time.Dur
 		Manufacturer:       p.Manufacturer,
 		Model:              p.Model,
 		GCPVersion:         p.GCPVersion,
+		SetupURL:           p.SetupURL,
+		SupportURL:         p.SupportURL,
+		UpdateURL:          p.UpdateURL,
 		ConnectorVersion:   p.Firmware,
 		State:              p.SemanticState.Printer,
 		Description:        p.Capabilities.Printer,

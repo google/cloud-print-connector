@@ -29,6 +29,9 @@ type Printer struct {
 	Manufacturer       string                         // CUPS: PPD;                         GCP: manufacturer field
 	Model              string                         // CUPS: PPD;                         GCP: model field
 	GCPVersion         string                         //                                    GCP: gcpVersion field
+	SetupURL           string                         //                                    GCP: setup_url field
+	SupportURL         string                         //                                    GCP: support_url field
+	UpdateURL          string                         //                                    GCP: update_url field
 	ConnectorVersion   string                         //                                    GCP: firmware field
 	State              *cdd.PrinterStateSection       // CUPS: various;                     GCP: semantic_state field
 	Description        *cdd.PrinterDescriptionSection // CUPS: translated PPD;              GCP: capabilities field
@@ -97,6 +100,9 @@ type PrinterDiff struct {
 	ManufacturerChanged       bool
 	ModelChanged              bool
 	GCPVersionChanged         bool
+	SetupURLChanged           bool
+	SupportURLChanged         bool
+	UpdateURLChanged          bool
 	ConnectorVersionChanged   bool
 	StateChanged              bool
 	DescriptionChanged        bool
@@ -194,6 +200,15 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 		}
 		d.GCPVersionChanged = true
 	}
+	if pg.SetupURL != pc.SetupURL {
+		d.SetupURLChanged = true
+	}
+	if pg.SupportURL != pc.SupportURL {
+		d.SupportURLChanged = true
+	}
+	if pg.UpdateURL != pc.UpdateURL {
+		d.UpdateURLChanged = true
+	}
 	if pg.ConnectorVersion != pc.ConnectorVersion {
 		d.ConnectorVersionChanged = true
 	}
@@ -217,7 +232,8 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	}
 
 	if d.DefaultDisplayNameChanged || d.ManufacturerChanged || d.ModelChanged ||
-		d.GCPVersionChanged || d.ConnectorVersionChanged || d.StateChanged ||
+		d.GCPVersionChanged || d.SetupURLChanged || d.SupportURLChanged ||
+		d.UpdateURLChanged || d.ConnectorVersionChanged || d.StateChanged ||
 		d.DescriptionChanged || d.CapsHashChanged || d.XMPPPingIntervalChanged ||
 		d.TagsChanged {
 		return d
