@@ -13,7 +13,6 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
-	"time"
 
 	"github.com/google/cups-connector/cdd"
 )
@@ -34,7 +33,7 @@ type Printer struct {
 	Description        *cdd.PrinterDescriptionSection // CUPS: translated PPD;              GCP: capabilities field
 	CapsHash           string                         // CUPS: hash of PPD;                 GCP: capsHash field
 	Tags               map[string]string              // CUPS: all printer attributes;      GCP: repeated tag field
-	XMPPPingInterval   time.Duration                  //                                    GCP: local_settings/xmpp_timeout_value field
+	LocalSettings      *cdd.LocalSettings             //                                    GCP: local_settings field
 	CUPSJobSemaphore   *Semaphore
 }
 
@@ -101,7 +100,7 @@ type PrinterDiff struct {
 	StateChanged              bool
 	DescriptionChanged        bool
 	CapsHashChanged           bool
-	XMPPPingIntervalChanged   bool
+	LocalSettingsChanged      bool
 	TagsChanged               bool
 }
 
@@ -135,8 +134,8 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 			if cupsPrinter, exists := cupsPrintersByName[gcpPrinters[i].Name]; exists {
 				// CUPS printer doesn't know about GCPID yet.
 				cupsPrinter.GCPID = gcpPrinters[i].GCPID
-				// CUPS printer doesn't know about XMPP ping interval yet.
-				cupsPrinter.XMPPPingInterval = gcpPrinters[i].XMPPPingInterval
+				// CUPS printer doesn't know about LocalSettings.
+				cupsPrinter.LocalSettings = gcpPrinters[i].LocalSettings
 				// Don't lose track of this semaphore.
 				cupsPrinter.CUPSJobSemaphore = gcpPrinters[i].CUPSJobSemaphore
 
@@ -206,8 +205,8 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if pg.CapsHash != pc.CapsHash {
 		d.CapsHashChanged = true
 	}
-	if pg.XMPPPingInterval != pc.XMPPPingInterval {
-		d.XMPPPingIntervalChanged = true
+	if !reflect.DeepEqual(pg.LocalSettings, pc.LocalSettings) {
+		d.LocalSettingsChanged = true
 	}
 
 	gcpTagshash, gcpHasTagshash := pg.Tags["tagshash"]
@@ -218,7 +217,7 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 
 	if d.DefaultDisplayNameChanged || d.ManufacturerChanged || d.ModelChanged ||
 		d.GCPVersionChanged || d.ConnectorVersionChanged || d.StateChanged ||
-		d.DescriptionChanged || d.CapsHashChanged || d.XMPPPingIntervalChanged ||
+		d.DescriptionChanged || d.CapsHashChanged || d.LocalSettingsChanged ||
 		d.TagsChanged {
 		return d
 	}
