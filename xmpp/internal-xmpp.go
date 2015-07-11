@@ -193,12 +193,12 @@ func (x *internalXMPP) dispatchIncoming(dying chan<- struct{}) {
 			}
 
 			messageDataString := string(messageData)
-			if strings.HasSuffix(messageDataString, "/update_settings") {
-				gcpID := strings.TrimSuffix(messageDataString, "/update_settings")
-				x.notifications <- PrinterNotification{gcpID, PrinterUpdate}
-			} else if strings.HasSuffix(messageDataString, "/delete") {
-				gcpID := strings.TrimSuffix(messageDataString, "/delete")
-				x.notifications <- PrinterNotification{gcpID, PrinterDelete}
+			if strings.ContainsRune(messageDataString, '/') {
+				if strings.HasSuffix(messageDataString, "/delete") {
+					gcpID := strings.TrimSuffix(messageDataString, "/delete")
+					x.notifications <- PrinterNotification{gcpID, PrinterDelete}
+				}
+				// Ignore other suffixes, like /update_settings.
 			} else {
 				x.notifications <- PrinterNotification{messageDataString, PrinterNewJobs}
 			}

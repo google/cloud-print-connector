@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math"
 	"os"
 	"reflect"
 	"strings"
@@ -108,12 +107,6 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, xmpp *xmpp.XM
 
 	for gcpID := range queuedJobsCount {
 		go pm.handlePrinterNewJobs(gcpID)
-	}
-	for _, printer := range gcpPrintersByGCPID.GetAll() {
-		if printer.LocalSettings != nil &&
-			printer.LocalSettings.Pending != nil {
-			go pm.handlePrinterUpdate(printer.GCPID)
-		}
 	}
 
 	return &pm, nil
@@ -302,8 +295,6 @@ func (pm *PrinterManager) listenXMPPNotifications() {
 				switch notification.Type {
 				case xmpp.PrinterNewJobs:
 					go pm.handlePrinterNewJobs(notification.GCPID)
-				case xmpp.PrinterUpdate:
-					go pm.handlePrinterUpdate(notification.GCPID)
 				case xmpp.PrinterDelete:
 					glog.Errorf("Received XMPP request to delete %s but deleting printers is not supported yet", notification.GCPID)
 				}
@@ -321,43 +312,6 @@ func (pm *PrinterManager) handlePrinterNewJobs(gcpID string) {
 	}
 	for i := range jobs {
 		go pm.processJob(&jobs[i])
-	}
-}
-
-// handlePrinterUpdate gets and processes printer local settings changes.
-func (pm *PrinterManager) handlePrinterUpdate(gcpID string) {
-	if _, exists := pm.gcpPrintersByGCPID.Get(gcpID); !exists {
-		return
-	}
-
-	var localSettings *cdd.LocalSettings
-	if printer, _, err := pm.gcp.Printer(gcpID); err != nil {
-		glog.Error(err)
-		return
-	} else {
-		localSettings = printer.LocalSettings
-	}
-
-	var printer lib.Printer
-	var exists bool
-	if printer, exists = pm.gcpPrintersByGCPID.UpdateLocalSettings(gcpID, localSettings); !exists {
-		return
-	}
-
-	if err := pm.gcp.UpdateLocalSettings(printer); err != nil {
-		glog.Error(err)
-		return
-	}
-
-	if localSettings.Pending.XMPPTimeoutValue != localSettings.Current.XMPPTimeoutValue {
-		// Set the connector XMPP ping interval the the min value of all printers.
-		var pingInterval int32 = math.MaxInt32
-		for _, p := range pm.gcpPrintersByGCPID.GetAll() {
-			if p.LocalSettings.Current.XMPPTimeoutValue < pingInterval {
-				pingInterval = p.LocalSettings.Current.XMPPTimeoutValue
-			}
-		}
-		pm.xmpp.SetPingInterval(time.Second * time.Duration(pingInterval))
 	}
 }
 

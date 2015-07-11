@@ -83,14 +83,6 @@ func (gcp *GoogleCloudPrint) GetRobotAccessToken() (string, error) {
 	return token.AccessToken, nil
 }
 
-func defaultLocalSettings(xmppPingInterval time.Duration) cdd.LocalSettings {
-	return cdd.LocalSettings{
-		Current: &cdd.LocalSettingsSettings{
-			XMPPTimeoutValue: int32(xmppPingInterval.Seconds()),
-		},
-	}
-}
-
 // CanShare answers the question "can we share printers when they are registered?"
 func (gcp *GoogleCloudPrint) CanShare() bool {
 	return gcp.userClient != nil
@@ -234,11 +226,6 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer) error {
 		return err
 	}
 
-	localSettings, err := json.Marshal(defaultLocalSettings(gcp.xmppPingIntervalDefault))
-	if err != nil {
-		return err
-	}
-
 	semanticState, err := json.Marshal(cdd.CloudDeviceState{Printer: printer.State})
 	if err != nil {
 		return err
@@ -256,7 +243,6 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer) error {
 	form.Set("support_url", lib.ConnectorHomeURL)
 	form.Set("update_url", lib.ConnectorHomeURL)
 	form.Set("firmware", printer.ConnectorVersion)
-	form.Set("local_settings", string(localSettings))
 	form.Set("semantic_state", string(semanticState))
 	form.Set("use_cdd", "true")
 	form.Set("capabilities", capabilities)
@@ -342,15 +328,6 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff) error {
 		form.Set("capsHash", diff.Printer.CapsHash)
 	}
 
-	if diff.LocalSettingsChanged {
-		localSettings, err := json.Marshal(cdd.LocalSettings{Current: diff.Printer.LocalSettings.Current})
-		if err != nil {
-			return err
-		}
-
-		form.Set("local_settings", string(localSettings))
-	}
-
 	if diff.TagsChanged {
 		sortedKeys := make([]string, 0, len(diff.Printer.Tags))
 		for key := range diff.Printer.Tags {
@@ -369,16 +346,6 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff) error {
 	}
 
 	return nil
-}
-
-// UpdateLocalSettings updates only the LocalSettings field of a printer.
-func (gcp *GoogleCloudPrint) UpdateLocalSettings(printer lib.Printer) error {
-	diff := lib.PrinterDiff{
-		Operation:            lib.UpdatePrinter,
-		Printer:              printer,
-		LocalSettingsChanged: true,
-	}
-	return gcp.Update(&diff)
 }
 
 // Printer gets the printer identified by it's GCPID.
@@ -410,7 +377,6 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, error) {
 			Firmware           string                     `json:"firmware"`
 			Capabilities       cdd.CloudDeviceDescription `json:"capabilities"`
 			CapsHash           string                     `json:"capsHash"`
-			LocalSettings      *cdd.LocalSettings         `json:"local_settings"`
 			Tags               []string                   `json:"tags"`
 			QueuedJobsCount    uint                       `json:"queuedJobsCount"`
 			SemanticState      cdd.CloudDeviceState       `json:"semanticState"`
@@ -449,7 +415,6 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, error) {
 		Description:        p.Capabilities.Printer,
 		CapsHash:           p.CapsHash,
 		Tags:               tags,
-		LocalSettings:      p.LocalSettings,
 	}
 
 	return printer, p.QueuedJobsCount, err
