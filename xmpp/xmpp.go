@@ -19,7 +19,6 @@ type PrinterNotificationType uint8
 
 const (
 	PrinterNewJobs PrinterNotificationType = iota
-	PrinterUpdate
 	PrinterDelete
 )
 

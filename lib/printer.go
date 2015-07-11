@@ -33,7 +33,6 @@ type Printer struct {
 	Description        *cdd.PrinterDescriptionSection // CUPS: translated PPD;              GCP: capabilities field
 	CapsHash           string                         // CUPS: hash of PPD;                 GCP: capsHash field
 	Tags               map[string]string              // CUPS: all printer attributes;      GCP: repeated tag field
-	LocalSettings      *cdd.LocalSettings             //                                    GCP: local_settings field
 	CUPSJobSemaphore   *Semaphore
 }
 
@@ -100,7 +99,6 @@ type PrinterDiff struct {
 	StateChanged              bool
 	DescriptionChanged        bool
 	CapsHashChanged           bool
-	LocalSettingsChanged      bool
 	TagsChanged               bool
 }
 
@@ -134,8 +132,6 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 			if cupsPrinter, exists := cupsPrintersByName[gcpPrinters[i].Name]; exists {
 				// CUPS printer doesn't know about GCPID yet.
 				cupsPrinter.GCPID = gcpPrinters[i].GCPID
-				// CUPS printer doesn't know about LocalSettings.
-				cupsPrinter.LocalSettings = gcpPrinters[i].LocalSettings
 				// Don't lose track of this semaphore.
 				cupsPrinter.CUPSJobSemaphore = gcpPrinters[i].CUPSJobSemaphore
 
@@ -205,9 +201,6 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if pg.CapsHash != pc.CapsHash {
 		d.CapsHashChanged = true
 	}
-	if !reflect.DeepEqual(pg.LocalSettings, pc.LocalSettings) {
-		d.LocalSettingsChanged = true
-	}
 
 	gcpTagshash, gcpHasTagshash := pg.Tags["tagshash"]
 	cupsTagshash, cupsHasTagshash := pc.Tags["tagshash"]
@@ -217,8 +210,7 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 
 	if d.DefaultDisplayNameChanged || d.ManufacturerChanged || d.ModelChanged ||
 		d.GCPVersionChanged || d.ConnectorVersionChanged || d.StateChanged ||
-		d.DescriptionChanged || d.CapsHashChanged || d.LocalSettingsChanged ||
-		d.TagsChanged {
+		d.DescriptionChanged || d.CapsHashChanged || d.TagsChanged {
 		return d
 	}
 

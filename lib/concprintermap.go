@@ -7,11 +7,7 @@ https://developers.google.com/open-source/licenses/bsd
 */
 package lib
 
-import (
-	"sync"
-
-	"github.com/google/cups-connector/cdd"
-)
+import "sync"
 
 // ConcurrentPrinterMap is a map-like data structure that is also
 // thread-safe. Printers are keyed by Printer.GCPID.
@@ -38,21 +34,6 @@ func (cpm *ConcurrentPrinterMap) Refresh(newPrinters []Printer) {
 	defer cpm.mutex.Unlock()
 
 	cpm.printers = m
-}
-
-// UpdateLocalSettings updates a printer's LocalSettings field.
-//
-// Returns false if the printer doesn't exist in the map.
-func (cpm *ConcurrentPrinterMap) UpdateLocalSettings(gcpID string, localSettings *cdd.LocalSettings) (Printer, bool) {
-	cpm.mutex.Lock()
-	defer cpm.mutex.Unlock()
-
-	if p, exists := cpm.printers[gcpID]; exists {
-		p.LocalSettings = &cdd.LocalSettings{Current: localSettings.Pending}
-		cpm.printers[gcpID] = p
-		return p, true
-	}
-	return Printer{}, false
 }
 
 // Get gets a printer from the map.
