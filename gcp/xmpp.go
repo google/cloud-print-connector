@@ -6,8 +6,8 @@ license that can be found in the LICENSE file or at
 https://developers.google.com/open-source/licenses/bsd
 */
 
-// Package xmpp is the Google Cloud Print XMPP interface.
-package xmpp
+// Package gcp is the Google Cloud Print API client.
+package gcp
 
 import (
 	"crypto/tls"
@@ -36,37 +36,41 @@ const (
 )
 
 // Interface with XMPP server.
-type internalXMPP struct {
+type XMPP struct {
 	conn       *tls.Conn
 	xmlEncoder *xml.Encoder
 	xmlDecoder *xml.Decoder
 	fullJID    string
 
-	notifications       chan<- PrinterNotification
-	pingIntervalUpdates <-chan time.Duration
+	printersJobs    chan<- string
+	printersUpdates chan<- string
+
 	pongs               chan uint8
 	nextPingID          uint8
+	pingIntervalUpdates <-chan time.Duration
 	dead                chan<- struct{}
 }
 
-// newInternalXMPP creates a new XMPP connection.
+// NewXMPP creates a new XMPP connection.
 //
-// Received XMPP notifications are sent on the notifications channel.
+// The GCP ID of printers with new jobs are sent on printersJobs.
+//
+// The GCP ID of printers with new updates are sent on printersUpdates.
 //
 // Updates to the ping interval are received on pingIntervalUpdates.
 //
 // If the connection dies unexpectedly, a message is sent on dead.
-func newInternalXMPP(jid, accessToken, proxyName, server string, port uint16, pingTimeout, pingInterval time.Duration, notifications chan<- PrinterNotification, pingIntervalUpdates <-chan time.Duration, dead chan<- struct{}) (*internalXMPP, error) {
+func NewXMPP(xmppJID, accessToken, proxyName, xmppServer string, xmppPort uint16, pingTimeout, pingInterval time.Duration, printersJobs, printersUpdates chan<- string, pingIntervalUpdates <-chan time.Duration, dead chan<- struct{}) (*XMPP, error) {
 	var user, domain string
-	if parts := strings.SplitN(jid, "@", 2); len(parts) != 2 {
-		return nil, fmt.Errorf("Tried to use invalid XMPP JID: %s", jid)
+	if parts := strings.SplitN(xmppJID, "@", 2); len(parts) != 2 {
+		return nil, fmt.Errorf("Tried to use invalid XMPP JID: %s", xmppJID)
 	} else {
 		user = parts[0]
 		domain = parts[1]
 	}
 
 	// Anyone home?
-	conn, err := dial(server, port)
+	conn, err := dial(xmppServer, xmppPort)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to dial XMPP service: %s", err)
 	}
@@ -98,15 +102,16 @@ func newInternalXMPP(jid, accessToken, proxyName, server string, port uint16, pi
 		return nil, fmt.Errorf("Failed to subscribe: %s", err)
 	}
 
-	x := internalXMPP{
+	x := XMPP{
 		conn:                conn,
 		xmlEncoder:          xmlEncoder,
 		xmlDecoder:          xmlDecoder,
 		fullJID:             fullJID,
-		notifications:       notifications,
-		pingIntervalUpdates: pingIntervalUpdates,
+		printersJobs:        printersJobs,
+		printersUpdates:     printersUpdates,
 		pongs:               make(chan uint8, 10),
 		nextPingID:          0,
+		pingIntervalUpdates: pingIntervalUpdates,
 		dead:                dead,
 	}
 
@@ -124,14 +129,14 @@ func newInternalXMPP(jid, accessToken, proxyName, server string, port uint16, pi
 }
 
 // Quit causes the XMPP connection to close.
-func (x *internalXMPP) Quit() {
+func (x *XMPP) Quit() {
 	// Trigger dispatchIncoming to return.
 	x.conn.Close()
 	// dispatchIncoming notifies pingPeriodically via dying channel.
 	// pingPeriodically signals death via x.dead channel.
 }
 
-func (x *internalXMPP) pingPeriodically(timeout, interval time.Duration, dying <-chan struct{}) {
+func (x *XMPP) pingPeriodically(timeout, interval time.Duration, dying <-chan struct{}) {
 	t := time.NewTimer(interval)
 	defer t.Stop()
 
@@ -157,9 +162,9 @@ func (x *internalXMPP) pingPeriodically(timeout, interval time.Duration, dying <
 	}
 }
 
-// dispatchIncoming listens for new XMPP notifications and puts them into
+// dispatchIncoming listens for new XMPP messages and puts them into
 // separate channels, by type of message.
-func (x *internalXMPP) dispatchIncoming(dying chan<- struct{}) {
+func (x *XMPP) dispatchIncoming(dying chan<- struct{}) {
 	for {
 		// The xml.StartElement tells us what is coming up.
 		startElement, err := readStartElement(x.xmlDecoder)
@@ -186,21 +191,18 @@ func (x *internalXMPP) dispatchIncoming(dying chan<- struct{}) {
 				continue
 			}
 
-			messageData, err := base64.StdEncoding.DecodeString(message.Data)
+			gcpIDbytes, err := base64.StdEncoding.DecodeString(message.Data)
 			if err != nil {
 				glog.Warningf("Failed to convert XMPP message data from base64: %s", err)
 				continue
 			}
+			gcpID := string(gcpIDbytes)
 
-			messageDataString := string(messageData)
-			if strings.ContainsRune(messageDataString, '/') {
-				if strings.HasSuffix(messageDataString, "/delete") {
-					gcpID := strings.TrimSuffix(messageDataString, "/delete")
-					x.notifications <- PrinterNotification{gcpID, PrinterDelete}
-				}
-				// Ignore other suffixes, like /update_settings.
+			if strings.HasSuffix(gcpID, "/update_settings") {
+				gcpID = strings.Split(gcpID, "/")[0]
+				x.printersUpdates <- gcpID
 			} else {
-				x.notifications <- PrinterNotification{messageDataString, PrinterNewJobs}
+				x.printersJobs <- gcpID
 			}
 
 		} else if startElement.Name.Local == "iq" {
@@ -237,7 +239,7 @@ func (x *internalXMPP) dispatchIncoming(dying chan<- struct{}) {
 //
 // Returns false if timeout time passes before pong, or on any
 // other error. Errors are logged but not returned.
-func (x *internalXMPP) ping(timeout time.Duration) (bool, error) {
+func (x *XMPP) ping(timeout time.Duration) (bool, error) {
 	var ping struct {
 		XMLName xml.Name `xml:"iq"`
 		From    string   `xml:"from,attr"`
@@ -276,15 +278,15 @@ func (x *internalXMPP) ping(timeout time.Duration) (bool, error) {
 	panic("unreachable")
 }
 
-func dial(server string, port uint16) (*tls.Conn, error) {
+func dial(xmppServer string, xmppPort uint16) (*tls.Conn, error) {
 	tlsConfig := &tls.Config{
-		ServerName: server,
+		ServerName: xmppServer,
 	}
 	netDialer := &net.Dialer{
 		KeepAlive: netKeepAlive,
 		Timeout:   netTimeout,
 	}
-	addr := fmt.Sprintf("%s:%d", server, port)
+	addr := fmt.Sprintf("%s:%d", xmppServer, xmppPort)
 	conn, err := tls.DialWithDialer(netDialer, "tcp", addr, tlsConfig)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to connect to XMPP server: %s", err)
@@ -450,13 +452,13 @@ func xmppHandshake(xmlEncoder *xml.Encoder, xmlDecoder *xml.Decoder, domain, pro
 		return "", fmt.Errorf("Failed to complete XMPP handshake: %s", err)
 	}
 
-	var done struct {
+	var xmppDone struct {
 		XMLName xml.Name `xml:"jabber:client iq"`
 		ID      string   `xml:"id,attr"`
 	}
-	if err := xmlDecoder.Decode(&done); err != nil {
+	if err := xmlDecoder.Decode(&xmppDone); err != nil {
 		return "", err
-	} else if done.ID != "1" {
+	} else if xmppDone.ID != "1" {
 		return "", errors.New("Received unexpected result at end of XMPP handshake")
 	}
 

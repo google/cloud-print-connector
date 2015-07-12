@@ -7,7 +7,9 @@ https://developers.google.com/open-source/licenses/bsd
 */
 package lib
 
-import "sync"
+import (
+	"sync"
+)
 
 // ConcurrentPrinterMap is a map-like data structure that is also
 // thread-safe. Printers are keyed by Printer.GCPID.
@@ -39,11 +41,11 @@ func (cpm *ConcurrentPrinterMap) Refresh(newPrinters []Printer) {
 // Get gets a printer from the map.
 //
 // The second return value is true if the entry exists.
-func (cpm *ConcurrentPrinterMap) Get(gcpID string) (Printer, bool) {
+func (cpm *ConcurrentPrinterMap) Get(printername string) (Printer, bool) {
 	cpm.mutex.RLock()
 	defer cpm.mutex.RUnlock()
 
-	if p, exists := cpm.printers[gcpID]; exists {
+	if p, exists := cpm.printers[printername]; exists {
 		return p, true
 	}
 	return Printer{}, false
