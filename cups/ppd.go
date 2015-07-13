@@ -14,9 +14,9 @@ import (
 
 var (
 	// Get manufacturer name from PPD.
-	reManufacturer = regexp.MustCompile(`(?m)^\*Manufacturer:\s+"(.+)"\s*$`)
+	reManufacturer = regexp.MustCompile(`(?m)^\*Manufacturer:\s*"(.+)"\s*$`)
 	// Get model name from PPD.
-	reModel = regexp.MustCompile(`(?m)^\*ModelName:\s+"(.+)"\s*$`)
+	reModel = regexp.MustCompile(`(?m)^\*ModelName:\s*"(.+)"\s*$`)
 	// Source of data: PPD Spec 4.3, Table D.1.
 	manTitleCaseLookup = map[string]string{
 		"ADOBE":        "Adobe",
@@ -42,16 +42,19 @@ var (
 
 // parseManufacturerAndModel finds the *Manufacturer and *ModelName values in a PPD string.
 func parseManufacturerAndModel(ppd string) (string, string) {
+	manufacturer := "Unknown"
 	res := reManufacturer.FindStringSubmatch(ppd)
-	manufacturer := res[1]
-	res = reModel.FindStringSubmatch(ppd)
-	model := res[1]
+	if len(res) > 1 && res[1] != "" {
+		manufacturer = res[1]
+	}
 
-	if manufacturer == "" {
-		manufacturer = "Unknown"
-	} else if model == "" {
-		model = "Unknown"
-	} else if strings.HasPrefix(model, manufacturer) && len(model) > len(manufacturer) {
+	model := "Unknown"
+	res = reModel.FindStringSubmatch(ppd)
+	if len(res) > 1 && res[1] != "" {
+		model = res[1]
+	}
+
+	if strings.HasPrefix(model, manufacturer) && len(model) > len(manufacturer) {
 		// ModelName starts with Manufacturer (as it should).
 		// Remove Manufacturer from ModelName.
 		model = strings.TrimPrefix(model, manufacturer)

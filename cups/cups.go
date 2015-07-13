@@ -148,6 +148,9 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	for i := range printers {
 		printers[i].GCPVersion = lib.GCPAPIVersion
 		printers[i].ConnectorVersion = lib.ShortName
+		printers[i].SetupURL = lib.ConnectorHomeURL
+		printers[i].SupportURL = lib.ConnectorHomeURL
+		printers[i].UpdateURL = lib.ConnectorHomeURL
 	}
 	printers = c.addDescriptionToPrinters(printers)
 
