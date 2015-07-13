@@ -21,7 +21,6 @@ import (
 	"github.com/google/cups-connector/manager"
 	"github.com/google/cups-connector/monitor"
 	"github.com/google/cups-connector/snmp"
-	"github.com/google/cups-connector/xmpp"
 
 	"github.com/golang/glog"
 )
@@ -60,18 +59,14 @@ func main() {
 		glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
 	}
 
-	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken, config.UserRefreshToken,
-		config.ProxyName, config.GCPOAuthClientID, config.GCPOAuthClientSecret,
-		config.GCPOAuthAuthURL, config.GCPOAuthTokenURL, gcpXMPPPingIntervalDefault)
+	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.XMPPJID, config.RobotRefreshToken,
+		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID, config.GCPOAuthClientSecret,
+		config.GCPOAuthAuthURL, config.GCPOAuthTokenURL, config.XMPPServer, config.XMPPPort,
+		gcpXMPPPingTimeout, gcpXMPPPingIntervalDefault)
 	if err != nil {
 		glog.Fatal(err)
 	}
-
-	xmpp, err := xmpp.NewXMPP(config.XMPPJID, config.ProxyName, config.XMPPServer, config.XMPPPort, gcpXMPPPingTimeout, gcpXMPPPingIntervalDefault, gcp.GetRobotAccessToken)
-	if err != nil {
-		glog.Fatal(err)
-	}
-	defer xmpp.Quit()
+	defer gcp.Quit()
 
 	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes,
 		config.CUPSMaxConnections, cupsConnectTimeout, gcp.Translate)
@@ -90,7 +85,11 @@ func main() {
 		defer snmpManager.Quit()
 	}
 
-	pm, err := manager.NewPrinterManager(cups, gcp, xmpp, snmpManager, config.CUPSPrinterPollInterval,
+	if err := gcp.StartXMPP(); err != nil {
+		glog.Fatal(err)
+	}
+
+	pm, err := manager.NewPrinterManager(cups, gcp, snmpManager, config.CUPSPrinterPollInterval,
 		config.GCPMaxConcurrentDownloads, config.CUPSJobQueueSize, config.CUPSJobFullUsername,
 		config.CUPSIgnoreRawPrinters, config.ShareScope)
 	if err != nil {

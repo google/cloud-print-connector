@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"strings"
@@ -22,7 +23,6 @@ import (
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
 	"github.com/google/cups-connector/snmp"
-	"github.com/google/cups-connector/xmpp"
 
 	"github.com/golang/glog"
 )
@@ -31,12 +31,14 @@ import (
 type PrinterManager struct {
 	cups *cups.CUPS
 	gcp  *gcp.GoogleCloudPrint
-	xmpp *xmpp.XMPP
 	snmp *snmp.SNMPManager
 
 	// Do not mutate this map, only replace it with a new one. See syncPrinters().
 	gcpPrintersByGCPID *lib.ConcurrentPrinterMap
+	gcpJobPollQuit     chan bool
+	printerPollQuit    chan bool
 	downloadSemaphore  *lib.Semaphore
+	gcpPrinterUpdates  chan string
 
 	// Job stats are numbers reported to monitoring.
 	jobStatsMutex sync.Mutex
@@ -46,19 +48,17 @@ type PrinterManager struct {
 	// Jobs in flight are jobs that have been received, and are not
 	// finished printing yet. Key is the GCP Job ID; value is meaningless.
 	jobsInFlightMutex sync.Mutex
-	jobsInFlight      map[string]struct{}
+	jobsInFlight      map[string]bool
 
 	cupsQueueSize     uint
 	jobFullUsername   bool
 	ignoreRawPrinters bool
 	shareScope        string
-
-	quit chan struct{}
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, xmpp *xmpp.XMPP, snmp *snmp.SNMPManager, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string) (*PrinterManager, error) {
+func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, snmp *snmp.SNMPManager, printerPollInterval string, gcpMaxConcurrentDownload, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string) (*PrinterManager, error) {
 	// Get the GCP printer list.
-	gcpPrinters, queuedJobsCount, err := allGCPPrinters(gcp)
+	gcpPrinters, queuedJobsCount, xmppPingIntervalChanges, err := allGCPPrinters(gcp)
 	if err != nil {
 		return nil, err
 	}
@@ -68,29 +68,52 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, xmpp *xmpp.XM
 	}
 	gcpPrintersByGCPID := lib.NewConcurrentPrinterMap(gcpPrinters)
 
+	// Update any pending XMPP ping interval changes.
+	for gcpID := range xmppPingIntervalChanges {
+		p, exists := gcpPrintersByGCPID.Get(gcpID)
+		if !exists {
+			// Ignore missing printers because this condition will resolve
+			// itself as the connector continues to initialize.
+			continue
+		}
+		if err = gcp.SetPrinterXMPPPingInterval(p); err != nil {
+			return nil, err
+		}
+		glog.Infof("Printer %s XMPP ping interval changed to %s", p.Name, p.XMPPPingInterval.String())
+	}
+
+	// Set the connector XMPP ping interval the the min of all printers.
+	var connectorXMPPPingInterval time.Duration = math.MaxInt64
+	for _, p := range gcpPrintersByGCPID.GetAll() {
+		if p.XMPPPingInterval < connectorXMPPPingInterval {
+			connectorXMPPPingInterval = p.XMPPPingInterval
+		}
+	}
+	gcp.SetConnectorXMPPPingInterval(connectorXMPPPingInterval)
+
 	// Construct.
 	pm := PrinterManager{
 		cups: cups,
 		gcp:  gcp,
-		xmpp: xmpp,
 		snmp: snmp,
 
 		gcpPrintersByGCPID: gcpPrintersByGCPID,
+		gcpJobPollQuit:     make(chan bool),
+		printerPollQuit:    make(chan bool),
 		downloadSemaphore:  lib.NewSemaphore(gcpMaxConcurrentDownload),
+		gcpPrinterUpdates:  make(chan string),
 
 		jobStatsMutex: sync.Mutex{},
 		jobsDone:      0,
 		jobsError:     0,
 
 		jobsInFlightMutex: sync.Mutex{},
-		jobsInFlight:      make(map[string]struct{}),
+		jobsInFlight:      make(map[string]bool),
 
 		cupsQueueSize:     cupsQueueSize,
 		jobFullUsername:   jobFullUsername,
 		ignoreRawPrinters: ignoreRawPrinters,
 		shareScope:        shareScope,
-
-		quit: make(chan struct{}),
 	}
 
 	// Sync once before returning, to make sure things are working.
@@ -102,18 +125,17 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, xmpp *xmpp.XM
 	if err != nil {
 		return nil, err
 	}
-	pm.syncPrintersPeriodically(ppi)
-	pm.listenXMPPNotifications()
 
-	for gcpID := range queuedJobsCount {
-		go pm.handlePrinterNewJobs(gcpID)
-	}
+	pm.syncPrintersPeriodically(ppi)
+	pm.listenGCPJobs(queuedJobsCount)
+	pm.listenGCPPrinterUpdates()
 
 	return &pm, nil
 }
 
 func (pm *PrinterManager) Quit() {
-	close(pm.quit)
+	pm.printerPollQuit <- true
+	<-pm.printerPollQuit
 }
 
 // allGCPPrinters calls gcp.List, then calls gcp.Printer, one goroutine per
@@ -121,28 +143,31 @@ func (pm *PrinterManager) Quit() {
 // info, which the List API does not provide.
 //
 // The second return value is a map of GCPID -> queued print job quantity.
-func allGCPPrinters(gcp *gcp.GoogleCloudPrint) ([]lib.Printer, map[string]uint, error) {
+// The third return value is a map of GCPID -> pending XMPP ping interval changes.
+func allGCPPrinters(gcp *gcp.GoogleCloudPrint) ([]lib.Printer, map[string]uint, map[string]time.Duration, error) {
 	ids, err := gcp.List()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	type response struct {
-		printer         *lib.Printer
-		queuedJobsCount uint
-		err             error
+		printer                 *lib.Printer
+		queuedJobsCount         uint
+		xmppPingIntervalPending time.Duration
+		err                     error
 	}
 	ch := make(chan response)
 	for id := range ids {
 		go func(id string) {
-			printer, queuedJobsCount, err := gcp.Printer(id)
-			ch <- response{printer, queuedJobsCount, err}
+			printer, queuedJobsCount, xmppPingIntervalPending, err := gcp.Printer(id)
+			ch <- response{printer, queuedJobsCount, xmppPingIntervalPending, err}
 		}(id)
 	}
 
 	errs := make([]error, 0)
 	printers := make([]lib.Printer, 0, len(ids))
 	queuedJobsCount := make(map[string]uint)
+	xmppPingIntervalChanges := make(map[string]time.Duration)
 	for _ = range ids {
 		r := <-ch
 		if r.err != nil {
@@ -153,12 +178,15 @@ func allGCPPrinters(gcp *gcp.GoogleCloudPrint) ([]lib.Printer, map[string]uint, 
 		if r.queuedJobsCount > 0 {
 			queuedJobsCount[r.printer.GCPID] = r.queuedJobsCount
 		}
+		if r.xmppPingIntervalPending > 0 {
+			xmppPingIntervalChanges[r.printer.GCPID] = r.xmppPingIntervalPending
+		}
 	}
 
 	if len(errs) == 0 {
-		return printers, queuedJobsCount, nil
+		return printers, queuedJobsCount, xmppPingIntervalChanges, nil
 	} else if len(errs) == 1 {
-		return nil, nil, errs[0]
+		return nil, nil, nil, errs[0]
 	} else {
 		// Return an error that is somewhat human-readable.
 		b := bytes.NewBufferString(fmt.Sprintf("%d errors: ", len(errs)))
@@ -168,7 +196,7 @@ func allGCPPrinters(gcp *gcp.GoogleCloudPrint) ([]lib.Printer, map[string]uint, 
 			}
 			b.WriteString(err.Error())
 		}
-		return nil, nil, errors.New(b.String())
+		return nil, nil, nil, errors.New(b.String())
 	}
 }
 
@@ -185,8 +213,21 @@ func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 				}
 				t.Reset(interval)
 
-			case <-pm.quit:
-				return
+			case gcpID := <-pm.gcpPrinterUpdates:
+				p, _, _, err := pm.gcp.Printer(gcpID)
+				if err != nil {
+					glog.Error(err)
+					continue
+				}
+				if err := pm.gcp.SetPrinterXMPPPingInterval(*p); err != nil {
+					glog.Error(err)
+					continue
+				}
+				glog.Infof("Printer %s XMPP ping interval changed to %s", p.Name, p.XMPPPingInterval.String())
+
+			case <-pm.printerPollQuit:
+				pm.printerPollQuit <- true
+				break
 			}
 		}
 	}()
@@ -282,37 +323,60 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 	ch <- lib.Printer{}
 }
 
-// listenXMPPNotifications processes the messages found on the xmpp.Notifications()
-// channel.
-func (pm *PrinterManager) listenXMPPNotifications() {
+func (pm *PrinterManager) listenGCPJobs(queuedJobsCount map[string]uint) {
+	ch := make(chan *lib.Job)
+
+	for gcpID := range queuedJobsCount {
+		go func() {
+			jobs, err := pm.gcp.Fetch(gcpID)
+			if err != nil {
+				glog.Warningf("Error fetching print jobs: %s", err)
+				return
+			}
+
+			if len(jobs) > 0 {
+				glog.Infof("Fetched %d waiting print jobs for printer %s", len(jobs), gcpID)
+			}
+			for i := range jobs {
+				ch <- &jobs[i]
+			}
+		}()
+	}
+
+	go func() {
+		for {
+			jobs, err := pm.gcp.NextJobBatch()
+			if err != nil {
+				glog.Errorf("Failed to fetch job batch: %s", err)
+
+			} else {
+				for i := range jobs {
+					ch <- &jobs[i]
+				}
+			}
+		}
+	}()
+
 	go func() {
 		for {
 			select {
-			case <-pm.quit:
+			case job := <-ch:
+				go pm.processJob(job)
+			case <-pm.gcpJobPollQuit:
+				pm.gcpJobPollQuit <- true
 				return
-
-			case notification := <-pm.xmpp.Notifications():
-				switch notification.Type {
-				case xmpp.PrinterNewJobs:
-					go pm.handlePrinterNewJobs(notification.GCPID)
-				case xmpp.PrinterDelete:
-					glog.Errorf("Received XMPP request to delete %s but deleting printers is not supported yet", notification.GCPID)
-				}
 			}
 		}
 	}()
 }
 
-// handlePrinterNewJobs gets and processes jobs waiting on a printer.
-func (pm *PrinterManager) handlePrinterNewJobs(gcpID string) {
-	jobs, err := pm.gcp.Fetch(gcpID)
-	if err != nil {
-		glog.Errorf("Failed to fetch jobs for printer %s: %s", gcpID, err)
-		return
-	}
-	for i := range jobs {
-		go pm.processJob(&jobs[i])
-	}
+func (pm *PrinterManager) listenGCPPrinterUpdates() {
+	go func() {
+		for {
+			gcpID := pm.gcp.NextPrinterWithUpdates()
+			pm.gcpPrinterUpdates <- gcpID
+		}
+	}()
 }
 
 func (pm *PrinterManager) incrementJobsProcessed(success bool) {
@@ -333,11 +397,11 @@ func (pm *PrinterManager) addInFlightJob(gcpJobID string) bool {
 	pm.jobsInFlightMutex.Lock()
 	defer pm.jobsInFlightMutex.Unlock()
 
-	if _, exists := pm.jobsInFlight[gcpJobID]; exists {
+	if pm.jobsInFlight[gcpJobID] {
 		return false
 	}
 
-	pm.jobsInFlight[gcpJobID] = struct{}{}
+	pm.jobsInFlight[gcpJobID] = true
 
 	return true
 }
