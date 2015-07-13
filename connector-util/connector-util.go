@@ -206,19 +206,15 @@ func deleteAllGCPPrinters() {
 		panic(err)
 	}
 
-	gcpXMPPPingTimeout, err := time.ParseDuration(config.XMPPPingTimeout)
-	if err != nil {
-		glog.Fatalf("Failed to parse xmpp ping timeout: %s", err)
-	}
 	gcpXMPPPingIntervalDefault, err := time.ParseDuration(config.XMPPPingIntervalDefault)
 	if err != nil {
 		glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
 	}
 
-	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.XMPPJID, config.RobotRefreshToken,
-		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID, config.GCPOAuthClientSecret,
-		config.GCPOAuthAuthURL, config.GCPOAuthTokenURL, config.XMPPServer, config.XMPPPort,
-		gcpXMPPPingTimeout, gcpXMPPPingIntervalDefault)
+	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
+		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
+		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
+		gcpXMPPPingIntervalDefault)
 	if err != nil {
 		glog.Fatal(err)
 	}
