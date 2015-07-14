@@ -349,9 +349,9 @@ func (pm *PrinterManager) deleteInFlightJob(gcpID string) {
 }
 
 // assembleJob prepares for printing a job by fetching the job's printer,
-// ticket, and the job's PDF (what we're printing)
+// ticket, and data (what we're printing)
 //
-// The caller is responsible to remove the returned PDF file.
+// The caller is responsible to remove the returned file.
 //
 // Errors are returned as a string (last return value), for reporting
 // to GCP and local logging.
@@ -362,8 +362,8 @@ func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, cdd.CloudJobTi
 			fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID),
 			cdd.PrintJobStateDiff{
 				State: cdd.JobState{
-					Type:               "STOPPED",
-					ServiceActionCause: &cdd.ServiceActionCause{ErrorCode: "PRINTER_DELETED"},
+					Type:               cdd.JobStateAborted,
+					ServiceActionCause: &cdd.ServiceActionCause{ErrorCode: cdd.ServiceActionCausePrinterDeleted},
 				},
 			}
 	}
@@ -374,20 +374,20 @@ func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, cdd.CloudJobTi
 			fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err),
 			cdd.PrintJobStateDiff{
 				State: cdd.JobState{
-					Type:              "STOPPED",
-					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "INVALID_TICKET"},
+					Type:              cdd.JobStateAborted,
+					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseInvalidTicket},
 				},
 			}
 	}
 
-	pdfFile, err := cups.CreateTempFile()
+	file, err := cups.CreateTempFile()
 	if err != nil {
 		return lib.Printer{}, cdd.CloudJobTicket{}, nil,
 			fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err),
 			cdd.PrintJobStateDiff{
 				State: cdd.JobState{
-					Type:              "STOPPED",
-					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "OTHER"},
+					Type:              cdd.JobStateAborted,
+					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseOther},
 				},
 			}
 	}
@@ -395,31 +395,31 @@ func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, cdd.CloudJobTi
 	pm.downloadSemaphore.Acquire()
 	t := time.Now()
 	// Do not check err until semaphore is released and timer is stopped.
-	err = pm.gcp.Download(pdfFile, job.FileURL)
+	err = pm.gcp.Download(file, job.FileURL)
 	dt := time.Since(t)
 	pm.downloadSemaphore.Release()
 	if err != nil {
 		// Clean up this temporary file so the caller doesn't need extra logic.
-		os.Remove(pdfFile.Name())
+		os.Remove(file.Name())
 		return lib.Printer{}, cdd.CloudJobTicket{}, nil,
-			fmt.Sprintf("Failed to download PDF for job %s: %s", job.GCPJobID, err),
+			fmt.Sprintf("Failed to download data for job %s: %s", job.GCPJobID, err),
 			cdd.PrintJobStateDiff{
 				State: cdd.JobState{
-					Type:              "STOPPED",
-					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "DOWNLOAD_FAILURE"},
+					Type:              cdd.JobStateAborted,
+					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseDownloadFailure},
 				},
 			}
 	}
 
 	glog.Infof("Downloaded job %s in %s", job.GCPJobID, dt.String())
-	pdfFile.Close()
+	file.Close()
 
-	return printer, ticket, pdfFile, "", cdd.PrintJobStateDiff{}
+	return printer, ticket, file, "", cdd.PrintJobStateDiff{}
 }
 
 // processJob performs these steps:
 //
-// 1) Assembles the job resources (printer, ticket, PDF)
+// 1) Assembles the job resources (printer, ticket, data)
 // 2) Creates a new job in CUPS.
 // 3) Follows up with the job state until done or error.
 // 4) Deletes temporary file.
@@ -428,7 +428,7 @@ func (pm *PrinterManager) assembleJob(job *lib.Job) (lib.Printer, cdd.CloudJobTi
 func (pm *PrinterManager) processJob(job *lib.Job) {
 	if !pm.addInFlightJob(job.GCPJobID) {
 		// This print job was already received. We probably received it
-		// again because the first instance is still queued (ie not
+		// again because the first instance is still QUEUED (ie not
 		// IN_PROGRESS). That's OK, just throw away the second instance.
 		return
 	}
@@ -436,7 +436,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 
 	glog.Infof("Received job %s", job.GCPJobID)
 
-	printer, ticket, pdfFile, message, state := pm.assembleJob(job)
+	printer, ticket, file, message, state := pm.assembleJob(job)
 	if message != "" {
 		pm.incrementJobsProcessed(false)
 		glog.Error(message)
@@ -445,7 +445,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		}
 		return
 	}
-	defer os.Remove(pdfFile.Name())
+	defer os.Remove(file.Name())
 
 	ownerID := job.OwnerID
 	if !pm.jobFullUsername {
@@ -460,15 +460,15 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 		jobTitle = jobTitle[:255]
 	}
 
-	cupsJobID, err := pm.cups.Print(printer.Name, pdfFile.Name(), jobTitle, ownerID, ticket)
+	cupsJobID, err := pm.cups.Print(printer.Name, file.Name(), jobTitle, ownerID, ticket)
 	if err != nil {
 		pm.incrementJobsProcessed(false)
 		message = fmt.Sprintf("Failed to send job %s to CUPS: %s", job.GCPJobID, err)
 		glog.Error(message)
 		state := cdd.PrintJobStateDiff{
 			State: cdd.JobState{
-				Type:              "STOPPED",
-				DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "PRINT_FAILURE"},
+				Type:              cdd.JobStateAborted,
+				DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCausePrintFailure},
 			},
 		}
 		if err := pm.gcp.Control(job.GCPJobID, state); err != nil {
@@ -483,7 +483,7 @@ func (pm *PrinterManager) processJob(job *lib.Job) {
 }
 
 // followJob polls a CUPS job state to update the GCP job state and
-// returns when the job state is DONE, STOPPED, or ABORTED.
+// returns when the job state is DONE or ABORTED.
 //
 // Nothing is returned, as all errors are reported and logged from
 // this function.
@@ -500,8 +500,8 @@ func (pm *PrinterManager) followJob(job *lib.Job, cupsJobID uint32) {
 
 			gcpState := cdd.PrintJobStateDiff{
 				State: cdd.JobState{
-					Type:              "STOPPED",
-					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "OTHER"},
+					Type:              cdd.JobStateAborted,
+					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseOther},
 				},
 				PagesPrinted: gcpState.PagesPrinted,
 			}
@@ -520,8 +520,8 @@ func (pm *PrinterManager) followJob(job *lib.Job, cupsJobID uint32) {
 			glog.Infof("Job %s state is now: %s", job.GCPJobID, gcpState.State.Type)
 		}
 
-		if gcpState.State.Type != "IN_PROGRESS" {
-			if gcpState.State.Type == "DONE" {
+		if gcpState.State.Type != cdd.JobStateInProgress {
+			if gcpState.State.Type == cdd.JobStateDone {
 				pm.incrementJobsProcessed(true)
 			} else {
 				pm.incrementJobsProcessed(false)

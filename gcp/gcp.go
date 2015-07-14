@@ -88,29 +88,6 @@ func (gcp *GoogleCloudPrint) CanShare() bool {
 	return gcp.userClient != nil
 }
 
-// printJobStateDiff represents a CJS PrintJobStateDiff message.
-type printJobStateDiff struct {
-	State        jobState `json:"state"`
-	PagesPrinted uint32   `json:"pages_printed"`
-}
-
-// jobState represents a CJS JobState message.
-type jobState struct {
-	Type              string             `json:"type"`
-	UserActionCause   *userActionCause   `json:"user_action_cause,omitempty"`
-	DeviceActionCause *deviceActionCause `json:"device_action_cause,omitempty"`
-}
-
-// userActionCause represents a CJS JobState.UserActionCause message.
-type userActionCause struct {
-	ActionCode string `json:"action_code"`
-}
-
-// deviceActionCause represents a CJS JobState.DeviceActionCause message.
-type deviceActionCause struct {
-	ErrorCode string `json:"error_code"`
-}
-
 // Control calls google.com/cloudprint/control to set the state of a
 // GCP print job.
 func (gcp *GoogleCloudPrint) Control(jobID string, state cdd.PrintJobStateDiff) error {
@@ -477,7 +454,7 @@ func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string) error {
 	return nil
 }
 
-// Download downloads a URL (a print job PDF) directly to a Writer.
+// Download downloads a URL (a print job data file) directly to a Writer.
 func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 	response, err := getWithRetry(gcp.robotClient, url)
 	if err != nil {

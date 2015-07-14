@@ -284,29 +284,25 @@ func convertJobState(cupsState, pages int32) cdd.PrintJobStateDiff {
 	state := cdd.PrintJobStateDiff{PagesPrinted: pages}
 
 	switch cupsState {
-	case 3: // PENDING
-		state.State = cdd.JobState{Type: "IN_PROGRESS"}
-	case 4: // HELD
-		state.State = cdd.JobState{Type: "IN_PROGRESS"}
-	case 5: // PROCESSING
-		state.State = cdd.JobState{Type: "IN_PROGRESS"}
+	case 3, 4, 5: // PENDING, HELD, PROCESSING
+		state.State = cdd.JobState{Type: cdd.JobStateInProgress}
 	case 6: // STOPPED
 		state.State = cdd.JobState{
-			Type:              "STOPPED",
-			DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "OTHER"},
+			Type:              cdd.JobStateStopped,
+			DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseOther},
 		}
 	case 7: // CANCELED
 		state.State = cdd.JobState{
-			Type:            "ABORTED",
-			UserActionCause: &cdd.UserActionCause{ActionCode: "CANCELLED"}, // Spelled with two L's.
+			Type:            cdd.JobStateAborted,
+			UserActionCause: &cdd.UserActionCause{ActionCode: cdd.UserActionCauseCanceled},
 		}
 	case 8: // ABORTED
 		state.State = cdd.JobState{
-			Type:              "ABORTED",
-			DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "PRINT_FAILURE"},
+			Type:              cdd.JobStateAborted,
+			DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCausePrintFailure},
 		}
 	case 9: // COMPLETED
-		state.State = cdd.JobState{Type: "DONE"}
+		state.State = cdd.JobState{Type: cdd.JobStateDone}
 	}
 
 	return state

@@ -50,7 +50,7 @@ type Config struct {
 	// User-chosen name of this proxy. Should be unique per Google user account.
 	ProxyName string `json:"proxy_name"`
 
-	// Maximum quantity of PDFs to download concurrently.
+	// Maximum quantity of jobs (data) to download concurrently.
 	GCPMaxConcurrentDownloads uint `json:"gcp_max_concurrent_downloads"`
 
 	// Maximum quantity of open CUPS connections.
