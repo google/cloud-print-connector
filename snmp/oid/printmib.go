@@ -199,7 +199,10 @@ func (vs *VariableSet) GetInputTrays() (*[]cdd.InputTrayUnit, *cdd.InputTrayStat
 			if levelCurrent == 0 && state == cdd.InputTrayStateOK {
 				inputState.State = cdd.InputTrayStateEmpty
 			}
-			levelPercent := int32(100 * levelCurrent / levelMax)
+			var levelPercent int32
+			if levelMax > 0 {
+				levelPercent = int32(100 * levelCurrent / levelMax)
+			}
 			inputState.LevelPercent = &levelPercent
 		}
 
@@ -461,7 +464,10 @@ func (vs *VariableSet) GetMarkers() (*[]cdd.Marker, *cdd.MarkerState, *cdd.Vendo
 		if err != nil {
 			return nil, nil, nil, false
 		}
-		levelPercent := int32(100 * levelCurrent / levelMax)
+		var levelPercent int32
+		if levelMax > 0 {
+			levelPercent = int32(100 * levelCurrent / levelMax)
+		}
 
 		if markerType, exists := PrinterMarkerSuppliesTypeToGCP[types[i].Value]; exists && markerType != "" {
 			// GCP calls this a Marker.
