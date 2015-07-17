@@ -26,46 +26,6 @@ import (
 	"github.com/google/cups-connector/cdd"
 )
 
-var numberUpCapability = cdd.VendorCapability{
-	ID:   "number-up",
-	Type: cdd.VendorCapabilitySelect,
-	SelectCap: &cdd.SelectCapability{
-		Option: []cdd.SelectCapabilityOption{
-			cdd.SelectCapabilityOption{
-				Value:                "1",
-				IsDefault:            true,
-				DisplayNameLocalized: cdd.NewLocalizedString("1"),
-			},
-			cdd.SelectCapabilityOption{
-				Value:                "2",
-				IsDefault:            false,
-				DisplayNameLocalized: cdd.NewLocalizedString("2"),
-			},
-			cdd.SelectCapabilityOption{
-				Value:                "4",
-				IsDefault:            false,
-				DisplayNameLocalized: cdd.NewLocalizedString("4"),
-			},
-			cdd.SelectCapabilityOption{
-				Value:                "6",
-				IsDefault:            false,
-				DisplayNameLocalized: cdd.NewLocalizedString("6"),
-			},
-			cdd.SelectCapabilityOption{
-				Value:                "9",
-				IsDefault:            false,
-				DisplayNameLocalized: cdd.NewLocalizedString("9"),
-			},
-			cdd.SelectCapabilityOption{
-				Value:                "16",
-				IsDefault:            false,
-				DisplayNameLocalized: cdd.NewLocalizedString("16"),
-			},
-		},
-	},
-	DisplayNameLocalized: cdd.NewLocalizedString("Pages per sheet"),
-}
-
 // This isn't really a cache, but an interface to CUPS' quirky PPD interface.
 // The connector needs to know when a PPD changes, but the CUPS API can only:
 // (1) fetch a PPD to a file
@@ -110,14 +70,6 @@ func (pc *ppdCache) removePPD(printername string) {
 		pce.free()
 		delete(pc.cache, printername)
 	}
-}
-
-func (pc *ppdCache) getDescription(printername string) (*cdd.PrinterDescriptionSection, string, string, string, error) {
-	description, hash, manufacturer, model, err := pc.getPPDCacheEntry(printername)
-	if err != nil {
-		return nil, "", "", "", err
-	}
-	return description, hash, manufacturer, model, nil
 }
 
 func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptionSection, string, string, string, error) {
@@ -259,12 +211,8 @@ func (pce *ppdCacheEntry) refresh(cc *cupsCore, translatePPDToCDD func(string) (
 		return err
 	}
 
+	// Allow this field to be overridden by cdd.PrinterDescriptionSection.Absorb().
 	description.SupportedContentType = nil
-
-	if description.VendorCapability == nil {
-		description.VendorCapability = &[]cdd.VendorCapability{}
-	}
-	*description.VendorCapability = append(*description.VendorCapability, numberUpCapability)
 
 	pce.description = *description
 	pce.hash = fmt.Sprintf("%x", hash.Sum(nil))

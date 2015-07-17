@@ -72,7 +72,19 @@ func (a *PrinterDescriptionSection) Absorb(b *PrinterDescriptionSection) {
 		a.MediaPath = b.MediaPath
 	}
 	if b.VendorCapability != nil {
-		a.VendorCapability = b.VendorCapability
+		if a.VendorCapability == nil || len(*a.VendorCapability) == 0 {
+			a.VendorCapability = b.VendorCapability
+		} else { // Preserve vendor capabilities that already exist in a.
+			aKeys := make(map[string]struct{}, len(*a.VendorCapability))
+			for _, v := range *a.VendorCapability {
+				aKeys[v.ID] = struct{}{}
+			}
+			for _, v := range *b.VendorCapability {
+				if _, exists := aKeys[v.ID]; !exists {
+					*a.VendorCapability = append(*a.VendorCapability, v)
+				}
+			}
+		}
 	}
 	if b.Color != nil {
 		a.Color = b.Color

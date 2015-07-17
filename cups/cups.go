@@ -72,6 +72,46 @@ var (
 		attrJobState,
 		attrJobMediaSheetsCompleted,
 	}
+
+	numberUpCapability = cdd.VendorCapability{
+		ID:   "number-up",
+		Type: cdd.VendorCapabilitySelect,
+		SelectCap: &cdd.SelectCapability{
+			Option: []cdd.SelectCapabilityOption{
+				cdd.SelectCapabilityOption{
+					Value:                "1",
+					IsDefault:            true,
+					DisplayNameLocalized: cdd.NewLocalizedString("1"),
+				},
+				cdd.SelectCapabilityOption{
+					Value:                "2",
+					IsDefault:            false,
+					DisplayNameLocalized: cdd.NewLocalizedString("2"),
+				},
+				cdd.SelectCapabilityOption{
+					Value:                "4",
+					IsDefault:            false,
+					DisplayNameLocalized: cdd.NewLocalizedString("4"),
+				},
+				cdd.SelectCapabilityOption{
+					Value:                "6",
+					IsDefault:            false,
+					DisplayNameLocalized: cdd.NewLocalizedString("6"),
+				},
+				cdd.SelectCapabilityOption{
+					Value:                "9",
+					IsDefault:            false,
+					DisplayNameLocalized: cdd.NewLocalizedString("9"),
+				},
+				cdd.SelectCapabilityOption{
+					Value:                "16",
+					IsDefault:            false,
+					DisplayNameLocalized: cdd.NewLocalizedString("16"),
+				},
+			},
+		},
+		DisplayNameLocalized: cdd.NewLocalizedString("Pages per sheet"),
+	}
 )
 
 // Interface between Go and the CUPS API.
@@ -181,8 +221,8 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 	return printers
 }
 
-// addPPDHashToPrinters fetches description, PPD hash, manufacturer, model for
-// all argument printers, concurrently.
+// addDescriptionToPrinters fetches description, PPD hash, manufacturer, model
+// for argument printers, concurrently. These are the fields derived from PPD.
 //
 // Returns a new printer slice, because it can shrink due to raw or
 // mis-configured printers.
@@ -194,7 +234,7 @@ func (c *CUPS) addDescriptionToPrinters(printers []lib.Printer) []lib.Printer {
 		if !lib.PrinterIsRaw(printers[i]) {
 			wg.Add(1)
 			go func(p *lib.Printer) {
-				if description, ppdHash, manufacturer, model, err := c.pc.getDescription(p.Name); err == nil {
+				if description, ppdHash, manufacturer, model, err := c.pc.getPPDCacheEntry(p.Name); err == nil {
 					p.Description.Absorb(description)
 					p.CapsHash = ppdHash
 					p.Manufacturer = manufacturer
@@ -603,6 +643,7 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 		Collate: &cdd.Collate{
 			Default: true,
 		},
+		VendorCapability: &[]cdd.VendorCapability{numberUpCapability},
 	}
 
 	if mimeTypes, ok := printerTags[attrDocumentFormatSupported]; ok && len(mimeTypes) > 0 {
