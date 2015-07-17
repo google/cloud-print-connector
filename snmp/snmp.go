@@ -147,7 +147,7 @@ func (s *SNMPManager) AugmentPrinters(printers []lib.Printer) error {
 			continue
 		}
 		if serialNumber, ok := vars.GetSerialNumber(); ok {
-			printers[i].UUID = serialNumber
+			printers[i].Tags["snmp-serial-number"] = serialNumber
 		}
 		if covers, coverState, exists := vars.GetCovers(); exists {
 			printers[i].State.CoverState = coverState

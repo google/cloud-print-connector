@@ -121,7 +121,7 @@ func (gcp *GoogleCloudPrint) Delete(gcpID string) error {
 
 // Fetch calls google.com/cloudprint/fetch to get the outstanding print jobs for
 // a GCP printer.
-func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
+func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]Job, error) {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
 
@@ -129,7 +129,7 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 	if err != nil {
 		if errorCode == 413 {
 			// 413 means "Zero print jobs returned", which isn't really an error.
-			return []lib.Job{}, nil
+			return []Job{}, nil
 		}
 		return nil, err
 	}
@@ -146,10 +146,10 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 		return nil, err
 	}
 
-	jobs := make([]lib.Job, len(jobsData.Jobs))
+	jobs := make([]Job, len(jobsData.Jobs))
 
 	for i, jobData := range jobsData.Jobs {
-		jobs[i] = lib.Job{
+		jobs[i] = Job{
 			GCPPrinterID: gcpID,
 			GCPJobID:     jobData.ID,
 			FileURL:      jobData.FileURL,
@@ -471,7 +471,7 @@ func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 }
 
 // Ticket gets a ticket, aka print job options.
-func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (cdd.CloudJobTicket, error) {
+func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (*cdd.CloudJobTicket, error) {
 	form := url.Values{}
 	form.Set("jobid", gcpJobID)
 	form.Set("use_cjt", "true")
@@ -480,7 +480,7 @@ func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (cdd.CloudJobTicket, error)
 	// The /ticket API is different than others, because it only returns the
 	// standard GCP error information on success=false.
 	if httpStatusCode != 200 {
-		return cdd.CloudJobTicket{}, err
+		return nil, err
 	}
 
 	d := json.NewDecoder(bytes.NewReader(responseBody))
@@ -489,10 +489,10 @@ func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (cdd.CloudJobTicket, error)
 	var ticket cdd.CloudJobTicket
 	err = d.Decode(&ticket)
 	if err != nil {
-		return cdd.CloudJobTicket{}, fmt.Errorf("Failed to unmarshal ticket: %s", err)
+		return nil, fmt.Errorf("Failed to unmarshal ticket: %s", err)
 	}
 
-	return ticket, nil
+	return &ticket, nil
 }
 
 // ProximityToken gets a proximity token for Privet users to access a printer

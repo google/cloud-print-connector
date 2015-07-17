@@ -11,13 +11,13 @@ package cdd
 type PrintJobState struct {
 	Version          string   `json:"version"`
 	State            JobState `json:"state"`
-	PagesPrinted     int32    `json:"pages_printed,omitempty"`
-	DeliveryAttempts int32    `json:"delivery_attempts,omitempty"`
+	PagesPrinted     *int32   `json:"pages_printed,omitempty"`
+	DeliveryAttempts *int32   `json:"delivery_attempts,omitempty"`
 }
 
 type PrintJobStateDiff struct {
-	State        JobState `json:"state,omitempty"`
-	PagesPrinted int32    `json:"pages_printed,omitempty"`
+	State        *JobState `json:"state,omitempty"`
+	PagesPrinted *int32    `json:"pages_printed,omitempty"`
 }
 
 type JobStateType string

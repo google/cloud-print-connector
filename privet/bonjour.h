@@ -13,5 +13,6 @@ https://developers.google.com/open-source/licenses/bsd
 #include <stdio.h>  // asprintf
 #include <stdlib.h> // free
 
-CFNetServiceRef startBonjour(char *name, char *type, char *domain, unsigned short int port, char *url, char *id, char *cs, char **err);
+CFNetServiceRef startBonjour(char *name, char *type, unsigned short int port, char *ty, char *url, char *id, char *cs, char **err);
+void updateBonjour(CFNetServiceRef service, char *ty, char *url, char *id, char *cs);
 void stopBonjour(CFNetServiceRef service);

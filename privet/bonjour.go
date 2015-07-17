@@ -23,27 +23,28 @@ type bonjour struct {
 }
 
 // NewZeroconf starts a new Bonjour service for a printer shared via Privet.
-func NewZeroconf(name, serviceType, domain string, port uint16, url, id string, online bool) (*bonjour, error) {
+// TODO: Change ty, url, id, online params to TXT map.
+func newZeroconf(name, serviceType string, port uint16, ty, url, id string, online bool) (*bonjour, error) {
 	n := C.CString(name)
 	defer C.free(unsafe.Pointer(n))
 	t := C.CString(serviceType)
 	defer C.free(unsafe.Pointer(t))
-	d := C.CString(domain)
-	defer C.free(unsafe.Pointer(d))
+	y := C.CString(ty)
+	defer C.free(unsafe.Pointer(y))
 	u := C.CString(url)
 	defer C.free(unsafe.Pointer(u))
 	i := C.CString(id)
 	defer C.free(unsafe.Pointer(i))
 	var o *C.char
-	defer C.free(unsafe.Pointer(o))
 	if online {
 		o = C.CString("online")
 	} else {
 		o = C.CString("offline")
 	}
+	defer C.free(unsafe.Pointer(o))
 
 	var errstr *C.char = nil
-	service := C.startBonjour(n, t, d, C.ushort(port), u, i, o, &errstr)
+	service := C.startBonjour(n, t, C.ushort(port), y, u, i, o, &errstr)
 	if errstr != nil {
 		defer C.free(unsafe.Pointer(errstr))
 		return nil, errors.New(C.GoString(errstr))
@@ -52,7 +53,26 @@ func NewZeroconf(name, serviceType, domain string, port uint16, url, id string, 
 	return &bonjour{service}, nil
 }
 
-func (b *bonjour) Quit() {
+// UpdateTXT updates the advertised TXT record.
+func (b *bonjour) updateTXT(ty, url, id string, online bool) {
+	y := C.CString(ty)
+	defer C.free(unsafe.Pointer(y))
+	u := C.CString(url)
+	defer C.free(unsafe.Pointer(u))
+	i := C.CString(id)
+	defer C.free(unsafe.Pointer(i))
+	var o *C.char
+	if online {
+		o = C.CString("online")
+	} else {
+		o = C.CString("offline")
+	}
+	defer C.free(unsafe.Pointer(o))
+
+	C.updateBonjour(b.service, y, u, i, o)
+}
+
+func (b *bonjour) quit() {
 	C.stopBonjour(b.service)
 }
 

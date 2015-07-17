@@ -321,28 +321,28 @@ func (c *CUPS) GetJobState(jobID uint32) (cdd.PrintJobStateDiff, error) {
 
 // convertJobState converts CUPS job state to cdd.PrintJobStateDiff.
 func convertJobState(cupsState, pages int32) cdd.PrintJobStateDiff {
-	state := cdd.PrintJobStateDiff{PagesPrinted: pages}
+	state := cdd.PrintJobStateDiff{PagesPrinted: &pages}
 
 	switch cupsState {
 	case 3, 4, 5: // PENDING, HELD, PROCESSING
-		state.State = cdd.JobState{Type: cdd.JobStateInProgress}
+		state.State = &cdd.JobState{Type: cdd.JobStateInProgress}
 	case 6: // STOPPED
-		state.State = cdd.JobState{
+		state.State = &cdd.JobState{
 			Type:              cdd.JobStateStopped,
 			DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseOther},
 		}
 	case 7: // CANCELED
-		state.State = cdd.JobState{
+		state.State = &cdd.JobState{
 			Type:            cdd.JobStateAborted,
 			UserActionCause: &cdd.UserActionCause{ActionCode: cdd.UserActionCauseCanceled},
 		}
 	case 8: // ABORTED
-		state.State = cdd.JobState{
+		state.State = &cdd.JobState{
 			Type:              cdd.JobStateAborted,
 			DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCausePrintFailure},
 		}
 	case 9: // COMPLETED
-		state.State = cdd.JobState{Type: cdd.JobStateDone}
+		state.State = &cdd.JobState{Type: cdd.JobStateDone}
 	}
 
 	return state
@@ -350,12 +350,17 @@ func convertJobState(cupsState, pages int32) cdd.PrintJobStateDiff {
 
 // Print sends a new print job to the specified printer. The job ID
 // is returned.
-func (c *CUPS) Print(printername, filename, title, user string, ticket cdd.CloudJobTicket) (uint32, error) {
+func (c *CUPS) Print(printername, filename, title, user string, ticket *cdd.CloudJobTicket) (uint32, error) {
 	pn := C.CString(printername)
 	defer C.free(unsafe.Pointer(pn))
 	fn := C.CString(filename)
 	defer C.free(unsafe.Pointer(fn))
-	t := C.CString(title)
+	var t *C.char
+	if len(title) > 255 {
+		t = C.CString(title[:255])
+	} else {
+		t = C.CString(title)
+	}
 	defer C.free(unsafe.Pointer(t))
 
 	options := ticketToOptions(ticket)
@@ -380,7 +385,7 @@ func (c *CUPS) Print(printername, filename, title, user string, ticket cdd.Cloud
 	return uint32(jobID), nil
 }
 
-func ticketToOptions(ticket cdd.CloudJobTicket) map[string]string {
+func ticketToOptions(ticket *cdd.CloudJobTicket) map[string]string {
 	m := make(map[string]string)
 
 	for _, vti := range ticket.Print.VendorTicketItem {
@@ -679,16 +684,17 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 	description.Marker = markers
 
 	p := lib.Printer{
-		Name:        name,
-		UUID:        uuid,
-		State:       &state,
-		Description: &description,
-		Tags:        tags,
+		Name:               name,
+		DefaultDisplayName: name,
+		UUID:               uuid,
+		State:              &state,
+		Description:        &description,
+		Tags:               tags,
 	}
 	p.SetTagshash()
 
-	if pi, ok := printerTags[attrPrinterInfo]; ok && infoToDisplayName {
-		p.DefaultDisplayName = pi[0]
+	if printerInfo, ok := printerTags[attrPrinterInfo]; ok && infoToDisplayName && len(printerInfo) > 0 && printerInfo[0] != "" {
+		p.DefaultDisplayName = printerInfo[0]
 	}
 
 	return p
