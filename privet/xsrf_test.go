@@ -60,6 +60,13 @@ func TestIsTokenValid(t *testing.T) {
 	}
 }
 
+func TestIsBadFormatTokenValid(t *testing.T) {
+	x := deviceSecret
+	if x.isTokenValidProvideTime("", testTime) {
+		t.Errorf("empty token reported as valid")
+	}
+}
+
 func TestInt64ToBytes(t *testing.T) {
 	var v int64 = 0
 	b := []byte{0, 0, 0, 0, 0, 0, 0, 0}

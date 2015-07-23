@@ -53,6 +53,10 @@ func (x xsrfSecret) isTokenValidProvideTime(token string, now time.Time) bool {
 		return false
 	}
 
+	if len(tokenBytes) != sha1.Size+8 {
+		return false
+	}
+
 	tb := tokenBytes[sha1.Size:]
 	t := time.Unix(bytesToInt64(tb), 0)
 	if now.Sub(t) > tokenTimeout {
