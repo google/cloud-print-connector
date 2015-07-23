@@ -1,10 +1,10 @@
-/*
-Copyright 2015 Google Inc. All rights reserved.
+// Copyright 2015 Google Inc. All rights reserved.
 
-Use of this source code is governed by a BSD-style
-license that can be found in the LICENSE file or at
-https://developers.google.com/open-source/licenses/bsd
-*/
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file or at
+// https://developers.google.com/open-source/licenses/bsd
+
+// +build darwin
 
 package privet
 
@@ -18,13 +18,13 @@ import (
 	"github.com/golang/glog"
 )
 
-type bonjour struct {
+type zeroconf struct {
 	service C.CFNetServiceRef
 }
 
 // NewZeroconf starts a new Bonjour service for a printer shared via Privet.
 // TODO: Change ty, url, id, online params to TXT map.
-func newZeroconf(name, serviceType string, port uint16, ty, url, id string, online bool) (*bonjour, error) {
+func newZeroconf(name, serviceType string, port uint16, ty, url, id string, online bool) (*zeroconf, error) {
 	n := C.CString(name)
 	defer C.free(unsafe.Pointer(n))
 	t := C.CString(serviceType)
@@ -50,11 +50,11 @@ func newZeroconf(name, serviceType string, port uint16, ty, url, id string, onli
 		return nil, errors.New(C.GoString(errstr))
 	}
 
-	return &bonjour{service}, nil
+	return &zeroconf{service}, nil
 }
 
 // UpdateTXT updates the advertised TXT record.
-func (b *bonjour) updateTXT(ty, url, id string, online bool) {
+func (b *zeroconf) updateTXT(ty, url, id string, online bool) {
 	y := C.CString(ty)
 	defer C.free(unsafe.Pointer(y))
 	u := C.CString(url)
@@ -72,7 +72,7 @@ func (b *bonjour) updateTXT(ty, url, id string, online bool) {
 	C.updateBonjour(b.service, y, u, i, o)
 }
 
-func (b *bonjour) quit() {
+func (b *zeroconf) quit() {
 	C.stopBonjour(b.service)
 }
 
