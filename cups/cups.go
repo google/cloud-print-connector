@@ -387,6 +387,9 @@ func (c *CUPS) Print(printername, filename, title, user string, ticket *cdd.Clou
 
 func ticketToOptions(ticket *cdd.CloudJobTicket) map[string]string {
 	m := make(map[string]string)
+	if ticket == nil {
+		return m
+	}
 
 	for _, vti := range ticket.Print.VendorTicketItem {
 		m[vti.ID] = vti.Value

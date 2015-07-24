@@ -287,7 +287,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 			glog.Infof("Updated %s in the cloud", diff.Printer.Name)
 		}
 
-		if !ignorePrivet {
+		if !ignorePrivet && diff.DefaultDisplayNameChanged {
 			pm.privet.UpdatePrinter(diff)
 			glog.Infof("Updated %s locally", diff.Printer.Name)
 		}

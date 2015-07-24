@@ -97,12 +97,10 @@ void addAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiClient *client,
     AvahiEntryGroup **group, char *serviceName, unsigned short port, char *ty,
     char *url, char *id, char *cs, char **err) {
   *err = NULL;
-  avahi_threaded_poll_lock(threaded_poll);
 
   *group = avahi_entry_group_new(client, entry_group_callback, NULL);
   if (!*group) {
     asprintf(err, "avahi_entry_group_new error: %s", avahi_strerror(avahi_client_errno(client)));
-    avahi_threaded_poll_unlock(threaded_poll);
     return;
   }
 
@@ -122,7 +120,6 @@ void addAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiClient *client,
   if (AVAHI_OK != error) {
     asprintf(err, "add avahi service failed: %s", avahi_strerror(error));
     avahi_entry_group_free(*group);
-    avahi_threaded_poll_unlock(threaded_poll);
     return;
   }
 
@@ -131,7 +128,6 @@ void addAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiClient *client,
   if (AVAHI_OK != error) {
     asprintf(err, "add avahi service subtype failed: %s", avahi_strerror(error));
     avahi_entry_group_free(*group);
-    avahi_threaded_poll_unlock(threaded_poll);
     return;
   }
 
@@ -139,17 +135,13 @@ void addAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiClient *client,
   if (AVAHI_OK != error) {
     asprintf(err, "add avahi service failed: %s", avahi_strerror(error));
     avahi_entry_group_free(*group);
-    avahi_threaded_poll_unlock(threaded_poll);
     return;
   }
-
-  avahi_threaded_poll_unlock(threaded_poll);
 }
 
 void updateAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *group,
     char *serviceName, char *ty, char *url, char *id, char *cs, char **err) {
   *err = NULL;
-  avahi_threaded_poll_lock(threaded_poll);
 
   char *y, *u, *i, *c;
   asprintf(&y, TY, ty);
@@ -166,26 +158,19 @@ void updateAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *group,
   free(c);
   if (AVAHI_OK != error) {
     asprintf(err, "update avahi service failed: %s", avahi_strerror(error));
-    avahi_threaded_poll_unlock(threaded_poll);
     return;
   }
-
-  avahi_threaded_poll_unlock(threaded_poll);
 }
 
 void removeAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *group,
     char **err) {
   *err = NULL;
-  avahi_threaded_poll_lock(threaded_poll);
 
   int error = avahi_entry_group_free(group);
   if (AVAHI_OK != error) {
     asprintf(err, "remove avahi group failed: %s", avahi_strerror(error));
-    avahi_threaded_poll_unlock(threaded_poll);
     return;
   }
-
-  avahi_threaded_poll_unlock(threaded_poll);
 }
 
 void stopAvahiClient(AvahiThreadedPoll *threaded_poll, AvahiClient *client) {

@@ -13,7 +13,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/lib"
 )
 
@@ -28,7 +27,7 @@ type Privet struct {
 	jc   jobCache
 
 	gcpBaseURL        string
-	getProximityToken func(string, string) (*cdd.ProximityToken, error)
+	getProximityToken func(string, string) ([]byte, error)
 	createTempFile    func() (*os.File, error)
 }
 
@@ -36,7 +35,7 @@ type Privet struct {
 //
 // getProximityToken should be GoogleCloudPrint.ProximityToken()
 // createTempFile should be cups.CreateTempFile()
-func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) (*cdd.ProximityToken, error), createTempFile func() (*os.File, error)) (*Privet, error) {
+func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) ([]byte, error), createTempFile func() (*os.File, error)) (*Privet, error) {
 	zc, err := newZeroconf(gcpBaseURL)
 	if err != nil {
 		return nil, err
@@ -60,7 +59,7 @@ func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) (*cdd.P
 
 // AddPrinter makes a printer available locally.
 func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func() (lib.Printer, bool)) error {
-	getProximityToken := func(user string) (*cdd.ProximityToken, error) { return p.getProximityToken(printer.GCPID, user) }
+	getProximityToken := func(user string) ([]byte, error) { return p.getProximityToken(printer.GCPID, user) }
 	api, err := newPrivetAPI(printer.GCPID, p.gcpBaseURL, p.xsrf, &p.jc, p.jobs, getPrinter, getProximityToken, p.createTempFile)
 	if err != nil {
 		return err
@@ -88,10 +87,6 @@ func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func() (lib.Printer,
 // UpdatePrinter updates a printer's TXT mDNS record.
 func (p *Privet) UpdatePrinter(diff *lib.PrinterDiff) {
 	// API never needs to be updated
-	// Only update zeroconf when the ty field (lib.Printer.DefaultDisplayName) changes.
-	if !diff.DefaultDisplayNameChanged {
-		return
-	}
 
 	online := false
 	if diff.Printer.GCPID != "" {

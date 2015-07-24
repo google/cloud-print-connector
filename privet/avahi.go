@@ -101,6 +101,9 @@ func (z *zeroconf) addPrinter(gcpID, name string, port uint16, ty, url, id strin
 		}
 		defer C.free(unsafe.Pointer(o))
 
+		C.avahi_threaded_poll_lock(z.threadedPoll)
+		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
+
 		var errstr *C.char
 		C.addAvahiGroup(z.threadedPoll, z.client, &r.group, n, C.ushort(port), y, u, i, o, &errstr)
 		if errstr != nil {
@@ -148,6 +151,9 @@ func (z *zeroconf) updatePrinterTXT(gcpID, ty, url, id string, online bool) erro
 		}
 		defer C.free(unsafe.Pointer(o))
 
+		C.avahi_threaded_poll_lock(z.threadedPoll)
+		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
+
 		var errstr *C.char
 		C.updateAvahiGroup(z.threadedPoll, r.group, n, y, u, i, o, &errstr)
 		if errstr != nil {
@@ -171,6 +177,9 @@ func (z *zeroconf) removePrinter(gcpID string) error {
 	}
 
 	if z.state == C.AVAHI_CLIENT_S_RUNNING && r.group != nil {
+		C.avahi_threaded_poll_lock(z.threadedPoll)
+		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
+
 		var errstr *C.char
 		C.removeAvahiGroup(z.threadedPoll, r.group, &errstr)
 		if errstr != nil {

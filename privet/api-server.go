@@ -46,14 +46,14 @@ type privetAPI struct {
 	jobs       chan<- *lib.Job
 
 	getPrinter        func() (lib.Printer, bool)
-	getProximityToken func(string) (*cdd.ProximityToken, error)
+	getProximityToken func(string) ([]byte, error)
 	createTempFile    func() (*os.File, error)
 
 	listener  *quittableListener
 	startTime time.Time
 }
 
-func newPrivetAPI(gcpID, gcpBaseURL string, xsrf xsrfSecret, jc *jobCache, jobs chan<- *lib.Job, getPrinter func() (lib.Printer, bool), getProximityToken func(string) (*cdd.ProximityToken, error), createTempFile func() (*os.File, error)) (*privetAPI, error) {
+func newPrivetAPI(gcpID, gcpBaseURL string, xsrf xsrfSecret, jc *jobCache, jobs chan<- *lib.Job, getPrinter func() (lib.Printer, bool), getProximityToken func(string) ([]byte, error), createTempFile func() (*os.File, error)) (*privetAPI, error) {
 	l, err := newQuittableListener()
 	if err != nil {
 		return nil, err
@@ -200,21 +200,18 @@ func (api *privetAPI) accesstoken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user := r.Form.Get("user")
-	proximityToken, err := api.getProximityToken(user)
+	if len(user) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	rawResponse, err := api.getProximityToken(user)
 	if err != nil {
 		glog.Errorf("Failed to get proximity token: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	j, err := json.MarshalIndent(proximityToken, "", "  ")
-	if err != nil {
-		glog.Errorf("Failed to marshal proximity token: %s", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	w.Write(j)
+	w.Write(rawResponse)
 }
 
 func (api *privetAPI) capabilities(w http.ResponseWriter, r *http.Request) {
@@ -355,6 +352,10 @@ func (api *privetAPI) jobstate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jobID := r.Form.Get("job_id")
+	if len(jobID) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	jobState, exists := api.jc.jobState(jobID)
 	if !exists {
 		w.WriteHeader(http.StatusBadRequest)
