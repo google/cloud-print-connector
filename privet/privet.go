@@ -36,7 +36,7 @@ type Privet struct {
 // getProximityToken should be GoogleCloudPrint.ProximityToken()
 // createTempFile should be cups.CreateTempFile()
 func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) ([]byte, error), createTempFile func() (*os.File, error)) (*Privet, error) {
-	zc, err := newZeroconf(gcpBaseURL)
+	zc, err := newZeroconf()
 	if err != nil {
 		return nil, err
 	}

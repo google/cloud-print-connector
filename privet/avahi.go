@@ -45,7 +45,7 @@ type zeroconf struct {
 // Keep the only instance in a global (package) var for C event handling.
 var instance *zeroconf
 
-func newZeroconf(gcpBaseURL string) (*zeroconf, error) {
+func newZeroconf() (*zeroconf, error) {
 	z := zeroconf{
 		state:    C.AVAHI_CLIENT_CONNECTING,
 		printers: make(map[string]record),
@@ -119,7 +119,6 @@ func (z *zeroconf) addPrinter(gcpID, name string, port uint16, ty, url, id strin
 	return nil
 }
 
-// TODO TXT fields should be a map
 func (z *zeroconf) updatePrinterTXT(gcpID, ty, url, id string, online bool) error {
 	z.spMutex.Lock()
 	defer z.spMutex.Unlock()

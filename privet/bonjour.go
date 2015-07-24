@@ -13,18 +13,39 @@ package privet
 import "C"
 import (
 	"errors"
+	"fmt"
+	"sync"
 	"unsafe"
 
 	"github.com/golang/glog"
 )
 
+// TODO: How to add the _printer subtype?
+const serviceType = "_privet._tcp"
+
 type zeroconf struct {
-	service C.CFNetServiceRef
+	printers map[string]C.CFNetServiceRef
+	pMutex   sync.RWMutex // Protects printers.
+	q        chan struct{}
 }
 
-// NewZeroconf starts a new Bonjour service for a printer shared via Privet.
-// TODO: Change ty, url, id, online params to TXT map.
-func newZeroconf(name, serviceType string, port uint16, ty, url, id string, online bool) (*zeroconf, error) {
+// NewZeroconf manages Bonjour services for printers shared via Privet.
+func newZeroconf() (*zeroconf, error) {
+	z := zeroconf{
+		printers: make(map[string]C.CFNetServiceRef),
+		q:        make(chan struct{}),
+	}
+	return &z, nil
+}
+
+func (z *zeroconf) addPrinter(gcpID, name string, port uint16, ty, url, id string, online bool) error {
+	z.pMutex.RLock()
+	if _, exists := z.printers[gcpID]; exists {
+		z.pMutex.RUnlock()
+		return fmt.Errorf("Bonjour already has printer %s", gcpID)
+	}
+	z.pMutex.RUnlock()
+
 	n := C.CString(name)
 	defer C.free(unsafe.Pointer(n))
 	t := C.CString(serviceType)
@@ -47,14 +68,18 @@ func newZeroconf(name, serviceType string, port uint16, ty, url, id string, onli
 	service := C.startBonjour(n, t, C.ushort(port), y, u, i, o, &errstr)
 	if errstr != nil {
 		defer C.free(unsafe.Pointer(errstr))
-		return nil, errors.New(C.GoString(errstr))
+		return errors.New(C.GoString(errstr))
 	}
 
-	return &zeroconf{service}, nil
+	z.pMutex.Lock()
+	defer z.pMutex.Unlock()
+
+	z.printers[gcpID] = service
+	return nil
 }
 
-// UpdateTXT updates the advertised TXT record.
-func (b *zeroconf) updateTXT(ty, url, id string, online bool) {
+// updatePrinterTXT updates the advertised TXT record.
+func (z *zeroconf) updatePrinterTXT(gcpID, ty, url, id string, online bool) error {
 	y := C.CString(ty)
 	defer C.free(unsafe.Pointer(y))
 	u := C.CString(url)
@@ -69,11 +94,38 @@ func (b *zeroconf) updateTXT(ty, url, id string, online bool) {
 	}
 	defer C.free(unsafe.Pointer(o))
 
-	C.updateBonjour(b.service, y, u, i, o)
+	z.pMutex.RLock()
+	defer z.pMutex.RUnlock()
+
+	if service, exists := z.printers[gcpID]; exists {
+		C.updateBonjour(service, y, u, i, o)
+	} else {
+		return fmt.Errorf("Bonjour can't update printer %s that hasn't been added", gcpID)
+	}
+	return nil
 }
 
-func (b *zeroconf) quit() {
-	C.stopBonjour(b.service)
+func (z *zeroconf) removePrinter(gcpID string) error {
+	z.pMutex.Lock()
+	defer z.pMutex.Unlock()
+
+	if service, exists := z.printers[gcpID]; exists {
+		C.stopBonjour(service)
+		delete(z.printers, gcpID)
+	} else {
+		return fmt.Errorf("Bonjour can't remove printer %s that hasn't been added", gcpID)
+	}
+	return nil
+}
+
+func (z *zeroconf) quit() {
+	z.pMutex.Lock()
+	defer z.pMutex.Unlock()
+
+	for gcpID, service := range z.printers {
+		C.stopBonjour(service)
+		delete(z.printers, gcpID)
+	}
 }
 
 //export logBonjourError
