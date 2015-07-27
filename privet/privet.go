@@ -9,7 +9,6 @@ https://developers.google.com/open-source/licenses/bsd
 package privet
 
 import (
-	"fmt"
 	"os"
 	"sync"
 
@@ -27,7 +26,7 @@ type Privet struct {
 	jc   jobCache
 
 	gcpBaseURL        string
-	getProximityToken func(string, string) ([]byte, error)
+	getProximityToken func(string, string) ([]byte, int, error)
 	createTempFile    func() (*os.File, error)
 }
 
@@ -35,7 +34,7 @@ type Privet struct {
 //
 // getProximityToken should be GoogleCloudPrint.ProximityToken()
 // createTempFile should be cups.CreateTempFile()
-func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) ([]byte, error), createTempFile func() (*os.File, error)) (*Privet, error) {
+func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*Privet, error) {
 	zc, err := newZeroconf()
 	if err != nil {
 		return nil, err
@@ -59,7 +58,7 @@ func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) ([]byte
 
 // AddPrinter makes a printer available locally.
 func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func() (lib.Printer, bool)) error {
-	getProximityToken := func(user string) ([]byte, error) { return p.getProximityToken(printer.GCPID, user) }
+	getProximityToken := func(user string) ([]byte, int, error) { return p.getProximityToken(printer.GCPID, user) }
 	api, err := newPrivetAPI(printer.GCPID, p.gcpBaseURL, p.xsrf, &p.jc, p.jobs, getPrinter, getProximityToken, p.createTempFile)
 	if err != nil {
 		return err
@@ -85,29 +84,27 @@ func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func() (lib.Printer,
 }
 
 // UpdatePrinter updates a printer's TXT mDNS record.
-func (p *Privet) UpdatePrinter(diff *lib.PrinterDiff) {
+func (p *Privet) UpdatePrinter(diff *lib.PrinterDiff) error {
 	// API never needs to be updated
 
 	online := false
 	if diff.Printer.GCPID != "" {
 		online = true
 	}
-	// TODO handle returned error
-	p.zc.updatePrinterTXT(diff.Printer.GCPID, diff.Printer.DefaultDisplayName, p.gcpBaseURL, diff.Printer.GCPID, online)
+	return p.zc.updatePrinterTXT(diff.Printer.GCPID, diff.Printer.DefaultDisplayName, p.gcpBaseURL, diff.Printer.GCPID, online)
 }
 
 // DeletePrinter removes a printer from Privet.
-func (p *Privet) DeletePrinter(gcpID string) {
-	fmt.Println("called DeletePrinter", gcpID)
+func (p *Privet) DeletePrinter(gcpID string) error {
 	p.apisMutex.Lock()
 	defer p.apisMutex.Unlock()
 
-	// TODO handle returned error
-	p.zc.removePrinter(gcpID)
+	err := p.zc.removePrinter(gcpID)
 	if api, ok := p.apis[gcpID]; ok {
 		api.quit()
 		delete(p.apis, gcpID)
 	}
+	return err
 }
 
 // Jobs returns a channel that emits new print jobs.

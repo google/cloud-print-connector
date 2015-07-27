@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -26,9 +27,8 @@ import (
 )
 
 var (
-	missingPrivetToken = []byte("Missing X-Privet-Token header")
-	closed             = errors.New("closed")
-	supportedAPIs      = []string{
+	closed        = errors.New("closed")
+	supportedAPIs = []string{
 		"/privet/accesstoken",
 		"/privet/capabilities",
 		"/privet/printer/createjob",
@@ -37,7 +37,31 @@ var (
 	}
 )
 
-// TODO: return proper errors per GCP Privet docs
+type privetError struct {
+	Error          string `json:"error"`
+	Description    string `json:"description,omitempty"`
+	ServerAPI      string `json:"server_api,omitempty"`
+	ServerCode     int    `json:"server_code,omitempty"`
+	ServerHTTPCode int    `json:"server_http_code,omitempty"`
+	Timeout        int    `json:"timeout,omitempty"`
+}
+
+func writeError(w http.ResponseWriter, e, description string) {
+	pe := privetError{
+		Error:       e,
+		Description: description,
+	}.json()
+	w.Write(pe)
+}
+
+func (e privetError) json() []byte {
+	marshalled, err := json.MarshalIndent(e, "", "  ")
+	if err != nil {
+		glog.Errorf("Failed to marshal Privet Error: %s", err)
+	}
+	return marshalled
+}
+
 type privetAPI struct {
 	gcpID      string
 	gcpBaseURL string
@@ -46,14 +70,14 @@ type privetAPI struct {
 	jobs       chan<- *lib.Job
 
 	getPrinter        func() (lib.Printer, bool)
-	getProximityToken func(string) ([]byte, error)
+	getProximityToken func(string) ([]byte, int, error)
 	createTempFile    func() (*os.File, error)
 
 	listener  *quittableListener
 	startTime time.Time
 }
 
-func newPrivetAPI(gcpID, gcpBaseURL string, xsrf xsrfSecret, jc *jobCache, jobs chan<- *lib.Job, getPrinter func() (lib.Printer, bool), getProximityToken func(string) ([]byte, error), createTempFile func() (*os.File, error)) (*privetAPI, error) {
+func newPrivetAPI(gcpID, gcpBaseURL string, xsrf xsrfSecret, jc *jobCache, jobs chan<- *lib.Job, getPrinter func() (lib.Printer, bool), getProximityToken func(string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*privetAPI, error) {
 	l, err := newQuittableListener()
 	if err != nil {
 		return nil, err
@@ -129,13 +153,14 @@ func (api *privetAPI) info(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, exists := r.Header["X-Privet-Token"]; !exists {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write(missingPrivetToken)
+		writeError(w, "invalid_x_privet_token",
+			"X-Privet-Token request header is missing or invalid")
 		return
 	}
 
 	printer, exists := api.getPrinter()
 	if !exists {
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -184,7 +209,8 @@ func (api *privetAPI) checkRequest(w http.ResponseWriter, r *http.Request, metho
 	}
 	if token, exists := r.Header["X-Privet-Token"]; !exists || len(token) != 1 || !api.xsrf.isTokenValid(token[0]) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write(missingPrivetToken)
+		writeError(w, "invalid_x_privet_token",
+			"X-Privet-Token request header is missing or invalid")
 		return false
 	}
 	if err := r.ParseForm(); err != nil {
@@ -201,17 +227,57 @@ func (api *privetAPI) accesstoken(w http.ResponseWriter, r *http.Request) {
 
 	user := r.Form.Get("user")
 	if len(user) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	rawResponse, err := api.getProximityToken(user)
-	if err != nil {
-		glog.Errorf("Failed to get proximity token: %s", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		writeError(w, "invalid_params", "user parameter expected")
 		return
 	}
 
-	w.Write(rawResponse)
+	responseBody, httpStatusCode, err := api.getProximityToken(user)
+	if err != nil {
+		glog.Errorf("Failed to get proximity token: %s", err)
+	}
+
+	if responseBody == nil || len(responseBody) == 0 {
+		glog.Warning("Cloud returned empty response body")
+		writeError(w, "server_error", "Check connector logs")
+		return
+	}
+
+	var response struct {
+		Success        bool                   `json:"success"`
+		Message        string                 `json:"message"`
+		ErrorCode      int                    `json:"errorCode"`
+		ProximityToken map[string]interface{} `json:"proximity_token"`
+	}
+	if err = json.Unmarshal(responseBody, &response); err != nil {
+		glog.Errorf("Failed to unmarshal ticket from cloud: %s", err)
+		writeError(w, "server_error", "Check connector logs")
+		return
+	}
+
+	if response.Success {
+		token, err := json.MarshalIndent(response.ProximityToken, "", "  ")
+		if err != nil {
+			glog.Errorf("Failed to marshal something that was just unmarshalled: %s", err)
+			writeError(w, "server_error", "Check connector logs")
+		} else {
+			w.Write(token)
+		}
+		return
+	}
+
+	if response.ErrorCode != 0 {
+		e := privetError{
+			Error:          "server_error",
+			Description:    response.Message,
+			ServerAPI:      "/proximitytoken",
+			ServerCode:     response.ErrorCode,
+			ServerHTTPCode: httpStatusCode,
+		}.json()
+		w.Write(e)
+		return
+	}
+
+	writeError(w, "server_error", "Check connector logs")
 }
 
 func (api *privetAPI) capabilities(w http.ResponseWriter, r *http.Request) {
@@ -221,7 +287,7 @@ func (api *privetAPI) capabilities(w http.ResponseWriter, r *http.Request) {
 
 	printer, exists := api.getPrinter()
 	if !exists {
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -233,10 +299,9 @@ func (api *privetAPI) capabilities(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		glog.Errorf("Failed to marshal capabilities response: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		return
+	} else {
+		w.Write(j)
 	}
-
-	w.Write(j)
 }
 
 func (api *privetAPI) createjob(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +309,31 @@ func (api *privetAPI) createjob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobID, expiresIn := api.jc.createJob(api.gcpID, nil)
+	requestBody, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		glog.Warningf("Failed to read request body: %s", err)
+		writeError(w, "invalid_ticket", "Check connector logs")
+		return
+	}
+
+	var ticket cdd.CloudJobTicket
+	if err = json.Unmarshal(requestBody, ticket); err != nil {
+		glog.Warningf("Failed to read request body: %s", err)
+		writeError(w, "invalid_ticket", "Check connector logs")
+		return
+	}
+
+	printer, exists := api.getPrinter()
+	if !exists {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if printer.State.State == cdd.CloudDeviceStateStopped {
+		writeError(w, "printer_error", "Printer is stopped")
+		return
+	}
+
+	jobID, expiresIn := api.jc.createJob(api.gcpID, &ticket)
 	var response struct {
 		JobID     string `json:"job_id"`
 		ExpiresIn int32  `json:"expires_in"`
@@ -253,12 +342,12 @@ func (api *privetAPI) createjob(w http.ResponseWriter, r *http.Request) {
 	response.ExpiresIn = expiresIn
 	j, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
-		glog.Errorf("Failed to createJob response: %s", err)
+		api.jc.deleteJob(jobID)
+		glog.Errorf("Failed to marrshal createJob response: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		return
+	} else {
+		w.Write(j)
 	}
-
-	w.Write(j)
 }
 
 func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
@@ -272,26 +361,36 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	defer file.Close()
 
 	jobSize, err := io.Copy(file, r.Body)
 	if err != nil {
 		glog.Errorf("Failed to copy new print job file: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		file.Close()
 		os.Remove(file.Name())
 		return
 	}
 	if length, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64); err != nil || length != jobSize {
-		w.WriteHeader(http.StatusBadRequest)
-		file.Close()
+		writeError(w, "invalid_params", "Content-Length header doesn't match length of content")
 		os.Remove(file.Name())
 		return
 	}
 
 	jobType := r.Header.Get("Content-Type")
 	if jobType == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		file.Close()
+		writeError(w, "invalid_document_type", "Content-Type header is missing")
+		os.Remove(file.Name())
+		return
+	}
+
+	printer, exists := api.getPrinter()
+	if !exists {
+		w.WriteHeader(http.StatusInternalServerError)
+		os.Remove(file.Name())
+		return
+	}
+	if printer.State.State == cdd.CloudDeviceStateStopped {
+		writeError(w, "printer_error", "Printer is stopped")
 		os.Remove(file.Name())
 		return
 	}
@@ -306,8 +405,11 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 	} else {
 		var ok bool
 		if expiresIn, ticket, ok = api.jc.getJobExpiresIn(jobID); !ok {
-			w.WriteHeader(http.StatusBadRequest)
-			file.Close()
+			pe := privetError{
+				Error:   "invalid_print_job",
+				Timeout: 5,
+			}.json()
+			w.Write(pe)
 			os.Remove(file.Name())
 			return
 		}
@@ -352,13 +454,9 @@ func (api *privetAPI) jobstate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jobID := r.Form.Get("job_id")
-	if len(jobID) == 0 {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
 	jobState, exists := api.jc.jobState(jobID)
 	if !exists {
-		w.WriteHeader(http.StatusBadRequest)
+		writeError(w, "invalid_print_job", "")
 		return
 	}
 

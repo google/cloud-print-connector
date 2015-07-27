@@ -21,7 +21,9 @@ import (
 )
 
 type record struct {
-	name   string
+	// name is the name of the service, which must live on the heap so that the
+	// C event handler can see it.
+	name   *C.char
 	port   uint16
 	ty     string
 	url    string
@@ -69,7 +71,7 @@ func newZeroconf() (*zeroconf, error) {
 
 func (z *zeroconf) addPrinter(gcpID, name string, port uint16, ty, url, id string, online bool) error {
 	r := record{
-		name:   name,
+		name:   C.CString(name),
 		port:   port,
 		ty:     ty,
 		url:    url,
@@ -84,9 +86,6 @@ func (z *zeroconf) addPrinter(gcpID, name string, port uint16, ty, url, id strin
 		return fmt.Errorf("printer %s was already added to Avahi publishing", gcpID)
 	}
 	if z.state == C.AVAHI_CLIENT_S_RUNNING {
-		fmt.Println("avahi client running")
-		n := C.CString(name)
-		defer C.free(unsafe.Pointer(n))
 		y := C.CString(ty)
 		defer C.free(unsafe.Pointer(y))
 		u := C.CString(url)
@@ -105,14 +104,12 @@ func (z *zeroconf) addPrinter(gcpID, name string, port uint16, ty, url, id strin
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
 		var errstr *C.char
-		C.addAvahiGroup(z.threadedPoll, z.client, &r.group, n, C.ushort(port), y, u, i, o, &errstr)
+		C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(port), y, u, i, o, &errstr)
 		if errstr != nil {
 			err := errors.New(C.GoString(errstr))
 			C.free(unsafe.Pointer(errstr))
 			return err
 		}
-	} else {
-		fmt.Println("avahi client not running")
 	}
 
 	z.printers[gcpID] = r
@@ -134,8 +131,6 @@ func (z *zeroconf) updatePrinterTXT(gcpID, ty, url, id string, online bool) erro
 	r.online = online
 
 	if z.state == C.AVAHI_CLIENT_S_RUNNING && r.group != nil {
-		n := C.CString(r.name)
-		defer C.free(unsafe.Pointer(n))
 		y := C.CString(ty)
 		defer C.free(unsafe.Pointer(y))
 		u := C.CString(url)
@@ -154,7 +149,7 @@ func (z *zeroconf) updatePrinterTXT(gcpID, ty, url, id string, online bool) erro
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
 		var errstr *C.char
-		C.updateAvahiGroup(z.threadedPoll, r.group, n, y, u, i, o, &errstr)
+		C.updateAvahiGroup(z.threadedPoll, r.group, r.name, y, u, i, o, &errstr)
 		if errstr != nil {
 			err := errors.New(C.GoString(errstr))
 			C.free(unsafe.Pointer(errstr))
@@ -187,6 +182,8 @@ func (z *zeroconf) removePrinter(gcpID string) error {
 			return err
 		}
 	}
+
+	C.free(unsafe.Pointer(r.name))
 
 	delete(z.printers, gcpID)
 	return nil
@@ -227,7 +224,7 @@ func (z *zeroconf) restartAndQuit() {
 // handleClientStateChange makes clean transitions as the connection with
 // avahi-daemon changes.
 //export handleClientStateChange
-func handleClientStateChange(newState C.AvahiClientState) {
+func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState, userdata unsafe.Pointer) {
 	z := instance
 	z.spMutex.Lock()
 	defer z.spMutex.Unlock()
@@ -258,8 +255,6 @@ func handleClientStateChange(newState C.AvahiClientState) {
 	if z.state != C.AVAHI_CLIENT_S_RUNNING && newState == C.AVAHI_CLIENT_S_RUNNING {
 		glog.Info("Avahi client running.")
 		for gcpID, r := range z.printers {
-			n := C.CString(r.name)
-			defer C.free(unsafe.Pointer(n))
 			y := C.CString(r.ty)
 			defer C.free(unsafe.Pointer(y))
 			u := C.CString(r.url)
@@ -275,7 +270,7 @@ func handleClientStateChange(newState C.AvahiClientState) {
 			defer C.free(unsafe.Pointer(o))
 
 			var errstr *C.char
-			C.addAvahiGroup(z.threadedPoll, z.client, &r.group, n, C.ushort(r.port), y, u, i, o, &errstr)
+			C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(r.port), y, u, i, o, &errstr)
 			if errstr != nil {
 				err := errors.New(C.GoString(errstr))
 				C.free(unsafe.Pointer(errstr))
@@ -292,4 +287,14 @@ func handleClientStateChange(newState C.AvahiClientState) {
 	}
 
 	z.state = newState
+}
+
+//export handleGroupStateChange
+func handleGroupStateChange(group *C.AvahiEntryGroup, state C.AvahiEntryGroupState, name unsafe.Pointer) {
+	switch state {
+	case C.AVAHI_ENTRY_GROUP_COLLISION:
+		glog.Warningf("Avahil failed to register %s due to a naming collision", C.GoString((*C.char)(name)))
+	case C.AVAHI_ENTRY_GROUP_FAILURE:
+		glog.Warningf("Avahi failed to register %s, don't know why", C.GoString((*C.char)(name)))
+	}
 }

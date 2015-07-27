@@ -33,6 +33,8 @@ type entry struct {
 	jobName string
 	jobType string
 	jobSize int64
+
+	timer *time.Timer
 }
 
 func newEntry(jobID, gcpPrinterID string, ticket *cdd.CloudJobTicket) *entry {
@@ -91,10 +93,10 @@ func (jc *jobCache) createJob(gcpPrinterID string, ticket *cdd.CloudJobTicket) (
 	jc.entriesMutex.Lock()
 	defer jc.entriesMutex.Unlock()
 
-	jc.entries[jobID] = *entry
-	time.AfterFunc(jobLifetime, func() {
+	entry.timer = time.AfterFunc(jobLifetime, func() {
 		jc.deleteJob(jobID)
 	})
+	jc.entries[jobID] = *entry
 
 	return entry.jobID, int32(jobLifetime.Seconds())
 }
@@ -128,6 +130,11 @@ func (jc *jobCache) submitJob(jobID, jobName, jobType string, jobSize int64) int
 func (jc *jobCache) deleteJob(jobID string) {
 	jc.entriesMutex.Lock()
 	defer jc.entriesMutex.Unlock()
+
+	if entry, exists := jc.entries[jobID]; exists {
+		// In case this job was deleted early, cancel the timer.
+		entry.timer.Stop()
+	}
 
 	delete(jc.entries, jobID)
 }

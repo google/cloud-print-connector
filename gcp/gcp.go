@@ -498,27 +498,13 @@ func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (*cdd.CloudJobTicket, error
 // ProximityToken gets a proximity token for Privet users to access a printer
 // through the cloud.
 //
-// Returned byte array is marshalled JSON to preserve any/all returned fields.
-func (gcp *GoogleCloudPrint) ProximityToken(gcpID, user string) ([]byte, error) {
+// Returns byte array of raw JSON to preserve any/all returned fields
+// and returned HTTP status code.
+func (gcp *GoogleCloudPrint) ProximityToken(gcpID, user string) ([]byte, int, error) {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
 	form.Set("user", user)
 
-	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"proximitytoken", form)
-	if err != nil {
-		return nil, err
-	}
-
-	var response struct {
-		ProximityToken map[string]interface{} `json:"proximity_token"`
-	}
-	if err = json.Unmarshal(responseBody, &response); err != nil {
-		return nil, err
-	}
-	token, err := json.MarshalIndent(response.ProximityToken, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-
-	return token, nil
+	responseBody, _, httpStatus, err := postWithRetry(gcp.robotClient, gcp.baseURL+"proximitytoken", form)
+	return responseBody, httpStatus, err
 }
