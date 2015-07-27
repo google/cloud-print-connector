@@ -124,7 +124,7 @@ func (cc *cupsCore) getPrinters(attributes **C.char, attrSize C.int) (*C.ipp_t, 
 	C.ippAddStrings(request, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES,
 		attrSize, nil, attributes)
 
-	response, err := cc.doRequestWithRetry(request,
+	response, err := cc.doRequest(request,
 		[]C.ipp_status_t{C.IPP_STATUS_OK, C.IPP_STATUS_ERROR_NOT_FOUND})
 	if err != nil {
 		err = fmt.Errorf("Failed to call cupsDoRequest() [IPP_OP_CUPS_GET_PRINTERS]: %s", err)
@@ -218,7 +218,7 @@ func (cc *cupsCore) getJobAttributes(jobID C.int, attributes **C.char) (*C.ipp_t
 	C.ippAddStrings(request, C.IPP_TAG_OPERATION, C.IPP_TAG_KEYWORD, C.REQUESTED_ATTRIBUTES,
 		C.int(0), nil, attributes)
 
-	response, err := cc.doRequestWithRetry(request, []C.ipp_status_t{C.IPP_STATUS_OK})
+	response, err := cc.doRequest(request, []C.ipp_status_t{C.IPP_STATUS_OK})
 	if err != nil {
 		err = fmt.Errorf("Failed to call cupsDoRequest() [IPP_OP_GET_JOB_ATTRIBUTES]: %s", err)
 		return nil, err
@@ -242,16 +242,6 @@ func createJobURI(jobID C.int) (*C.char, error) {
 		uri, C.int(length), C.IPP, nil, C.cupsServer(), C.ippPort(), resource)
 
 	return uri, nil
-}
-
-// doRequestWithRetry calls doRequest and retries once on failure.
-func (cc *cupsCore) doRequestWithRetry(request *C.ipp_t, acceptableStatusCodes []C.ipp_status_t) (*C.ipp_t, error) {
-	response, err := cc.doRequest(request, acceptableStatusCodes)
-	if err == nil {
-		return response, err
-	}
-
-	return cc.doRequest(request, acceptableStatusCodes)
 }
 
 // doRequest calls cupsDoRequest().
