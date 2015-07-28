@@ -295,8 +295,6 @@ func (pm *PrinterManager) listenXMPPNotifications() {
 				switch notification.Type {
 				case xmpp.PrinterNewJobs:
 					go pm.handlePrinterNewJobs(notification.GCPID)
-				case xmpp.PrinterDelete:
-					glog.Errorf("Received XMPP request to delete %s but deleting printers is not supported yet", notification.GCPID)
 				}
 			}
 		}
