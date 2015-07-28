@@ -1,5 +1,5 @@
 # Google Cloud Print CUPS Connector
-The Google Cloud Print (aka GCP) CUPS Connector shares CUPS printers with GCP.
+The Google Cloud Print (aka GCP) CUPS Connector shares CUPS printers with users of Google Cloud Print.
 
 # License
 Copyright 2015 Google Inc. All rights reserved.
@@ -9,19 +9,39 @@ license that can be found in the LICENSE file or at
 https://developers.google.com/open-source/licenses/bsd
 
 # Install
-Get a recent version of the Go compiler: https://golang.org/doc/install
 
-We use a little bit of cgo to use C libraries from Go code. Debian, Ubuntu, etc:
+## Get Ready
+Get the most recent version of the Go compiler: https://golang.org/doc/install
+
+The CUPS Connector also uses some C libraries. Get the necessary build tools and libraries for your platform:
+
+#### Debian, Ubuntu, Raspberry Pi and friends
+Make sure you are running CUPS 1.7 or later. If using the distribution-bundled CUPS package, upgrade to Debian >= 8.0 jessie or Ubuntu >= 14.04 trusty.
+
+A special note to Raspbian users: Although 8.0 jessie isn't mentioned at raspbian.org, it is possible to upgrade: https://raspberrypi.stackexchange.com/questions/27858/upgrade-to-raspbian-jessie
+
+Ready? Install build tools and libraries:
 ```
-$ sudo apt-get install build-essential
+$ sudo apt-get install build-essential libcups2-dev libsnmp-dev
 ```
 
-You'll need the CUPS and Net-SNMP development libraries:
+#### OS X
+Install XCode: https://itunes.apple.com/us/app/xcode/id497799835
+
+Install the command line developer tools:
 ```
-$ sudo apt-get install libcups2-dev libsnmp-dev
+$ xcode-select --install
 ```
 
-Install the Connector:
+Accept the license agreement:
+```
+$ xcodebuild -license
+```
+
+#### Other platforms
+Any Linux distribution or *BSD flavor _should_ support the CUPS Connector. If you have trouble (or success!) with another platform, please open an issue so that we can integrate the feedback here.
+
+## Install the Connector
 ```
 $ go get github.com/google/cups-connector/connector
 $ go get github.com/google/cups-connector/connector-init
@@ -29,8 +49,17 @@ $ go get github.com/google/cups-connector/connector-monitor
 $ go get github.com/google/cups-connector/connector-util
 ```
 
-# Configure
-To create a basic config file called `cups-connector.config.json`, use
+These four binary executables will be installed in $GOPATH/bin.
+
+binary              | purpose
+------------------- | -------
+`connector`         | Runs for long periods of time, shares CUPS printers, processes print jobs.
+`connector-init`    | Handy tool to create a new config file.
+`connector-monitor` | Gathers various information about the running connector, reports results to stdout.
+`connector-util`    | Tool to upgrade a config file after a release, delete all printers, future tasks.
+
+## Configure the Connector
+To create a config file called `cups-connector.config.json`, run
 `connector-init`. The default config file looks something like this:
 
 ```
@@ -76,20 +105,43 @@ To create a basic config file called `cups-connector.config.json`, use
 }
 ```
 
-Finally, make sure that the socket directory (see `monitor_socket_filename` above),
+## Prepare monitor socket directory
+Make sure that the socket directory (see `monitor_socket_filename` above),
 exists and is writeable by the user that the connector will run as:
 ```
 $ sudo mkdir /var/run/cups-connector
 $ sudo chown $USER /var/run/cups-connector
 ```
 
-## Configure CUPS client:server
-When deciding which CUPS server to connect to, the connector uses the standard
-CUPS client library, specifically the
-[cupsServer()](https://www.cups.org/documentation.php/doc-1.7/api-cups.html#cupsServer)
+Of course, you'll have to do this every time the platform boots, because
+`/var/run` isn't persistent. If you prefer to keep things simple, then forget
+what I said before about `mkdir` and `chown`, and change the config file value for
+`monitor_socket_filename` to `/tmp/cups-connector-monitor.sock`.
+
+## Configure CUPS client => server conversation
+Your platform is probably configured to talk to the CUPS server on localhost,
+and that's probably what you want. If not, this next part is for you.
+
+When deciding which CUPS server to connect to, the connector asks the CUPS client
+library, specifically the
+[cupsServer()](https://www.cups.org/documentation.php/doc-2.0/api-cups.html#cupsServer)
 and
-[cupsEncryption()](https://www.cups.org/documentation.php/doc-1.7/api-cups.html#cupsEncryption)
+[cupsEncryption()](https://www.cups.org/documentation.php/doc-2.0/api-cups.html#cupsEncryption)
 functions, which return values found in:
 - CUPS_SERVER and CUPS_ENCRYPTION environment variables
 - ~/.cups/client.conf
 - /etc/cups/client.conf
+
+## Start the Connector automatically
+The simplest way to start the connector on boot is to edit `/etc/rc.local`.
+Add the following lines before `exit 0`. The example user is "pi", which
+you should change to your own username:
+
+```
+# CUPS Connector:
+#   su ... pi: run as user "pi"
+#   --login:   environment similar to "pi" instead of "root"
+#   --command: run this thing
+#   &:         run the command "in the background"
+su --login --command "go/bin/connector" pi &
+```
