@@ -10,7 +10,7 @@ https://developers.google.com/open-source/licenses/bsd
 
 # Install
 
-## Get Ready
+### Get Ready
 Get the most recent version of the Go compiler: https://golang.org/doc/install
 
 The CUPS Connector also uses some C libraries. Get the necessary build tools and libraries for your platform:
@@ -41,7 +41,7 @@ $ xcodebuild -license
 #### Other platforms
 Any Linux distribution or *BSD flavor _should_ support the CUPS Connector. If you have trouble (or success!) with another platform, please open an issue so that we can integrate the feedback here.
 
-## Install the Connector
+### Install the Connector
 ```
 $ go get github.com/google/cups-connector/connector
 $ go get github.com/google/cups-connector/connector-init
@@ -58,7 +58,7 @@ binary              | purpose
 `connector-monitor` | Gathers various information about the running connector, reports results to stdout.
 `connector-util`    | Tool to upgrade a config file after a release, delete all printers, future tasks.
 
-## Configure the Connector
+### Configure the Connector
 To create a config file called `cups-connector.config.json`, run
 `connector-init`. The default config file looks something like this:
 
@@ -105,7 +105,7 @@ To create a config file called `cups-connector.config.json`, run
 }
 ```
 
-## Prepare monitor socket directory
+### Prepare monitor socket directory
 Make sure that the socket directory (see `monitor_socket_filename` above),
 exists and is writeable by the user that the connector will run as:
 ```
@@ -118,7 +118,7 @@ Of course, you'll have to do this every time the platform boots, because
 what I said before about `mkdir` and `chown`, and change the config file value for
 `monitor_socket_filename` to `/tmp/cups-connector-monitor.sock`.
 
-## Configure CUPS client => server conversation
+### Configure CUPS client => server conversation
 Your platform is probably configured to talk to the CUPS server on localhost,
 and that's probably what you want. If not, this next part is for you.
 
@@ -132,7 +132,7 @@ functions, which return values found in:
 - ~/.cups/client.conf
 - /etc/cups/client.conf
 
-## Start the Connector automatically
+### Start the Connector automatically
 The simplest way to start the connector on boot is to edit `/etc/rc.local`.
 Add the following lines before `exit 0`. The example user is "pi", which
 you should change to your own username:
