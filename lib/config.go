@@ -117,6 +117,9 @@ type Config struct {
 
 	// Maximum quantity of open SNMP connections.
 	SNMPMaxConnections uint `json:"snmp_max_connections"`
+
+	// Enable local discovery and printing.
+	LocalPrintingEnable bool `json:"local_printing_enable"`
 }
 
 // DefaultConfig represents reasonable default values for Config fields.
@@ -158,6 +161,7 @@ var DefaultConfig = Config{
 	SNMPEnable:                   false,
 	SNMPCommunity:                "public",
 	SNMPMaxConnections:           100,
+	LocalPrintingEnable:          false,
 }
 
 // ConfigFromFile reads a Config object from the config file indicated by

@@ -105,13 +105,15 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, xmpp *xmpp.XM
 	}
 
 	// Initialize Privet printers.
-	for _, printer := range pm.gcpPrintersByGCPID.GetAll() {
-		getPrinter := func() (lib.Printer, bool) { return pm.gcpPrintersByGCPID.Get(printer.GCPID) }
-		err := pm.privet.AddPrinter(printer, getPrinter)
-		if err != nil {
-			glog.Warningf("Failed to register %s locally: %s", printer.Name, err)
-		} else {
-			glog.Infof("Registered %s locally", printer.Name)
+	if privet != nil {
+		for _, printer := range pm.gcpPrintersByGCPID.GetAll() {
+			getPrinter := func() (lib.Printer, bool) { return pm.gcpPrintersByGCPID.Get(printer.GCPID) }
+			err := privet.AddPrinter(printer, getPrinter)
+			if err != nil {
+				glog.Warningf("Failed to register %s locally: %s", printer.Name, err)
+			} else {
+				glog.Infof("Registered %s locally", printer.Name)
+			}
 		}
 	}
 
@@ -120,7 +122,11 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, xmpp *xmpp.XM
 		return nil, err
 	}
 	pm.syncPrintersPeriodically(ppi)
-	pm.listenNotifications(xmpp.Notifications(), privet.Jobs())
+	if privet == nil {
+		pm.listenNotifications(xmpp.Notifications(), make(chan *lib.Job))
+	} else {
+		pm.listenNotifications(xmpp.Notifications(), privet.Jobs())
+	}
 
 	for gcpID := range queuedJobsCount {
 		go pm.handleNewGCPJobs(gcpID)
@@ -275,7 +281,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 
 		diff.Printer.CUPSJobSemaphore = lib.NewSemaphore(pm.cupsQueueSize)
 
-		if !ignorePrivet {
+		if pm.privet != nil && !ignorePrivet {
 			getPrinter := func() (lib.Printer, bool) { return pm.gcpPrintersByGCPID.Get(diff.Printer.GCPID) }
 			err := pm.privet.AddPrinter(diff.Printer, getPrinter)
 			if err != nil {
@@ -295,7 +301,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 			glog.Infof("Updated %s in the cloud", diff.Printer.Name)
 		}
 
-		if !ignorePrivet && diff.DefaultDisplayNameChanged {
+		if pm.privet != nil && !ignorePrivet && diff.DefaultDisplayNameChanged {
 			err := pm.privet.UpdatePrinter(diff)
 			if err != nil {
 				glog.Warningf("Failed to update %s locally: %s", diff.Printer.Name, err)
@@ -315,7 +321,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		}
 		glog.Infof("Deleted %s in the cloud", diff.Printer.Name)
 
-		if !ignorePrivet {
+		if pm.privet != nil && !ignorePrivet {
 			err := pm.privet.DeletePrinter(diff.Printer.GCPID)
 			if err != nil {
 				glog.Warningf("Failed to delete %s locally: %s", diff.Printer.Name, err)

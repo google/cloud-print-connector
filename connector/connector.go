@@ -93,13 +93,16 @@ func main() {
 		defer snmpManager.Quit()
 	}
 
-	privet, err := privet.NewPrivet(config.GCPBaseURL, gcp.ProximityToken, createTempFile)
-	if err != nil {
-		glog.Fatal(err)
+	var priv *privet.Privet
+	if config.LocalPrintingEnable {
+		priv, err = privet.NewPrivet(config.GCPBaseURL, gcp.ProximityToken, createTempFile)
+		if err != nil {
+			glog.Fatal(err)
+		}
+		defer priv.Quit()
 	}
-	defer privet.Quit()
 
-	pm, err := manager.NewPrinterManager(cups, gcp, xmpp, privet, snmpManager, config.CUPSPrinterPollInterval,
+	pm, err := manager.NewPrinterManager(cups, gcp, xmpp, priv, snmpManager, config.CUPSPrinterPollInterval,
 		config.GCPMaxConcurrentDownloads, config.CUPSJobQueueSize, config.CUPSJobFullUsername,
 		config.CUPSIgnoreRawPrinters, config.ShareScope)
 	if err != nil {

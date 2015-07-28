@@ -33,6 +33,11 @@ type SNMPManager struct {
 
 // NewSNMPManager creates a new SNMP manager.
 func NewSNMPManager(community string, maxConnections uint) (*SNMPManager, error) {
+	if community == "" || maxConnections == 0 {
+		return nil, errors.New(
+			"SNMP values not set in config file; run connector-util -update-config-file")
+	}
+
 	C.initialize()
 	s := SNMPManager{
 		inUse:          lib.NewSemaphore(1),
