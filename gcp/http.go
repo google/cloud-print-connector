@@ -62,7 +62,7 @@ func newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, re
 // (response code != 200).
 func getWithRetry(hc *http.Client, url string) (*http.Response, error) {
 	response, err := get(hc, url)
-	if response != nil && response.StatusCode == 200 {
+	if response != nil && response.StatusCode == http.StatusOK {
 		return response, err
 	}
 
@@ -86,7 +86,7 @@ func get(hc *http.Client, url string) (*http.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("GET failure: %s", err)
 	}
-	if response.StatusCode != 200 {
+	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET HTTP-level failure: %s %s", url, response.Status)
 	}
 
@@ -97,7 +97,7 @@ func get(hc *http.Client, url string) (*http.Response, error) {
 // (response code != 200).
 func postWithRetry(hc *http.Client, url string, form url.Values) ([]byte, uint, int, error) {
 	responseBody, gcpErrorCode, httpStatusCode, err := post(hc, url, form)
-	if responseBody != nil && httpStatusCode == 200 {
+	if responseBody != nil && httpStatusCode == http.StatusOK {
 		return responseBody, gcpErrorCode, httpStatusCode, err
 	}
 
@@ -130,7 +130,7 @@ func post(hc *http.Client, url string, form url.Values) ([]byte, uint, int, erro
 		return nil, 0, response.StatusCode, err
 	}
 
-	if response.StatusCode != 200 {
+	if response.StatusCode != http.StatusOK {
 		return responseBody, 0, response.StatusCode, fmt.Errorf("/%s POST HTTP-level failure: %s", url, response.Status)
 	}
 

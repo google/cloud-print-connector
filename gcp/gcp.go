@@ -479,7 +479,7 @@ func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (*cdd.CloudJobTicket, error
 	responseBody, _, httpStatusCode, err := postWithRetry(gcp.robotClient, gcp.baseURL+"ticket", form)
 	// The /ticket API is different than others, because it only returns the
 	// standard GCP error information on success=false.
-	if httpStatusCode != 200 {
+	if httpStatusCode != http.StatusOK {
 		return nil, err
 	}
 

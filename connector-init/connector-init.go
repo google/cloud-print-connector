@@ -266,7 +266,7 @@ func initRobotAccount(userClient *http.Client) (string, string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if response.StatusCode != 200 {
+	if response.StatusCode != http.StatusOK {
 		log.Fatal("failed to initialize robot account: " + response.Status)
 	}
 
