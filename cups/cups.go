@@ -395,7 +395,13 @@ func ticketToOptions(ticket cdd.CloudJobTicket) map[string]string {
 		}
 	}
 	if ticket.Print.MediaSize != nil {
-		m["media"] = ticket.Print.MediaSize.VendorID
+		if ticket.Print.MediaSize.VendorID != "" {
+			m["media"] = ticket.Print.MediaSize.VendorID
+		} else {
+			widthPoints := micronsToPoints(ticket.Print.MediaSize.WidthMicrons)
+			heightPoints := micronsToPoints(ticket.Print.MediaSize.HeightMicrons)
+			m["media"] = fmt.Sprintf("Custom.%sx%s", widthPoints, heightPoints)
+		}
 	}
 	if ticket.Print.Collate != nil {
 		if ticket.Print.Collate.Collate {
