@@ -8,12 +8,6 @@ https://developers.google.com/open-source/licenses/bsd
 package cups
 
 /*
-#cgo LDFLAGS: -lcups
-#include <cups/cups.h>
-#include <stddef.h>     // size_t
-#include <stdlib.h>     // free, malloc
-#include <sys/socket.h> // AF_UNSPEC
-#include <time.h>       // time_t
 #include "cups.h"
 */
 import "C"
@@ -260,7 +254,7 @@ func (cc *cupsCore) doRequest(request *C.ipp_t, acceptableStatusCodes []C.ipp_st
 	if response == nil {
 		return nil, fmt.Errorf("cupsDoRequest failed: %d %s", int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 	}
-	statusCode := C.ippGetStatusCode(response)
+	statusCode := C.getIPPRequestStatusCode(response)
 	for _, sc := range acceptableStatusCodes {
 		if statusCode == sc {
 			return response, nil
