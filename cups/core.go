@@ -8,12 +8,6 @@ https://developers.google.com/open-source/licenses/bsd
 package cups
 
 /*
-#cgo LDFLAGS: -lcups
-#include <cups/cups.h>
-#include <stddef.h>     // size_t
-#include <stdlib.h>     // free, malloc
-#include <sys/socket.h> // AF_UNSPEC
-#include <time.h>       // time_t
 #include "cups.h"
 */
 import "C"

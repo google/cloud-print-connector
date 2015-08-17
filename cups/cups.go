@@ -9,8 +9,6 @@ package cups
 
 /*
 #cgo LDFLAGS: -lcups
-#include <cups/cups.h>
-#include <stdlib.h> // free
 #include "cups.h"
 */
 import "C"
@@ -181,7 +179,7 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	// cupsDoRequest() returns ipp_t pointer which needs explicit free.
 	defer C.ippDelete(response)
 
-	if C.ippGetStatusCode(response) == C.IPP_STATUS_ERROR_NOT_FOUND {
+	if C.getIPPRequestStatusCode(response) == C.IPP_STATUS_ERROR_NOT_FOUND {
 		// Normal error when there are no printers.
 		return make([]lib.Printer, 0), nil
 	}
@@ -203,13 +201,13 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 	printers := make([]lib.Printer, 0, 1)
 
-	for a := C.ippFirstAttribute(response); a != nil; a = C.ippNextAttribute(response) {
-		if C.ippGetGroupTag(a) != C.IPP_TAG_PRINTER {
+	for a := response.attrs; a != nil; a = a.next {
+		if a.group_tag != C.IPP_TAG_PRINTER {
 			continue
 		}
 
 		attributes := make([]*C.ipp_attribute_t, 0, C.int(len(c.printerAttributes)))
-		for ; a != nil && C.ippGetGroupTag(a) == C.IPP_TAG_PRINTER; a = C.ippNextAttribute(response) {
+		for ; a != nil && a.group_tag == C.IPP_TAG_PRINTER; a = a.next {
 			attributes = append(attributes, a)
 		}
 		tags := attributesToTags(attributes)
@@ -512,11 +510,11 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string][]string {
 	tags := make(map[string][]string)
 
 	for _, a := range attributes {
-		key := C.GoString(C.ippGetName(a))
-		count := int(C.ippGetCount(a))
+		key := C.GoString(a.name)
+		count := int(a.num_values)
 		values := make([]string, count)
 
-		switch C.ippGetValueTag(a) {
+		switch a.value_tag {
 		case C.IPP_TAG_NOVALUE, C.IPP_TAG_NOTSETTABLE:
 			// No value means no value.
 
@@ -534,9 +532,9 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string][]string {
 				}
 			}
 
-		case C.IPP_TAG_STRING, C.IPP_TAG_TEXT, C.IPP_TAG_NAME, C.IPP_TAG_KEYWORD, C.IPP_TAG_URI, C.IPP_TAG_CHARSET, C.IPP_TAG_LANGUAGE, C.IPP_TAG_MIMETYPE:
+		case C.IPP_TAG_TEXTLANG, C.IPP_TAG_NAMELANG, C.IPP_TAG_TEXT, C.IPP_TAG_NAME, C.IPP_TAG_KEYWORD, C.IPP_TAG_URI, C.IPP_TAG_URISCHEME, C.IPP_TAG_CHARSET, C.IPP_TAG_LANGUAGE, C.IPP_TAG_MIMETYPE:
 			for i := 0; i < count; i++ {
-				values[i] = C.GoString(C.ippGetString(a, C.int(i), nil))
+				values[i] = C.GoString(C.getAttributeStringValue(a, C.int(i)))
 			}
 
 		case C.IPP_TAG_DATE:
@@ -548,21 +546,16 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string][]string {
 
 		case C.IPP_TAG_RESOLUTION:
 			for i := 0; i < count; i++ {
-				yres := C.int(-1)
-				unit := C.int(-1)
-				xres := C.ippGetResolutionWrapper(a, C.int(i), &yres, &unit)
-				if unit == C.IPP_RES_PER_CM {
-					values[i] = fmt.Sprintf("%dx%dpp%s", int(xres), int(yres), "cm")
-				} else {
-					values[i] = fmt.Sprintf("%dx%dpp%s", int(xres), int(yres), "i")
-				}
+				xres, yres := C.int(0), C.int(0)
+				C.getAttributeValueResolution(a, C.int(i), &xres, &yres)
+				values[i] = fmt.Sprintf("%dx%dppi", int(xres), int(yres))
 			}
 
 		case C.IPP_TAG_RANGE:
 			for i := 0; i < count; i++ {
-				uppervalue := C.int(-1)
-				lowervalue := C.ippGetRange(a, C.int(i), &uppervalue)
-				values[i] = fmt.Sprintf("%d~%d", int(lowervalue), int(uppervalue))
+				upper, lower := C.int(0), C.int(0)
+				C.getAttributeValueRange(a, C.int(i), &lower, &upper)
+				values[i] = fmt.Sprintf("%d~%d", int(lower), int(upper))
 			}
 
 		default:

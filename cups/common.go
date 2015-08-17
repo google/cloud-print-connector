@@ -8,11 +8,7 @@ https://developers.google.com/open-source/licenses/bsd
 package cups
 
 /*
-#cgo LDFLAGS: -lcups
-#include <cups/cups.h>
-#include <stddef.h>      // size_t
-#include <stdlib.h>      // malloc, free
-#include <sys/utsname.h> // uname
+#include "cups.h"
 */
 import "C"
 import (
