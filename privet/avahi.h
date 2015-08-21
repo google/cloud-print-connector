@@ -16,10 +16,11 @@
 void startAvahiClient(AvahiThreadedPoll **threaded_poll, AvahiClient **client,
     char **err);
 void addAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiClient *client,
-    AvahiEntryGroup **group, char *serviceName, unsigned short port, char *ty,
-    char *url, char *id, char *cs, char **err);
+    AvahiEntryGroup **group, const char *serviceName, unsigned short port,
+		const char *ty, const char *url, const char *id, const char *cs, char **err);
 void updateAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *group,
-    char *serviceName, char *ty, char *url, char *id, char *cs, char **err);
+    const char *serviceName, const char *ty, const char *url, const char *id,
+		const char *cs, char **err);
 void removeAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *group,
     char **err);
 void stopAvahiClient(AvahiThreadedPoll *threaded_poll, AvahiClient *client);

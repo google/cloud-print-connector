@@ -50,29 +50,29 @@ void startAvahiClient(AvahiThreadedPoll **threaded_poll, AvahiClient **client,
 }
 
 void addAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiClient *client,
-    AvahiEntryGroup **group, char *service_name, unsigned short port, char *ty,
-    char *url, char *id, char *cs, char **err) {
+    AvahiEntryGroup **group, const char *service_name, unsigned short port, const char *ty,
+    const char *url, const char *id, const char *cs, char **err) {
   *err = NULL;
 
-  *group = avahi_entry_group_new(client, handleGroupStateChange, service_name);
+  *group = avahi_entry_group_new(client, handleGroupStateChange, (void *)service_name);
   if (!*group) {
     asprintf(err, "avahi_entry_group_new error: %s", avahi_strerror(avahi_client_errno(client)));
     return;
   }
 
-  char *y, *u, *i, *c;
-  asprintf(&y, TY, ty);
-  asprintf(&u, URL, url);
-  asprintf(&i, ID, id);
-  asprintf(&c, CS, cs);
+  char *tyFormatted, *urlFormatted, *idFormatted, *csFormatted;
+  asprintf(&tyFormatted, TY, ty);
+  asprintf(&urlFormatted, URL, url);
+  asprintf(&idFormatted, ID, id);
+  asprintf(&csFormatted, CS, cs);
 
   int error = avahi_entry_group_add_service(*group, AVAHI_IF_UNSPEC,
       AVAHI_PROTO_UNSPEC, 0, service_name, SERVICE_TYPE, NULL, NULL, port,
-      TXTVERS, y, u, TYPE, i, c, NULL);
-  free(y);
-  free(u);
-  free(i);
-  free(c);
+      TXTVERS, tyFormatted, urlFormatted, TYPE, idFormatted, csFormatted, NULL);
+  free(tyFormatted);
+  free(urlFormatted);
+  free(idFormatted);
+  free(csFormatted);
   if (AVAHI_OK != error) {
     asprintf(err, "add avahi service failed: %s", avahi_strerror(error));
     avahi_entry_group_free(*group);
@@ -96,22 +96,23 @@ void addAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiClient *client,
 }
 
 void updateAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *group,
-    char *service_name, char *ty, char *url, char *id, char *cs, char **err) {
+    const char *service_name, const char *ty, const char *url, const char *id,
+		const char *cs, char **err) {
   *err = NULL;
 
-  char *y, *u, *i, *c;
-  asprintf(&y, TY, ty);
-  asprintf(&u, URL, url);
-  asprintf(&i, ID, id);
-  asprintf(&c, CS, cs);
+  char *tyFormatted, *urlFormatted, *idFormatted, *csFormatted;
+  asprintf(&tyFormatted, TY, ty);
+  asprintf(&urlFormatted, URL, url);
+  asprintf(&idFormatted, ID, id);
+  asprintf(&csFormatted, CS, cs);
 
   int error = avahi_entry_group_update_service_txt(group, AVAHI_IF_UNSPEC,
       AVAHI_PROTO_UNSPEC, 0, service_name, SERVICE_TYPE, NULL,
-      TXTVERS, y, u, TYPE, i, c, NULL);
-  free(y);
-  free(u);
-  free(i);
-  free(c);
+      TXTVERS, tyFormatted, urlFormatted, TYPE, idFormatted, csFormatted, NULL);
+  free(tyFormatted);
+  free(urlFormatted);
+  free(idFormatted);
+  free(csFormatted);
   if (AVAHI_OK != error) {
     asprintf(err, "update avahi service failed: %s", avahi_strerror(error));
     return;

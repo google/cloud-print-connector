@@ -46,26 +46,26 @@ func (z *zeroconf) addPrinter(gcpID, name string, port uint16, ty, url, id strin
 	}
 	z.pMutex.RUnlock()
 
-	n := C.CString(name)
-	defer C.free(unsafe.Pointer(n))
-	t := C.CString(serviceType)
-	defer C.free(unsafe.Pointer(t))
-	y := C.CString(ty)
-	defer C.free(unsafe.Pointer(y))
-	u := C.CString(url)
-	defer C.free(unsafe.Pointer(u))
-	i := C.CString(id)
-	defer C.free(unsafe.Pointer(i))
-	var o *C.char
+	nameC := C.CString(name)
+	defer C.free(unsafe.Pointer(nameC))
+	serviceTypeC := C.CString(serviceType)
+	defer C.free(unsafe.Pointer(serviceTypeC))
+	tyC := C.CString(ty)
+	defer C.free(unsafe.Pointer(tyC))
+	urlC := C.CString(url)
+	defer C.free(unsafe.Pointer(urlC))
+	idC := C.CString(id)
+	defer C.free(unsafe.Pointer(idC))
+	var onlineC *C.char
 	if online {
-		o = C.CString("online")
+		onlineC = C.CString("online")
 	} else {
-		o = C.CString("offline")
+		onlineC = C.CString("offline")
 	}
-	defer C.free(unsafe.Pointer(o))
+	defer C.free(unsafe.Pointer(onlineC))
 
 	var errstr *C.char = nil
-	service := C.startBonjour(n, t, C.ushort(port), y, u, i, o, &errstr)
+	service := C.startBonjour(nameC, serviceTypeC, C.ushort(port), tyC, urlC, idC, onlineC, &errstr)
 	if errstr != nil {
 		defer C.free(unsafe.Pointer(errstr))
 		return errors.New(C.GoString(errstr))
@@ -80,25 +80,25 @@ func (z *zeroconf) addPrinter(gcpID, name string, port uint16, ty, url, id strin
 
 // updatePrinterTXT updates the advertised TXT record.
 func (z *zeroconf) updatePrinterTXT(gcpID, ty, url, id string, online bool) error {
-	y := C.CString(ty)
-	defer C.free(unsafe.Pointer(y))
-	u := C.CString(url)
-	defer C.free(unsafe.Pointer(u))
-	i := C.CString(id)
-	defer C.free(unsafe.Pointer(i))
-	var o *C.char
+	tyC := C.CString(ty)
+	defer C.free(unsafe.Pointer(tyC))
+	urlC := C.CString(url)
+	defer C.free(unsafe.Pointer(urlC))
+	idC := C.CString(id)
+	defer C.free(unsafe.Pointer(idC))
+	var onlineC *C.char
 	if online {
-		o = C.CString("online")
+		onlineC = C.CString("online")
 	} else {
-		o = C.CString("offline")
+		onlineC = C.CString("offline")
 	}
-	defer C.free(unsafe.Pointer(o))
+	defer C.free(unsafe.Pointer(onlineC))
 
 	z.pMutex.RLock()
 	defer z.pMutex.RUnlock()
 
 	if service, exists := z.printers[gcpID]; exists {
-		C.updateBonjour(service, y, u, i, o)
+		C.updateBonjour(service, tyC, urlC, idC, onlineC)
 	} else {
 		return fmt.Errorf("Bonjour can't update printer %s that hasn't been added", gcpID)
 	}

@@ -415,10 +415,10 @@ func (pm *PrinterManager) deleteInFlightJob(gcpID string) {
 //
 // Errors are returned as a string (last return value), for reporting
 // to GCP and local logging.
-func (pm *PrinterManager) assembleGCPJob(job *gcp.Job) (string, *cdd.CloudJobTicket, *os.File, string, cdd.PrintJobStateDiff) {
+func (pm *PrinterManager) assembleGCPJob(job *gcp.Job) (string, *cdd.CloudJobTicket, string, string, cdd.PrintJobStateDiff) {
 	_, exists := pm.gcpPrintersByGCPID.Get(job.GCPPrinterID)
 	if !exists {
-		return "", nil, nil,
+		return "", nil, "",
 			fmt.Sprintf("Failed to find GCP printer %s for job %s", job.GCPPrinterID, job.GCPJobID),
 			cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
@@ -430,7 +430,7 @@ func (pm *PrinterManager) assembleGCPJob(job *gcp.Job) (string, *cdd.CloudJobTic
 
 	ticket, err := pm.gcp.Ticket(job.GCPJobID)
 	if err != nil {
-		return "", nil, nil,
+		return "", nil, "",
 			fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err),
 			cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
@@ -442,7 +442,7 @@ func (pm *PrinterManager) assembleGCPJob(job *gcp.Job) (string, *cdd.CloudJobTic
 
 	file, err := cups.CreateTempFile()
 	if err != nil {
-		return "", nil, nil,
+		return "", nil, "",
 			fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err),
 			cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
@@ -461,7 +461,7 @@ func (pm *PrinterManager) assembleGCPJob(job *gcp.Job) (string, *cdd.CloudJobTic
 	if err != nil {
 		// Clean up this temporary file so the caller doesn't need extra logic.
 		os.Remove(file.Name())
-		return "", nil, nil,
+		return "", nil, "",
 			fmt.Sprintf("Failed to download data for job %s: %s", job.GCPJobID, err),
 			cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
@@ -472,9 +472,9 @@ func (pm *PrinterManager) assembleGCPJob(job *gcp.Job) (string, *cdd.CloudJobTic
 	}
 
 	glog.Infof("Downloaded job %s in %s", job.GCPJobID, dt.String())
-	file.Close()
+	defer file.Close()
 
-	return job.GCPPrinterID, ticket, file, "", cdd.PrintJobStateDiff{}
+	return job.GCPPrinterID, ticket, file.Name(), "", cdd.PrintJobStateDiff{}
 }
 
 // processGCPJob performs these steps:
@@ -496,7 +496,7 @@ func (pm *PrinterManager) processGCPJob(job *gcp.Job) {
 
 	glog.Infof("Received job %s", job.GCPJobID)
 
-	gcpPrinterID, ticket, file, message, state := pm.assembleGCPJob(job)
+	gcpPrinterID, ticket, filename, message, state := pm.assembleGCPJob(job)
 	if message != "" {
 		pm.incrementJobsProcessed(false)
 		glog.Error(message)
@@ -505,11 +505,11 @@ func (pm *PrinterManager) processGCPJob(job *gcp.Job) {
 		}
 		return
 	}
-	defer os.Remove(file.Name())
+	defer os.Remove(filename)
 
 	jobTitle := fmt.Sprintf("gcp:%s %s", job.GCPJobID, job.Title)
 
-	pm.printJob(gcpPrinterID, file.Name(), jobTitle, job.OwnerID, job.GCPJobID, ticket, pm.gcp.Control)
+	pm.printJob(gcpPrinterID, filename, jobTitle, job.OwnerID, job.GCPJobID, ticket, pm.gcp.Control)
 }
 
 // printJob prints a new job to a CUPS printer, then polls the CUPS job state

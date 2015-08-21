@@ -86,25 +86,26 @@ func (z *zeroconf) addPrinter(gcpID, name string, port uint16, ty, url, id strin
 		return fmt.Errorf("printer %s was already added to Avahi publishing", gcpID)
 	}
 	if z.state == C.AVAHI_CLIENT_S_RUNNING {
-		y := C.CString(ty)
-		defer C.free(unsafe.Pointer(y))
-		u := C.CString(url)
-		defer C.free(unsafe.Pointer(u))
-		i := C.CString(id)
-		defer C.free(unsafe.Pointer(i))
-		var o *C.char
+		tyC := C.CString(ty)
+		defer C.free(unsafe.Pointer(tyC))
+		urlC := C.CString(url)
+		defer C.free(unsafe.Pointer(urlC))
+		idC := C.CString(id)
+		defer C.free(unsafe.Pointer(idC))
+		var onlineC *C.char
 		if online {
-			o = C.CString("online")
+			onlineC = C.CString("online")
 		} else {
-			o = C.CString("offline")
+			onlineC = C.CString("offline")
 		}
-		defer C.free(unsafe.Pointer(o))
+		defer C.free(unsafe.Pointer(onlineC))
 
 		C.avahi_threaded_poll_lock(z.threadedPoll)
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
 		var errstr *C.char
-		C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(port), y, u, i, o, &errstr)
+		C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(port),
+			tyC, urlC, idC, onlineC, &errstr)
 		if errstr != nil {
 			err := errors.New(C.GoString(errstr))
 			C.free(unsafe.Pointer(errstr))
@@ -131,25 +132,25 @@ func (z *zeroconf) updatePrinterTXT(gcpID, ty, url, id string, online bool) erro
 	r.online = online
 
 	if z.state == C.AVAHI_CLIENT_S_RUNNING && r.group != nil {
-		y := C.CString(ty)
-		defer C.free(unsafe.Pointer(y))
-		u := C.CString(url)
-		defer C.free(unsafe.Pointer(u))
-		i := C.CString(id)
-		defer C.free(unsafe.Pointer(i))
-		var o *C.char
+		tyC := C.CString(ty)
+		defer C.free(unsafe.Pointer(tyC))
+		urlC := C.CString(url)
+		defer C.free(unsafe.Pointer(urlC))
+		idC := C.CString(id)
+		defer C.free(unsafe.Pointer(idC))
+		var onlineC *C.char
 		if online {
-			o = C.CString("online")
+			onlineC = C.CString("online")
 		} else {
-			o = C.CString("offline")
+			onlineC = C.CString("offline")
 		}
-		defer C.free(unsafe.Pointer(o))
+		defer C.free(unsafe.Pointer(onlineC))
 
 		C.avahi_threaded_poll_lock(z.threadedPoll)
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
 		var errstr *C.char
-		C.updateAvahiGroup(z.threadedPoll, r.group, r.name, y, u, i, o, &errstr)
+		C.updateAvahiGroup(z.threadedPoll, r.group, r.name, tyC, urlC, idC, onlineC, &errstr)
 		if errstr != nil {
 			err := errors.New(C.GoString(errstr))
 			C.free(unsafe.Pointer(errstr))
@@ -255,22 +256,23 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 	if z.state != C.AVAHI_CLIENT_S_RUNNING && newState == C.AVAHI_CLIENT_S_RUNNING {
 		glog.Info("Avahi client running.")
 		for gcpID, r := range z.printers {
-			y := C.CString(r.ty)
-			defer C.free(unsafe.Pointer(y))
-			u := C.CString(r.url)
-			defer C.free(unsafe.Pointer(u))
-			i := C.CString(r.id)
-			defer C.free(unsafe.Pointer(i))
-			var o *C.char
+			tyC := C.CString(r.ty)
+			defer C.free(unsafe.Pointer(tyC))
+			urlC := C.CString(r.url)
+			defer C.free(unsafe.Pointer(urlC))
+			idC := C.CString(r.id)
+			defer C.free(unsafe.Pointer(idC))
+			var onlineC *C.char
 			if r.online {
-				o = C.CString("online")
+				onlineC = C.CString("online")
 			} else {
-				o = C.CString("offline")
+				onlineC = C.CString("offline")
 			}
-			defer C.free(unsafe.Pointer(o))
+			defer C.free(unsafe.Pointer(onlineC))
 
 			var errstr *C.char
-			C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(r.port), y, u, i, o, &errstr)
+			C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(r.port),
+				tyC, urlC, idC, onlineC, &errstr)
 			if errstr != nil {
 				err := errors.New(C.GoString(errstr))
 				C.free(unsafe.Pointer(errstr))
