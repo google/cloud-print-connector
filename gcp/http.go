@@ -62,7 +62,7 @@ func newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, re
 // (response code != 200).
 func getWithRetry(hc *http.Client, url string) (*http.Response, error) {
 	response, err := get(hc, url)
-	if response != nil && response.StatusCode == 200 {
+	if response != nil && response.StatusCode == http.StatusOK {
 		return response, err
 	}
 
@@ -86,7 +86,7 @@ func get(hc *http.Client, url string) (*http.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("GET failure: %s", err)
 	}
-	if response.StatusCode != 200 {
+	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET HTTP-level failure: %s %s", url, response.Status)
 	}
 
@@ -97,7 +97,7 @@ func get(hc *http.Client, url string) (*http.Response, error) {
 // (response code != 200).
 func postWithRetry(hc *http.Client, url string, form url.Values) ([]byte, uint, int, error) {
 	responseBody, gcpErrorCode, httpStatusCode, err := post(hc, url, form)
-	if responseBody != nil && httpStatusCode == 200 {
+	if responseBody != nil && httpStatusCode == http.StatusOK {
 		return responseBody, gcpErrorCode, httpStatusCode, err
 	}
 
@@ -107,7 +107,7 @@ func postWithRetry(hc *http.Client, url string, form url.Values) ([]byte, uint, 
 // post POSTs to a URL. Returns the body of the response.
 //
 // Returns the response body, GCP error code, HTTP status, and error.
-// On success, only the response body is guaranteed to be non-zero.
+// None of the returned fields is guaranteed to be non-zero.
 func post(hc *http.Client, url string, form url.Values) ([]byte, uint, int, error) {
 	requestBody := strings.NewReader(form.Encode())
 	request, err := http.NewRequest("POST", url, requestBody)
@@ -123,14 +123,15 @@ func post(hc *http.Client, url string, form url.Values) ([]byte, uint, int, erro
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("POST failure: %s", err)
 	}
-	defer response.Body.Close()
-	if response.StatusCode != 200 {
-		return nil, 0, response.StatusCode, fmt.Errorf("/%s POST HTTP-level failure: %s", url, response.Status)
-	}
 
+	defer response.Body.Close()
 	responseBody, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		return nil, 0, response.StatusCode, err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		return responseBody, 0, response.StatusCode, fmt.Errorf("/%s POST HTTP-level failure: %s", url, response.Status)
 	}
 
 	var responseStatus struct {
@@ -146,5 +147,5 @@ func post(hc *http.Client, url string, form url.Values) ([]byte, uint, int, erro
 			"%s call failed: %s", url, responseStatus.Message)
 	}
 
-	return responseBody, 0, response.StatusCode, nil
+	return responseBody, responseStatus.ErrorCode, response.StatusCode, nil
 }

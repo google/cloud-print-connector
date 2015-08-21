@@ -88,29 +88,6 @@ func (gcp *GoogleCloudPrint) CanShare() bool {
 	return gcp.userClient != nil
 }
 
-// printJobStateDiff represents a CJS PrintJobStateDiff message.
-type printJobStateDiff struct {
-	State        jobState `json:"state"`
-	PagesPrinted uint32   `json:"pages_printed"`
-}
-
-// jobState represents a CJS JobState message.
-type jobState struct {
-	Type              string             `json:"type"`
-	UserActionCause   *userActionCause   `json:"user_action_cause,omitempty"`
-	DeviceActionCause *deviceActionCause `json:"device_action_cause,omitempty"`
-}
-
-// userActionCause represents a CJS JobState.UserActionCause message.
-type userActionCause struct {
-	ActionCode string `json:"action_code"`
-}
-
-// deviceActionCause represents a CJS JobState.DeviceActionCause message.
-type deviceActionCause struct {
-	ErrorCode string `json:"error_code"`
-}
-
 // Control calls google.com/cloudprint/control to set the state of a
 // GCP print job.
 func (gcp *GoogleCloudPrint) Control(jobID string, state cdd.PrintJobStateDiff) error {
@@ -144,7 +121,7 @@ func (gcp *GoogleCloudPrint) Delete(gcpID string) error {
 
 // Fetch calls google.com/cloudprint/fetch to get the outstanding print jobs for
 // a GCP printer.
-func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
+func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]Job, error) {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
 
@@ -152,7 +129,7 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 	if err != nil {
 		if errorCode == 413 {
 			// 413 means "Zero print jobs returned", which isn't really an error.
-			return []lib.Job{}, nil
+			return []Job{}, nil
 		}
 		return nil, err
 	}
@@ -169,10 +146,10 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]lib.Job, error) {
 		return nil, err
 	}
 
-	jobs := make([]lib.Job, len(jobsData.Jobs))
+	jobs := make([]Job, len(jobsData.Jobs))
 
 	for i, jobData := range jobsData.Jobs {
-		jobs[i] = lib.Job{
+		jobs[i] = Job{
 			GCPPrinterID: gcpID,
 			GCPJobID:     jobData.ID,
 			FileURL:      jobData.FileURL,
@@ -239,9 +216,9 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer) error {
 	form.Set("manufacturer", printer.Manufacturer)
 	form.Set("model", printer.Model)
 	form.Set("gcp_version", printer.GCPVersion)
-	form.Set("setup_url", lib.ConnectorHomeURL)
-	form.Set("support_url", lib.ConnectorHomeURL)
-	form.Set("update_url", lib.ConnectorHomeURL)
+	form.Set("setup_url", printer.SetupURL)
+	form.Set("support_url", printer.SupportURL)
+	form.Set("update_url", printer.UpdateURL)
 	form.Set("firmware", printer.ConnectorVersion)
 	form.Set("semantic_state", string(semanticState))
 	form.Set("use_cdd", "true")
@@ -477,7 +454,7 @@ func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string) error {
 	return nil
 }
 
-// Download downloads a URL (a print job PDF) directly to a Writer.
+// Download downloads a URL (a print job data file) directly to a Writer.
 func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 	response, err := getWithRetry(gcp.robotClient, url)
 	if err != nil {
@@ -494,7 +471,7 @@ func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 }
 
 // Ticket gets a ticket, aka print job options.
-func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (cdd.CloudJobTicket, error) {
+func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (*cdd.CloudJobTicket, error) {
 	form := url.Values{}
 	form.Set("jobid", gcpJobID)
 	form.Set("use_cjt", "true")
@@ -502,8 +479,8 @@ func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (cdd.CloudJobTicket, error)
 	responseBody, _, httpStatusCode, err := postWithRetry(gcp.robotClient, gcp.baseURL+"ticket", form)
 	// The /ticket API is different than others, because it only returns the
 	// standard GCP error information on success=false.
-	if httpStatusCode != 200 {
-		return cdd.CloudJobTicket{}, err
+	if httpStatusCode != http.StatusOK {
+		return nil, err
 	}
 
 	d := json.NewDecoder(bytes.NewReader(responseBody))
@@ -512,8 +489,22 @@ func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (cdd.CloudJobTicket, error)
 	var ticket cdd.CloudJobTicket
 	err = d.Decode(&ticket)
 	if err != nil {
-		return cdd.CloudJobTicket{}, fmt.Errorf("Failed to unmarshal ticket: %s", err)
+		return nil, fmt.Errorf("Failed to unmarshal ticket: %s", err)
 	}
 
-	return ticket, nil
+	return &ticket, nil
+}
+
+// ProximityToken gets a proximity token for Privet users to access a printer
+// through the cloud.
+//
+// Returns byte array of raw JSON to preserve any/all returned fields
+// and returned HTTP status code.
+func (gcp *GoogleCloudPrint) ProximityToken(gcpID, user string) ([]byte, int, error) {
+	form := url.Values{}
+	form.Set("printerid", gcpID)
+	form.Set("user", user)
+
+	responseBody, _, httpStatus, err := postWithRetry(gcp.robotClient, gcp.baseURL+"proximitytoken", form)
+	return responseBody, httpStatus, err
 }

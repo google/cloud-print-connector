@@ -37,16 +37,17 @@ const (
 	// CUPS "URL" length are always less than 40. For example: /job/1234567
 	urlMaxLength = 100
 
-	attrDeviceURI           = "device-uri"
-	attrMarkerLevels        = "marker-levels"
-	attrMarkerNames         = "marker-names"
-	attrMarkerTypes         = "marker-types"
-	attrPrinterInfo         = "printer-info"
-	attrPrinterMakeAndModel = "printer-make-and-model"
-	attrPrinterName         = "printer-name"
-	attrPrinterState        = "printer-state"
-	attrPrinterStateReasons = "printer-state-reasons"
-	attrPrinterUUID         = "printer-uuid"
+	attrDeviceURI               = "device-uri"
+	attrDocumentFormatSupported = "document-format-supported"
+	attrMarkerLevels            = "marker-levels"
+	attrMarkerNames             = "marker-names"
+	attrMarkerTypes             = "marker-types"
+	attrPrinterInfo             = "printer-info"
+	attrPrinterMakeAndModel     = "printer-make-and-model"
+	attrPrinterName             = "printer-name"
+	attrPrinterState            = "printer-state"
+	attrPrinterStateReasons     = "printer-state-reasons"
+	attrPrinterUUID             = "printer-uuid"
 
 	attrJobState                = "job-state"
 	attrJobMediaSheetsCompleted = "job-media-sheets-completed"
@@ -55,6 +56,7 @@ const (
 var (
 	requiredPrinterAttributes []string = []string{
 		attrDeviceURI,
+		attrDocumentFormatSupported,
 		attrMarkerLevels,
 		attrMarkerNames,
 		attrMarkerTypes,
@@ -69,6 +71,46 @@ var (
 	jobAttributes []string = []string{
 		attrJobState,
 		attrJobMediaSheetsCompleted,
+	}
+
+	numberUpCapability = cdd.VendorCapability{
+		ID:   "number-up",
+		Type: cdd.VendorCapabilitySelect,
+		SelectCap: &cdd.SelectCapability{
+			Option: []cdd.SelectCapabilityOption{
+				cdd.SelectCapabilityOption{
+					Value:                "1",
+					IsDefault:            true,
+					DisplayNameLocalized: cdd.NewLocalizedString("1"),
+				},
+				cdd.SelectCapabilityOption{
+					Value:                "2",
+					IsDefault:            false,
+					DisplayNameLocalized: cdd.NewLocalizedString("2"),
+				},
+				cdd.SelectCapabilityOption{
+					Value:                "4",
+					IsDefault:            false,
+					DisplayNameLocalized: cdd.NewLocalizedString("4"),
+				},
+				cdd.SelectCapabilityOption{
+					Value:                "6",
+					IsDefault:            false,
+					DisplayNameLocalized: cdd.NewLocalizedString("6"),
+				},
+				cdd.SelectCapabilityOption{
+					Value:                "9",
+					IsDefault:            false,
+					DisplayNameLocalized: cdd.NewLocalizedString("9"),
+				},
+				cdd.SelectCapabilityOption{
+					Value:                "16",
+					IsDefault:            false,
+					DisplayNameLocalized: cdd.NewLocalizedString("16"),
+				},
+			},
+		},
+		DisplayNameLocalized: cdd.NewLocalizedString("Pages per sheet"),
 	}
 )
 
@@ -179,8 +221,8 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 	return printers
 }
 
-// addPPDHashToPrinters fetches description, PPD hash, manufacturer, model for
-// all argument printers, concurrently.
+// addDescriptionToPrinters fetches description, PPD hash, manufacturer, model
+// for argument printers, concurrently. These are the fields derived from PPD.
 //
 // Returns a new printer slice, because it can shrink due to raw or
 // mis-configured printers.
@@ -192,7 +234,7 @@ func (c *CUPS) addDescriptionToPrinters(printers []lib.Printer) []lib.Printer {
 		if !lib.PrinterIsRaw(printers[i]) {
 			wg.Add(1)
 			go func(p *lib.Printer) {
-				if description, ppdHash, manufacturer, model, err := c.pc.getDescription(p.Name); err == nil {
+				if description, ppdHash, manufacturer, model, err := c.pc.getPPDCacheEntry(p.Name); err == nil {
 					p.Description.Absorb(description)
 					p.CapsHash = ppdHash
 					p.Manufacturer = manufacturer
@@ -279,32 +321,28 @@ func (c *CUPS) GetJobState(jobID uint32) (cdd.PrintJobStateDiff, error) {
 
 // convertJobState converts CUPS job state to cdd.PrintJobStateDiff.
 func convertJobState(cupsState, pages int32) cdd.PrintJobStateDiff {
-	state := cdd.PrintJobStateDiff{PagesPrinted: pages}
+	state := cdd.PrintJobStateDiff{PagesPrinted: &pages}
 
 	switch cupsState {
-	case 3: // PENDING
-		state.State = cdd.JobState{Type: "IN_PROGRESS"}
-	case 4: // HELD
-		state.State = cdd.JobState{Type: "IN_PROGRESS"}
-	case 5: // PROCESSING
-		state.State = cdd.JobState{Type: "IN_PROGRESS"}
+	case 3, 4, 5: // PENDING, HELD, PROCESSING
+		state.State = &cdd.JobState{Type: cdd.JobStateInProgress}
 	case 6: // STOPPED
-		state.State = cdd.JobState{
-			Type:              "STOPPED",
-			DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "OTHER"},
+		state.State = &cdd.JobState{
+			Type:              cdd.JobStateStopped,
+			DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseOther},
 		}
 	case 7: // CANCELED
-		state.State = cdd.JobState{
-			Type:            "ABORTED",
-			UserActionCause: &cdd.UserActionCause{ActionCode: "CANCELLED"}, // Spelled with two L's.
+		state.State = &cdd.JobState{
+			Type:            cdd.JobStateAborted,
+			UserActionCause: &cdd.UserActionCause{ActionCode: cdd.UserActionCauseCanceled},
 		}
 	case 8: // ABORTED
-		state.State = cdd.JobState{
-			Type:              "ABORTED",
-			DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: "PRINT_FAILURE"},
+		state.State = &cdd.JobState{
+			Type:              cdd.JobStateAborted,
+			DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCausePrintFailure},
 		}
 	case 9: // COMPLETED
-		state.State = cdd.JobState{Type: "DONE"}
+		state.State = &cdd.JobState{Type: cdd.JobStateDone}
 	}
 
 	return state
@@ -312,12 +350,17 @@ func convertJobState(cupsState, pages int32) cdd.PrintJobStateDiff {
 
 // Print sends a new print job to the specified printer. The job ID
 // is returned.
-func (c *CUPS) Print(printername, filename, title, user string, ticket cdd.CloudJobTicket) (uint32, error) {
+func (c *CUPS) Print(printername, filename, title, user string, ticket *cdd.CloudJobTicket) (uint32, error) {
 	pn := C.CString(printername)
 	defer C.free(unsafe.Pointer(pn))
 	fn := C.CString(filename)
 	defer C.free(unsafe.Pointer(fn))
-	t := C.CString(title)
+	var t *C.char
+	if len(title) > 255 {
+		t = C.CString(title[:255])
+	} else {
+		t = C.CString(title)
+	}
 	defer C.free(unsafe.Pointer(t))
 
 	options := ticketToOptions(ticket)
@@ -342,8 +385,11 @@ func (c *CUPS) Print(printername, filename, title, user string, ticket cdd.Cloud
 	return uint32(jobID), nil
 }
 
-func ticketToOptions(ticket cdd.CloudJobTicket) map[string]string {
+func ticketToOptions(ticket *cdd.CloudJobTicket) map[string]string {
 	m := make(map[string]string)
+	if ticket == nil {
+		return m
+	}
 
 	for _, vti := range ticket.Print.VendorTicketItem {
 		m[vti.ID] = vti.Value
@@ -597,21 +643,61 @@ func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string
 		}
 	}
 
+	description := cdd.PrinterDescriptionSection{
+		Copies: &cdd.Copies{
+			Default: 1,
+			Max:     1000,
+		},
+		Collate: &cdd.Collate{
+			Default: true,
+		},
+		VendorCapability: &[]cdd.VendorCapability{numberUpCapability},
+	}
+
+	if mimeTypes, ok := printerTags[attrDocumentFormatSupported]; ok && len(mimeTypes) > 0 {
+		// Preferred order:
+		//  1) PDF because it's small.
+		//  2) Postscript because it's a vector format.
+		//  3) Any "native" formats so that they don't need conversion.
+		//  4) PWG-Raster because it should work any time, but it's huge.
+
+		sct := append(make([]cdd.SupportedContentType, 0, len(mimeTypes)),
+			cdd.SupportedContentType{ContentType: "application/pdf"},
+			cdd.SupportedContentType{ContentType: "application/postscript"})
+		for i := range mimeTypes {
+			if mimeTypes[i] == "application/octet-stream" || // Avoid random byte blobs.
+				mimeTypes[i] == "application/pdf" ||
+				mimeTypes[i] == "application/postscript" ||
+				mimeTypes[i] == "image/pwg-raster" {
+				continue
+			}
+			sct = append(sct, cdd.SupportedContentType{ContentType: mimeTypes[i]})
+		}
+		/*
+			TODO: Consider adding pwg-raster with config option to enable/disable.
+			- All clients authored by Google do not create PWG Raster jobs.
+			- cups-filters only supports pwg-raster input in recent versions.
+			  https://www.cups.org/pipermail/cups/2015-July/026927.html
+		*/
+		description.SupportedContentType = &sct
+	}
+
 	markers, markerState := convertMarkers(printerTags[attrMarkerNames], printerTags[attrMarkerTypes], printerTags[attrMarkerLevels])
 	state.MarkerState = markerState
-	description := cdd.PrinterDescriptionSection{Marker: markers}
+	description.Marker = markers
 
 	p := lib.Printer{
-		Name:        name,
-		UUID:        uuid,
-		State:       &state,
-		Description: &description,
-		Tags:        tags,
+		Name:               name,
+		DefaultDisplayName: name,
+		UUID:               uuid,
+		State:              &state,
+		Description:        &description,
+		Tags:               tags,
 	}
 	p.SetTagshash()
 
-	if pi, ok := printerTags[attrPrinterInfo]; ok && infoToDisplayName {
-		p.DefaultDisplayName = pi[0]
+	if printerInfo, ok := printerTags[attrPrinterInfo]; ok && infoToDisplayName && len(printerInfo) > 0 && printerInfo[0] != "" {
+		p.DefaultDisplayName = printerInfo[0]
 	}
 
 	return p

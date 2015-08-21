@@ -72,7 +72,19 @@ func (a *PrinterDescriptionSection) Absorb(b *PrinterDescriptionSection) {
 		a.MediaPath = b.MediaPath
 	}
 	if b.VendorCapability != nil {
-		a.VendorCapability = b.VendorCapability
+		if a.VendorCapability == nil || len(*a.VendorCapability) == 0 {
+			a.VendorCapability = b.VendorCapability
+		} else { // Preserve vendor capabilities that already exist in a.
+			aKeys := make(map[string]struct{}, len(*a.VendorCapability))
+			for _, v := range *a.VendorCapability {
+				aKeys[v.ID] = struct{}{}
+			}
+			for _, v := range *b.VendorCapability {
+				if _, exists := aKeys[v.ID]; !exists {
+					*a.VendorCapability = append(*a.VendorCapability, v)
+				}
+			}
+		}
 	}
 	if b.Color != nil {
 		a.Color = b.Color
@@ -146,12 +158,12 @@ type InputTrayUnitType string
 
 const (
 	InputTrayUnitCustom         InputTrayUnitType = "CUSTOM"
-	InputTrayUnitInputTray                        = "INPUT_TRAY"
-	InputTrayUnitBypassTray                       = "BYPASS_TRAY"
-	InputTrayUnitManualFeedTray                   = "MANUAL_FEED_TRAY"
-	InputTrayUnitLCT                              = "LCT" // Large capacity tray.
-	InputTrayUnitEnvelopeTray                     = "ENVELOPE_TRAY"
-	InputTrayUnitRoll                             = "ROLL"
+	InputTrayUnitInputTray      InputTrayUnitType = "INPUT_TRAY"
+	InputTrayUnitBypassTray     InputTrayUnitType = "BYPASS_TRAY"
+	InputTrayUnitManualFeedTray InputTrayUnitType = "MANUAL_FEED_TRAY"
+	InputTrayUnitLCT            InputTrayUnitType = "LCT" // Large capacity tray.
+	InputTrayUnitEnvelopeTray   InputTrayUnitType = "ENVELOPE_TRAY"
+	InputTrayUnitRoll           InputTrayUnitType = "ROLL"
 )
 
 type InputTrayUnit struct {
@@ -166,9 +178,9 @@ type OutputBinUnitType string
 
 const (
 	OutputBinUnitCustom    OutputBinUnitType = "CUSTOM"
-	OutputBinUnitOutputBin                   = "OUTPUT_BIN"
-	OutputBinUnitMailbox                     = "MAILBOX"
-	OutputBinUnitStacker                     = "STACKER"
+	OutputBinUnitOutputBin OutputBinUnitType = "OUTPUT_BIN"
+	OutputBinUnitMailbox   OutputBinUnitType = "MAILBOX"
+	OutputBinUnitStacker   OutputBinUnitType = "STACKER"
 )
 
 type OutputBinUnit struct {
@@ -183,33 +195,33 @@ type MarkerType string
 
 const (
 	MarkerCustom  MarkerType = "CUSTOM"
-	MarkerToner              = "TONER"
-	MarkerInk                = "INK"
-	MarkerStaples            = "STAPLES"
+	MarkerToner   MarkerType = "TONER"
+	MarkerInk     MarkerType = "INK"
+	MarkerStaples MarkerType = "STAPLES"
 )
 
 type MarkerColorType string
 
 const (
 	MarkerColorCustom       MarkerColorType = "CUSTOM"
-	MarkerColorBlack                        = "BLACK"
-	MarkerColorColor                        = "COLOR"
-	MarkerColorCyan                         = "CYAN"
-	MarkerColorMagenta                      = "MAGENTA"
-	MarkerColorYellow                       = "YELLOW"
-	MarkerColorLightCyan                    = "LIGHT_CYAN"
-	MarkerColorLightMagenta                 = "LIGHT_MAGENTA"
-	MarkerColorGray                         = "GRAY"
-	MarkerColorLightGray                    = "LIGHT_GRAY"
-	MarkerColorPigmentBlack                 = "PIGMENT_BLACK"
-	MarkerColorMatteBlack                   = "MATTE_BLACK"
-	MarkerColorPhotoCyan                    = "PHOTO_CYAN"
-	MarkerColorPhotoMagenta                 = "PHOTO_MAGENTA"
-	MarkerColorPhotoYellow                  = "PHOTO_YELLOW"
-	MarkerColorPhotoGray                    = "PHOTO_GRAY"
-	MarkerColorRed                          = "RED"
-	MarkerColorGreen                        = "GREEN"
-	MarkerColorBlue                         = "BLUE"
+	MarkerColorBlack        MarkerColorType = "BLACK"
+	MarkerColorColor        MarkerColorType = "COLOR"
+	MarkerColorCyan         MarkerColorType = "CYAN"
+	MarkerColorMagenta      MarkerColorType = "MAGENTA"
+	MarkerColorYellow       MarkerColorType = "YELLOW"
+	MarkerColorLightCyan    MarkerColorType = "LIGHT_CYAN"
+	MarkerColorLightMagenta MarkerColorType = "LIGHT_MAGENTA"
+	MarkerColorGray         MarkerColorType = "GRAY"
+	MarkerColorLightGray    MarkerColorType = "LIGHT_GRAY"
+	MarkerColorPigmentBlack MarkerColorType = "PIGMENT_BLACK"
+	MarkerColorMatteBlack   MarkerColorType = "MATTE_BLACK"
+	MarkerColorPhotoCyan    MarkerColorType = "PHOTO_CYAN"
+	MarkerColorPhotoMagenta MarkerColorType = "PHOTO_MAGENTA"
+	MarkerColorPhotoYellow  MarkerColorType = "PHOTO_YELLOW"
+	MarkerColorPhotoGray    MarkerColorType = "PHOTO_GRAY"
+	MarkerColorRed          MarkerColorType = "RED"
+	MarkerColorGreen        MarkerColorType = "GREEN"
+	MarkerColorBlue         MarkerColorType = "BLUE"
 )
 
 type MarkerColor struct {
@@ -230,8 +242,8 @@ type CoverType string
 
 const (
 	CoverTypeCustom CoverType = "CUSTOM"
-	CoverTypeDoor             = "DOOR"
-	CoverTypeCover            = "COVER"
+	CoverTypeDoor   CoverType = "DOOR"
+	CoverTypeCover  CoverType = "COVER"
 )
 
 type Cover struct {
@@ -250,8 +262,8 @@ type VendorCapabilityType string
 
 const (
 	VendorCapabilityRange      VendorCapabilityType = "RANGE"
-	VendorCapabilitySelect                          = "SELECT"
-	VendorCapabilityTypedValue                      = "TYPED_VALUE"
+	VendorCapabilitySelect     VendorCapabilityType = "SELECT"
+	VendorCapabilityTypedValue VendorCapabilityType = "TYPED_VALUE"
 )
 
 type VendorCapability struct {
@@ -268,7 +280,7 @@ type RangeCapabilityValueType string
 
 const (
 	RangeCapabilityValueFloat   RangeCapabilityValueType = "FLOAT"
-	RangeCapabilityValueInteger                          = "INTEGER"
+	RangeCapabilityValueInteger RangeCapabilityValueType = "INTEGER"
 )
 
 type RangeCapability struct {
@@ -293,9 +305,9 @@ type TypedValueCapabilityValueType string
 
 const (
 	TypedValueCapabilityValueBoolean TypedValueCapabilityValueType = "BOOLEAN"
-	TypedValueCapabilityValueFloat                                 = "FLOAT"
-	TypedValueCapabilityValueInteger                               = "INTEGER"
-	TypedValueCapabilityValueString                                = "STRING"
+	TypedValueCapabilityValueFloat   TypedValueCapabilityValueType = "FLOAT"
+	TypedValueCapabilityValueInteger TypedValueCapabilityValueType = "INTEGER"
+	TypedValueCapabilityValueString  TypedValueCapabilityValueType = "STRING"
 )
 
 type TypedValueCapability struct {
@@ -311,10 +323,10 @@ type ColorType string
 
 const (
 	ColorTypeStandardColor      ColorType = "STANDARD_COLOR"
-	ColorTypeStandardMonochrome           = "STANDARD_MONOCHROME"
-	ColorTypeCustomColor                  = "CUSTOM_COLOR"
-	ColorTypeCustomMonochrome             = "CUSTOM_MONOCHROME"
-	ColorTypeAuto                         = "AUTO"
+	ColorTypeStandardMonochrome ColorType = "STANDARD_MONOCHROME"
+	ColorTypeCustomColor        ColorType = "CUSTOM_COLOR"
+	ColorTypeCustomMonochrome   ColorType = "CUSTOM_MONOCHROME"
+	ColorTypeAuto               ColorType = "AUTO"
 )
 
 type ColorOption struct {
@@ -333,8 +345,8 @@ type DuplexType string
 
 const (
 	DuplexNoDuplex  DuplexType = "NO_DUPLEX"
-	DuplexLongEdge             = "LONG_EDGE"
-	DuplexShortEdge            = "SHORT_EDGE"
+	DuplexLongEdge  DuplexType = "LONG_EDGE"
+	DuplexShortEdge DuplexType = "SHORT_EDGE"
 )
 
 type DuplexOption struct {
@@ -350,8 +362,8 @@ type PageOrientationType string
 
 const (
 	PageOrientationPortrait  PageOrientationType = "PORTRAIT"
-	PageOrientationLandscape                     = "LANDSCAPE"
-	PageOrientationAuto                          = "AUTO"
+	PageOrientationLandscape PageOrientationType = "LANDSCAPE"
+	PageOrientationAuto      PageOrientationType = "AUTO"
 )
 
 type PageOrientationOption struct {
@@ -372,8 +384,8 @@ type MarginsType string
 
 const (
 	MarginsBorderless MarginsType = "BORDERLESS"
-	MarginsStandard               = "STANDARD"
-	MarginsCustom                 = "CUSTOM"
+	MarginsStandard   MarginsType = "STANDARD"
+	MarginsCustom     MarginsType = "CUSTOM"
 )
 
 type MarginsOption struct {
@@ -410,10 +422,10 @@ type FitToPageType string
 
 const (
 	FitToPageNoFitting    FitToPageType = "NO_FITTING"
-	FitToPageFitToPage                  = "FIT_TO_PAGE"
-	FitToPageGrowToPage                 = "GROW_TO_PAGE"
-	FitToPageShrinkToPage               = "SHRINK_TO_PAGE"
-	FitToPageFillPage                   = "FILL_PAGE"
+	FitToPageFitToPage    FitToPageType = "FIT_TO_PAGE"
+	FitToPageGrowToPage   FitToPageType = "GROW_TO_PAGE"
+	FitToPageShrinkToPage FitToPageType = "SHRINK_TO_PAGE"
+	FitToPageFillPage     FitToPageType = "FILL_PAGE"
 )
 
 type FitToPageOption struct {

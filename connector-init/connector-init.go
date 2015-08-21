@@ -101,6 +101,9 @@ var (
 	snmpMaxConnectionsFlag = flag.String(
 		"snmp-max-connections", "",
 		"Max connections to SNMP agents")
+	localPrintingEnableFlag = flag.String(
+		"local-printing-enable", "",
+		"Enable local discovery and printing, aka Privet")
 
 	gcpUserOAuthRefreshTokenFlag = flag.String(
 		"gcp-user-refresh-token", "",
@@ -266,7 +269,7 @@ func initRobotAccount(userClient *http.Client) (string, string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if response.StatusCode != 200 {
+	if response.StatusCode != http.StatusOK {
 		log.Fatal("failed to initialize robot account: " + response.Status)
 	}
 
@@ -345,6 +348,7 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		flagToBool(snmpEnableFlag, lib.DefaultConfig.SNMPEnable),
 		flagToString(snmpCommunityFlag, lib.DefaultConfig.SNMPCommunity),
 		flagToUint(snmpMaxConnectionsFlag, lib.DefaultConfig.SNMPMaxConnections),
+		flagToBool(localPrintingEnableFlag, lib.DefaultConfig.LocalPrintingEnable),
 	}
 
 	if err := config.ToFile(); err != nil {

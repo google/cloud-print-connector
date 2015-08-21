@@ -33,6 +33,11 @@ type SNMPManager struct {
 
 // NewSNMPManager creates a new SNMP manager.
 func NewSNMPManager(community string, maxConnections uint) (*SNMPManager, error) {
+	if community == "" || maxConnections == 0 {
+		return nil, errors.New(
+			"SNMP values not set in config file; run connector-util -update-config-file")
+	}
+
 	C.initialize()
 	s := SNMPManager{
 		inUse:          lib.NewSemaphore(1),
@@ -147,7 +152,7 @@ func (s *SNMPManager) AugmentPrinters(printers []lib.Printer) error {
 			continue
 		}
 		if serialNumber, ok := vars.GetSerialNumber(); ok {
-			printers[i].UUID = serialNumber
+			printers[i].Tags["snmp-serial-number"] = serialNumber
 		}
 		if covers, coverState, exists := vars.GetCovers(); exists {
 			printers[i].State.CoverState = coverState

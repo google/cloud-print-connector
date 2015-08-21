@@ -20,6 +20,7 @@ import (
 	"github.com/google/cups-connector/lib"
 	"github.com/google/cups-connector/manager"
 	"github.com/google/cups-connector/monitor"
+	"github.com/google/cups-connector/privet"
 	"github.com/google/cups-connector/snmp"
 	"github.com/google/cups-connector/xmpp"
 
@@ -73,6 +74,8 @@ func main() {
 	}
 	defer xmpp.Quit()
 
+	createTempFile := cups.CreateTempFile
+
 	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes,
 		config.CUPSMaxConnections, cupsConnectTimeout, gcp.Translate)
 	if err != nil {
@@ -90,7 +93,16 @@ func main() {
 		defer snmpManager.Quit()
 	}
 
-	pm, err := manager.NewPrinterManager(cups, gcp, xmpp, snmpManager, config.CUPSPrinterPollInterval,
+	var priv *privet.Privet
+	if config.LocalPrintingEnable {
+		priv, err = privet.NewPrivet(config.GCPBaseURL, gcp.ProximityToken, createTempFile)
+		if err != nil {
+			glog.Fatal(err)
+		}
+		defer priv.Quit()
+	}
+
+	pm, err := manager.NewPrinterManager(cups, gcp, xmpp, priv, snmpManager, config.CUPSPrinterPollInterval,
 		config.GCPMaxConcurrentDownloads, config.CUPSJobQueueSize, config.CUPSJobFullUsername,
 		config.CUPSIgnoreRawPrinters, config.ShareScope)
 	if err != nil {

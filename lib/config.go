@@ -50,7 +50,7 @@ type Config struct {
 	// User-chosen name of this proxy. Should be unique per Google user account.
 	ProxyName string `json:"proxy_name"`
 
-	// Maximum quantity of PDFs to download concurrently.
+	// Maximum quantity of jobs (data) to download concurrently.
 	GCPMaxConcurrentDownloads uint `json:"gcp_max_concurrent_downloads"`
 
 	// Maximum quantity of open CUPS connections.
@@ -117,6 +117,9 @@ type Config struct {
 
 	// Maximum quantity of open SNMP connections.
 	SNMPMaxConnections uint `json:"snmp_max_connections"`
+
+	// Enable local discovery and printing.
+	LocalPrintingEnable bool `json:"local_printing_enable"`
 }
 
 // DefaultConfig represents reasonable default values for Config fields.
@@ -130,6 +133,7 @@ var DefaultConfig = Config{
 	CUPSPrinterPollInterval:   "1m",
 	CUPSPrinterAttributes: []string{
 		"device-uri",
+		"document-format-supported",
 		"printer-name",
 		"printer-info",
 		"printer-location",
@@ -157,6 +161,7 @@ var DefaultConfig = Config{
 	SNMPEnable:                   false,
 	SNMPCommunity:                "public",
 	SNMPMaxConnections:           100,
+	LocalPrintingEnable:          false,
 }
 
 // ConfigFromFile reads a Config object from the config file indicated by

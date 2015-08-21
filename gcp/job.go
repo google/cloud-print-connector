@@ -5,16 +5,12 @@ Use of this source code is governed by a BSD-style
 license that can be found in the LICENSE file or at
 https://developers.google.com/open-source/licenses/bsd
 */
-package lib
-
-import "github.com/google/cups-connector/cdd"
+package gcp
 
 type Job struct {
 	GCPPrinterID string
-	Filename     string
+	GCPJobID     string
+	FileURL      string
+	OwnerID      string
 	Title        string
-	User         string
-	JobID        string
-	Ticket       *cdd.CloudJobTicket
-	UpdateJob    func(string, cdd.PrintJobStateDiff) error
 }

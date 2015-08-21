@@ -189,6 +189,11 @@ func updateConfigFile() {
 		fmt.Println("Added snmp_max_connections")
 		config.SNMPMaxConnections = lib.DefaultConfig.SNMPMaxConnections
 	}
+	if _, exists := configMap["local_printing_enable"]; !exists {
+		dirty = true
+		fmt.Println("Added local_printing_enable")
+		config.LocalPrintingEnable = lib.DefaultConfig.LocalPrintingEnable
+	}
 
 	if dirty {
 		config.ToFile()

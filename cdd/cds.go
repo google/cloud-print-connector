@@ -12,9 +12,9 @@ type CloudConnectionStateType string
 
 const (
 	CloudConnectionStateUnknown       CloudConnectionStateType = "UNKNOWN"
-	CloudConnectionStateNotConfigured                          = "NOT_CONFIGURED"
-	CloudConnectionStateOnline                                 = "ONLINE"
-	CloudConnectionStateOffline                                = "OFFLINE"
+	CloudConnectionStateNotConfigured CloudConnectionStateType = "NOT_CONFIGURED"
+	CloudConnectionStateOnline        CloudConnectionStateType = "ONLINE"
+	CloudConnectionStateOffline       CloudConnectionStateType = "OFFLINE"
 )
 
 type CloudDeviceState struct {
@@ -27,8 +27,8 @@ type CloudDeviceStateType string
 
 const (
 	CloudDeviceStateIdle       CloudDeviceStateType = "IDLE"
-	CloudDeviceStateProcessing                      = "PROCESSING"
-	CloudDeviceStateStopped                         = "STOPPED"
+	CloudDeviceStateProcessing CloudDeviceStateType = "PROCESSING"
+	CloudDeviceStateStopped    CloudDeviceStateType = "STOPPED"
 )
 
 type PrinterStateSection struct {
@@ -49,10 +49,10 @@ type InputTrayStateType string
 
 const (
 	InputTrayStateOK      InputTrayStateType = "OK"
-	InputTrayStateEmpty                      = "EMPTY"
-	InputTrayStateOpen                       = "OPEN"
-	InputTrayStateOff                        = "OFF"
-	InputTrayStateFailure                    = "FAILURE"
+	InputTrayStateEmpty   InputTrayStateType = "EMPTY"
+	InputTrayStateOpen    InputTrayStateType = "OPEN"
+	InputTrayStateOff     InputTrayStateType = "OFF"
+	InputTrayStateFailure InputTrayStateType = "FAILURE"
 )
 
 type InputTrayStateItem struct {
@@ -70,10 +70,10 @@ type OutputBinStateType string
 
 const (
 	OutputBinStateOK      OutputBinStateType = "OK"
-	OutputBinStateFull                       = "FULL"
-	OutputBinStateOpen                       = "OPEN"
-	OutputBinStateOff                        = "OFF"
-	OutputBinStateFailure                    = "FAILURE"
+	OutputBinStateFull    OutputBinStateType = "FULL"
+	OutputBinStateOpen    OutputBinStateType = "OPEN"
+	OutputBinStateOff     OutputBinStateType = "OFF"
+	OutputBinStateFailure OutputBinStateType = "FAILURE"
 )
 
 type OutputBinStateItem struct {
@@ -91,9 +91,9 @@ type MarkerStateType string
 
 const (
 	MarkerStateOK        MarkerStateType = "OK"
-	MarkerStateExhausted                 = "EXHAUSTED"
-	MarkerStateRemoved                   = "REMOVED"
-	MarkerStateFailure                   = "FAILURE"
+	MarkerStateExhausted MarkerStateType = "EXHAUSTED"
+	MarkerStateRemoved   MarkerStateType = "REMOVED"
+	MarkerStateFailure   MarkerStateType = "FAILURE"
 )
 
 type MarkerStateItem struct {
@@ -112,8 +112,8 @@ type CoverStateType string
 
 const (
 	CoverStateOK      CoverStateType = "OK"
-	CoverStateOpen                   = "OPEN"
-	CoverStateFailure                = "FAILURE"
+	CoverStateOpen    CoverStateType = "OPEN"
+	CoverStateFailure CoverStateType = "FAILURE"
 )
 
 type CoverStateItem struct {
@@ -130,8 +130,8 @@ type MediaPathStateType string
 
 const (
 	MediaPathStateOK       MediaPathStateType = "OK"
-	MediaPathStateMediaJam                    = "MEDIA_JAM"
-	MediaPathStateFailure                     = "FAILURE"
+	MediaPathStateMediaJam MediaPathStateType = "MEDIA_JAM"
+	MediaPathStateFailure  MediaPathStateType = "FAILURE"
 )
 
 type MediaPathStateItem struct {
@@ -148,8 +148,8 @@ type VendorStateType string
 
 const (
 	VendorStateError   VendorStateType = "ERROR"
-	VendorStateWarning                 = "WARNING"
-	VendorStateInfo                    = "INFO"
+	VendorStateWarning VendorStateType = "WARNING"
+	VendorStateInfo    VendorStateType = "INFO"
 )
 
 type VendorStateItem struct {
