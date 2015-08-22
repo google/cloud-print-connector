@@ -27,11 +27,6 @@ type PrinterNotification struct {
 	Type  PrinterNotificationType
 }
 
-const (
-	// XMPP connections fail. Attempt to reconnect a few times before giving up.
-	restartXMPPMaxRetries = 4
-)
-
 type XMPP struct {
 	jid            string
 	proxyName      string
@@ -69,6 +64,7 @@ func NewXMPP(jid, proxyName, server string, port uint16, pingTimeout, pingInterv
 	if err != nil {
 		return nil, err
 	}
+	go x.keepXMPPAlive()
 
 	return &x, nil
 }
@@ -77,11 +73,11 @@ func NewXMPP(jid, proxyName, server string, port uint16, pingTimeout, pingInterv
 func (x *XMPP) Quit() {
 	if x.ix != nil {
 		// Signal to KeepXMPPAlive.
-		x.quit <- struct{}{}
+		close(x.quit)
 		select {
 		case <-x.dead:
 			// Wait for XMPP to die.
-		case <-time.After(5 * time.Second):
+		case <-time.After(3 * time.Second):
 			// But not too long.
 			glog.Error("XMPP taking a while to close, so giving up")
 		}
@@ -100,26 +96,14 @@ func (x *XMPP) startXMPP() error {
 		return fmt.Errorf("While starting XMPP, failed to get access token (password): %s", err)
 	}
 
-	for i := 0; i < restartXMPPMaxRetries; i++ {
-		// The current access token is the XMPP password.
-		if err == nil {
-			var ix *internalXMPP
-			ix, err := newInternalXMPP(x.jid, password, x.proxyName, x.server, x.port, x.pingTimeout, x.pingInterval, x.notifications, x.pingIntervalUpdates, x.dead)
-
-			if err == nil {
-				// Success!
-				x.ix = ix
-				// Don't give up.
-				go x.keepXMPPAlive()
-				return nil
-			}
-		}
-
-		// Sleep for 1, 2, 4, 8 seconds.
-		time.Sleep(time.Duration((i+1)*2) * time.Second)
+	// The current access token is the XMPP password.
+	ix, err := newInternalXMPP(x.jid, password, x.proxyName, x.server, x.port, x.pingTimeout, x.pingInterval, x.notifications, x.pingIntervalUpdates, x.dead)
+	if err != nil {
+		return fmt.Errorf("Failed to start XMPP conversation: %s", err)
 	}
 
-	return fmt.Errorf("Failed to start XMPP conversation: %s", err)
+	x.ix = ix
+	return nil
 }
 
 // keepXMPPAlive restarts XMPP when it fails.
@@ -129,8 +113,14 @@ func (x *XMPP) keepXMPPAlive() {
 		case <-x.dead:
 			glog.Error("XMPP conversation died; restarting")
 			if err := x.startXMPP(); err != nil {
-				glog.Fatalf("Failed to keep XMPP conversation alive: %s", err)
+				for err != nil {
+					glog.Errorf("XMPP restart failed, will try again in 10s: %s", err)
+					time.Sleep(10 * time.Second)
+					err = x.startXMPP()
+				}
+				glog.Error("XMPP conversation restarted successfully")
 			}
+
 		case <-x.quit:
 			// Close XMPP.
 			x.ix.Quit()
