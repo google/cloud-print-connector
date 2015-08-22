@@ -22,7 +22,7 @@ A special note to Raspbian users: Although 8.0 jessie isn't mentioned at raspbia
 
 Ready? Install build tools and libraries:
 ```
-$ sudo apt-get install build-essential libcups2-dev libsnmp-dev
+$ sudo apt-get install build-essential libcups2-dev libsnmp-dev libavahi-client-dev
 ```
 
 #### OS X
