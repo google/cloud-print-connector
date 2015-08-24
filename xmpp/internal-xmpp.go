@@ -141,11 +141,8 @@ func (x *internalXMPP) pingPeriodically(timeout, interval time.Duration, dying <
 			if success, err := x.ping(timeout); success {
 				t.Reset(interval)
 			} else {
-				glog.Infof("XMPP ping failed; trying once more: %s", err)
-				// Ping failed; give it another try, then restart the XMPP conversation.
-				if success, _ := x.ping(timeout); !success {
-					x.Quit()
-				}
+				glog.Info(err)
+				x.Quit()
 			}
 		case interval = <-x.pingIntervalUpdates:
 			t.Reset(time.Nanosecond) // Induce ping and interval reset now.
@@ -167,8 +164,8 @@ func (x *internalXMPP) dispatchIncoming(dying chan<- struct{}) {
 			if isXMLErrorClosedConnection(err) {
 				break
 			}
-			glog.Warningf("Failed to read the next start element: %s", err)
-			continue
+			glog.Errorf("Failed to read the next start element: %s", err)
+			break
 		}
 
 		// Parse the message.
