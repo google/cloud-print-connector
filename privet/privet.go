@@ -94,7 +94,12 @@ func (p *Privet) UpdatePrinter(diff *lib.PrinterDiff) error {
 	if diff.Printer.GCPID != "" {
 		online = true
 	}
-	return p.zc.updatePrinterTXT(diff.Printer.GCPID, diff.Printer.DefaultDisplayName, p.gcpBaseURL, diff.Printer.GCPID, online)
+
+        // TODO once we add local-only support we should hide the append behind an if ! local-only
+        var localDefaultDisplayName = diff.Printer.DefaultDisplayName
+        localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
+
+        return p.zc.updatePrinterTXT(diff.Printer.GCPID, localDefaultDisplayName, p.gcpBaseURL, diff.Printer.GCPID, online)
 }
 
 // DeletePrinter removes a printer from Privet.
