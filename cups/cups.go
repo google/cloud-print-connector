@@ -268,6 +268,7 @@ func getSystemTags() (map[string]string, error) {
 		tags["system-hostname"] = hostname
 	}
 	tags["system-arch"] = runtime.GOARCH
+	tags["system-golang-version"] = runtime.Version()
 
 	sysname, nodename, release, version, machine, err := uname()
 	if err != nil {
