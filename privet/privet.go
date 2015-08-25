@@ -69,7 +69,10 @@ func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func() (lib.Printer,
 		online = true
 	}
 
-	err = p.zc.addPrinter(printer.GCPID, printer.Name, api.port(), printer.DefaultDisplayName, p.gcpBaseURL, printer.GCPID, online)
+	var LocalDefaultDisplayName = printer.DefaultDisplayName
+	# TODO once we add local-only support we should hide the append behind an if ! local-only
+	LocalDefaultDisplayName = fmt.Sprint(LocalDefaultDisplayName, " (local)")
+	err = p.zc.addPrinter(printer.GCPID, printer.Name, api.port(), LocalDefaultDisplayName, p.gcpBaseURL, printer.GCPID, online)
 	if err != nil {
 		api.quit()
 		return err
