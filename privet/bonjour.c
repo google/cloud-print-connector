@@ -62,7 +62,7 @@ CFNetServiceRef startBonjour(const char *name, const char *type, unsigned short 
 	CFMutableDictionaryRef dict = CFDictionaryCreateMutable(NULL, 0,
 			&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
 	CFDictionarySetValue(dict, CFSTR("txtvers"), CFSTR("1"));
-	CFDictionarySetValue(dict, CFSTR("ty"), typeCF);
+	CFDictionarySetValue(dict, CFSTR("ty"), tyCF);
 	CFDictionarySetValue(dict, CFSTR("url"), urlCF);
 	CFDictionarySetValue(dict, CFSTR("type"), CFSTR("printer"));
 	CFDictionarySetValue(dict, CFSTR("id"), idCF);
