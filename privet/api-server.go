@@ -317,7 +317,7 @@ func (api *privetAPI) createjob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var ticket cdd.CloudJobTicket
-	if err = json.Unmarshal(requestBody, ticket); err != nil {
+	if err = json.Unmarshal(requestBody, &ticket); err != nil {
 		glog.Warningf("Failed to read request body: %s", err)
 		writeError(w, "invalid_ticket", "Check connector logs")
 		return
