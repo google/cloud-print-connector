@@ -43,13 +43,10 @@ Any Linux distribution or *BSD flavor _should_ support the CUPS Connector. If yo
 
 ### Install the Connector
 ```
-$ go get github.com/google/cups-connector/connector
-$ go get github.com/google/cups-connector/connector-init
-$ go get github.com/google/cups-connector/connector-monitor
-$ go get github.com/google/cups-connector/connector-util
+$ go get github.com/google/cups-connector/...
 ```
 
-These four binary executables will be installed in $GOPATH/bin.
+Once installation completes, four binaries will be placed in $GOPATH/bin.
 
 binary              | purpose
 ------------------- | -------
