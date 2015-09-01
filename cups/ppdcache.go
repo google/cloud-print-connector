@@ -8,10 +8,7 @@ https://developers.google.com/open-source/licenses/bsd
 package cups
 
 /*
-#cgo LDFLAGS: -lcups
-#include <cups/cups.h>
-#include <stdlib.h> // free
-#include <time.h>   // time_t
+#include "cups.h"
 */
 import "C"
 import (
