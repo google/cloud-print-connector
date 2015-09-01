@@ -36,8 +36,58 @@ void freeStringArrayAndStrings(char **stringArray, int size) {
 	free(stringArray);
 }
 
-// Wraps ippGetResolution() until bug fixed:
-// https://code.google.com/p/go/issues/detail?id=7270
-int ippGetResolutionWrapper(ipp_attribute_t *attr, int element, int *yres, int *units) {
-	return ippGetResolution(attr, element, yres, (ipp_res_t *)units);
+// getIPPRequestStatusCode gets the status_code field.
+// This field is not visible to cgo (don't know why).
+ipp_status_t getIPPRequestStatusCode(ipp_t *ipp) {
+	return ipp->request.status.status_code;
 }
+
+// getAttributeDateValue gets the ith date value from attr.
+const ipp_uchar_t *getAttributeDateValue(ipp_attribute_t *attr, int i) {
+	return attr->values[i].date;
+}
+
+// getAttributeIntegerValue gets the ith integer value from attr.
+int getAttributeIntegerValue(ipp_attribute_t *attr, int i) {
+	return attr->values[i].integer;
+}
+
+// getAttributeStringValue gets the ith string value from attr.
+const char *getAttributeStringValue(ipp_attribute_t *attr, int i) {
+	return attr->values[i].string.text;
+}
+
+// getAttributeValueRange gets the ith range value from attr.
+void getAttributeValueRange(ipp_attribute_t *attr, int i, int *lower,
+		int *upper) {
+	*lower = attr->values[i].range.lower;
+	*upper = attr->values[i].range.upper;
+}
+
+// getAttributeValueResolution gets the ith resolution value from attr.
+// The values returned are always "per inch" not "per centimeter".
+void getAttributeValueResolution(ipp_attribute_t *attr, int i, int *xres,
+		int *yres) {
+	if (IPP_RES_PER_CM == attr->values[i].resolution.units) {
+		*xres = attr->values[i].resolution.xres * 2.54;
+		*yres = attr->values[i].resolution.yres * 2.54;
+	} else {
+		*xres = attr->values[i].resolution.xres;
+		*yres = attr->values[i].resolution.yres;
+	}
+}
+
+#ifndef _CUPS_API_1_7
+// Skip attribute validation with older clients.
+int ippValidateAttributes(ipp_t *ipp) {
+	return 1;
+}
+
+// Ignore some fields with older clients.
+// The connector doesn't use addrlist anyways.
+// Older clients use msec = 30000.
+http_t *httpConnect2(const char *host, int port, http_addrlist_t *addrlist, int family,
+                     http_encryption_t encryption, int blocking, int msec, int *cancel) {
+	return httpConnectEncrypt(host, port, encryption);
+}
+#endif
