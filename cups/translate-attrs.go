@@ -119,6 +119,20 @@ func getAdobeVersionRange(pdfVersionsSupported []string) (string, string) {
 	return min, max
 }
 
+// CUPS can accept some unsafe types, like application/x-perl, so limit to these.
+var mimeTypesAllowed = map[string]struct{}{
+	"application/pdf":        struct{}{},
+	"application/postscript": struct{}{},
+	"image/pwg-raster":       struct{}{},
+	"image/gif":              struct{}{},
+	"image/jp2":              struct{}{},
+	"image/jpeg":             struct{}{},
+	"image/png":              struct{}{},
+	"image/tiff":             struct{}{},
+	"text/plain":             struct{}{},
+	"text/rtf":               struct{}{},
+}
+
 func convertSupportedContentType(printerTags map[string][]string) *[]cdd.SupportedContentType {
 	pdfMin, pdfMax := getAdobeVersionRange(printerTags[attrPDFVersionsSupported])
 	pdf := cdd.SupportedContentType{ContentType: "application/pdf"}
@@ -126,30 +140,29 @@ func convertSupportedContentType(printerTags map[string][]string) *[]cdd.Support
 		pdf.MinVersion = pdfMin
 		pdf.MaxVersion = pdfMax
 	}
+	sct := []cdd.SupportedContentType{pdf, cdd.SupportedContentType{ContentType: "application/postscript"}}
 
 	mimeTypes, exists := printerTags[attrDocumentFormatSupported]
 	if !exists || len(mimeTypes) < 1 {
-		return nil
+		return &sct
 	}
 
-	// TODO: Filter these.
-
 	// Preferred order:
-	//  1) PDF because it's small.
-	//  2) Postscript because it's a vector format.
-	//  3) Any "native" formats so that they don't need conversion.
-	//  4) PWG-Raster because it should work any time, but it's huge.
+	//  1) PDF (vector and small).
+	//  2) Postscript (vector).
+	//  3) Any CUPS-supported formats (don't need conversion in client or cloud).
+	//  4) PWG-Raster (all clients support but it's huge).
 
-	sct := append(make([]cdd.SupportedContentType, 0, len(mimeTypes)),
-		pdf, cdd.SupportedContentType{ContentType: "application/postscript"})
-	for i := range mimeTypes {
-		if mimeTypes[i] == "application/octet-stream" || // Avoid random byte blobs.
-			mimeTypes[i] == "application/pdf" ||
-			mimeTypes[i] == "application/postscript" ||
-			mimeTypes[i] == "image/pwg-raster" {
+	for _, mimeType := range mimeTypes {
+		if mimeType == "application/pdf" || // Already added.
+			mimeType == "application/postscript" || // Already added.
+			mimeType == "image/pwg-raster" { // Added last, if at all.
 			continue
 		}
-		sct = append(sct, cdd.SupportedContentType{ContentType: mimeTypes[i]})
+		if _, exists = mimeTypesAllowed[mimeType]; !exists {
+			continue
+		}
+		sct = append(sct, cdd.SupportedContentType{ContentType: mimeType})
 	}
 	/*
 		TODO: Consider adding pwg-raster with config option to enable/disable.
