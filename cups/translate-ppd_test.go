@@ -132,23 +132,24 @@ func TestTrDPI(t *testing.T) {
 
 func TestTrInputSlot(t *testing.T) {
 	ppd := `*PPD-Adobe: "4.3"
-*OpenUI *InputSlot: PickOne
-*DefaultInputSlot: 2Tray
-*InputSlot MultiTray/Bypass Tray: ""
-*InputSlot 1Tray/Tray 1: ""
-*InputSlot 2Tray/Tray 2/3: ""
-*CloseUI: *InputSlot`
+*OpenUI *OutputBin/Destination: PickOne
+*OrderDependency: 210 AnySetup *OutputBin
+*DefaultOutputBin: FinProof
+*OutputBin Standard/Internal Tray 1: ""
+*OutputBin Bin1/Internal Tray 2: ""
+*OutputBin External/External Tray: ""
+*CloseUI: *OutputBin`
 	expected := &cdd.PrinterDescriptionSection{
 		VendorCapability: &[]cdd.VendorCapability{
 			cdd.VendorCapability{
-				ID:                   "InputSlot",
+				ID:                   "OutputBin",
 				Type:                 cdd.VendorCapabilitySelect,
-				DisplayNameLocalized: cdd.NewLocalizedString("InputSlot"),
+				DisplayNameLocalized: cdd.NewLocalizedString("Destination"),
 				SelectCap: &cdd.SelectCapability{
 					Option: []cdd.SelectCapabilityOption{
-						cdd.SelectCapabilityOption{"MultiTray", "", false, cdd.NewLocalizedString("Bypass Tray")},
-						cdd.SelectCapabilityOption{"1Tray", "", false, cdd.NewLocalizedString("Tray 1")},
-						cdd.SelectCapabilityOption{"2Tray", "", true, cdd.NewLocalizedString("Tray 2/3")},
+						cdd.SelectCapabilityOption{"Standard", "", true, cdd.NewLocalizedString("Internal Tray 1")},
+						cdd.SelectCapabilityOption{"Bin1", "", false, cdd.NewLocalizedString("Internal Tray 2")},
+						cdd.SelectCapabilityOption{"External", "", false, cdd.NewLocalizedString("External Tray")},
 					},
 				},
 			},

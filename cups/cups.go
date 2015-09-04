@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,31 +34,62 @@ const (
 	// CUPS "URL" length are always less than 40. For example: /job/1234567
 	urlMaxLength = 100
 
-	attrDeviceURI               = "device-uri"
-	attrDocumentFormatSupported = "document-format-supported"
-	attrMarkerLevels            = "marker-levels"
-	attrMarkerNames             = "marker-names"
-	attrMarkerTypes             = "marker-types"
-	attrPrinterInfo             = "printer-info"
-	attrPrinterMakeAndModel     = "printer-make-and-model"
-	attrPrinterName             = "printer-name"
-	attrPrinterState            = "printer-state"
-	attrPrinterStateReasons     = "printer-state-reasons"
-	attrPrinterUUID             = "printer-uuid"
+	// Attributes that CUPS uses to describe printers.
+	attrCUPSVersion                   = "cups-version"
+	attrCopiesDefault                 = "copies-default"
+	attrCopiesSupported               = "copies-supported"
+	attrDeviceURI                     = "device-uri"
+	attrDocumentFormatSupported       = "document-format-supported"
+	attrMarkerLevels                  = "marker-levels"
+	attrMarkerNames                   = "marker-names"
+	attrMarkerTypes                   = "marker-types"
+	attrNumberUpDefault               = "number-up-default"
+	attrNumberUpSupported             = "number-up-supported"
+	attrOrientationRequestedDefault   = "orientation-requested-default"
+	attrOrientationRequestedSupported = "orientation-requested-supported"
+	attrPDFVersionsSupported          = "pdf-versions-supported"
+	attrPrinterInfo                   = "printer-info"
+	attrPrinterName                   = "printer-name"
+	attrPrinterState                  = "printer-state"
+	attrPrinterStateReasons           = "printer-state-reasons"
+	attrPrinterUUID                   = "printer-uuid"
 
-	attrJobState                = "job-state"
+	// Attributes that the connector uses to describe print jobs to CUPS.
+	attrCopies               = "copies"
+	attrCollate              = "collate"
+	attrFalse                = "false"
+	attrFitToPage            = "fit-to-page"
+	attrMediaBottomMargin    = "media-bottom-margin"
+	attrMediaLeftMargin      = "media-left-margin"
+	attrMediaRightMargin     = "media-right-margin"
+	attrMediaTopMargin       = "media-top-margin"
+	attrNormal               = "normal"
+	attrNumberUp             = "number-up"
+	attrOrientationRequested = "orientation-requested"
+	attrOutputOrder          = "outputorder"
+	attrReverse              = "reverse"
+	attrTrue                 = "true"
+
+	// Attributes that CUPS uses to describe job state.
 	attrJobMediaSheetsCompleted = "job-media-sheets-completed"
+	attrJobState                = "job-state"
 )
 
 var (
 	requiredPrinterAttributes []string = []string{
+		attrCopiesDefault,
+		attrCopiesSupported,
 		attrDeviceURI,
 		attrDocumentFormatSupported,
 		attrMarkerLevels,
 		attrMarkerNames,
 		attrMarkerTypes,
+		attrNumberUpDefault,
+		attrNumberUpSupported,
+		attrOrientationRequestedDefault,
+		attrOrientationRequestedSupported,
+		attrPDFVersionsSupported,
 		attrPrinterInfo,
-		attrPrinterMakeAndModel,
 		attrPrinterName,
 		attrPrinterState,
 		attrPrinterStateReasons,
@@ -71,44 +101,22 @@ var (
 		attrJobMediaSheetsCompleted,
 	}
 
-	numberUpCapability = cdd.VendorCapability{
-		ID:   "number-up",
-		Type: cdd.VendorCapabilitySelect,
-		SelectCap: &cdd.SelectCapability{
-			Option: []cdd.SelectCapabilityOption{
-				cdd.SelectCapabilityOption{
-					Value:                "1",
-					IsDefault:            true,
-					DisplayNameLocalized: cdd.NewLocalizedString("1"),
+	// cupsPDS represents capabilities that CUPS always provides.
+	cupsPDS = cdd.PrinterDescriptionSection{
+		FitToPage: &cdd.FitToPage{
+			Option: []cdd.FitToPageOption{
+				cdd.FitToPageOption{
+					Type:      cdd.FitToPageNoFitting,
+					IsDefault: true,
 				},
-				cdd.SelectCapabilityOption{
-					Value:                "2",
-					IsDefault:            false,
-					DisplayNameLocalized: cdd.NewLocalizedString("2"),
-				},
-				cdd.SelectCapabilityOption{
-					Value:                "4",
-					IsDefault:            false,
-					DisplayNameLocalized: cdd.NewLocalizedString("4"),
-				},
-				cdd.SelectCapabilityOption{
-					Value:                "6",
-					IsDefault:            false,
-					DisplayNameLocalized: cdd.NewLocalizedString("6"),
-				},
-				cdd.SelectCapabilityOption{
-					Value:                "9",
-					IsDefault:            false,
-					DisplayNameLocalized: cdd.NewLocalizedString("9"),
-				},
-				cdd.SelectCapabilityOption{
-					Value:                "16",
-					IsDefault:            false,
-					DisplayNameLocalized: cdd.NewLocalizedString("16"),
+				cdd.FitToPageOption{
+					Type:      cdd.FitToPageFitToPage,
+					IsDefault: false,
 				},
 			},
 		},
-		DisplayNameLocalized: cdd.NewLocalizedString("Pages per sheet"),
+		ReverseOrder: &cdd.ReverseOrder{Default: false},
+		Collate:      &cdd.Collate{Default: true},
 	}
 )
 
@@ -209,8 +217,28 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 		for ; a != nil && a.group_tag == C.IPP_TAG_PRINTER; a = a.next {
 			attributes = append(attributes, a)
 		}
-		tags := attributesToTags(attributes)
-		p := tagsToPrinter(tags, c.systemTags, c.infoToDisplayName)
+		mAttributes := attributesToMap(attributes)
+		pds, pss, name, defaultDisplayName, uuid, tags := translateAttrs(mAttributes)
+		if !c.infoToDisplayName || defaultDisplayName == "" {
+			defaultDisplayName = name
+		}
+		for k, v := range c.systemTags {
+			tags[k] = v
+		}
+		p := lib.Printer{
+			Name:               name,
+			DefaultDisplayName: defaultDisplayName,
+			UUID:               uuid,
+			GCPVersion:         lib.GCPAPIVersion,
+			SetupURL:           lib.ConnectorHomeURL,
+			SupportURL:         lib.ConnectorHomeURL,
+			UpdateURL:          lib.ConnectorHomeURL,
+			ConnectorVersion:   lib.ShortName,
+			State:              pss,
+			Description:        pds,
+			Tags:               tags,
+		}
+		p.SetTagshash()
 
 		printers = append(printers, p)
 		if a == nil {
@@ -364,7 +392,7 @@ func (c *CUPS) Print(printername, filename, title, user string, ticket *cdd.Clou
 	}
 	defer C.free(unsafe.Pointer(t))
 
-	options := ticketToOptions(ticket)
+	options := translateTicket(ticket)
 	numOptions := C.int(0)
 	var o *C.cups_option_t = nil
 	for key, value := range options {
@@ -384,92 +412,6 @@ func (c *CUPS) Print(printername, filename, title, user string, ticket *cdd.Clou
 	}
 
 	return uint32(jobID), nil
-}
-
-func ticketToOptions(ticket *cdd.CloudJobTicket) map[string]string {
-	m := make(map[string]string)
-	if ticket == nil {
-		return m
-	}
-
-	for _, vti := range ticket.Print.VendorTicketItem {
-		m[vti.ID] = vti.Value
-	}
-	if ticket.Print.Color != nil {
-		m["ColorModel"] = ticket.Print.Color.VendorID
-	}
-	if ticket.Print.Duplex != nil {
-		switch ticket.Print.Duplex.Type {
-		case "LONG_EDGE":
-			m["Duplex"] = "DuplexNoTumble"
-		case "SHORT_EDGE":
-			m["Duplex"] = "DuplexTumble"
-		case "NO_DUPLEX":
-			m["Duplex"] = "None"
-		}
-	}
-	if ticket.Print.PageOrientation != nil {
-		switch ticket.Print.PageOrientation.Type {
-		case "PORTRAIT":
-			m["orientation-requested"] = "3"
-		case "LANDSCAPE":
-			m["orientation-requested"] = "4"
-		}
-	}
-	if ticket.Print.Copies != nil {
-		m["copies"] = strconv.FormatInt(int64(ticket.Print.Copies.Copies), 10)
-	}
-	if ticket.Print.Margins != nil {
-		m["page-top"] = micronsToPoints(ticket.Print.Margins.TopMicrons)
-		m["page-right"] = micronsToPoints(ticket.Print.Margins.RightMicrons)
-		m["page-bottom"] = micronsToPoints(ticket.Print.Margins.BottomMicrons)
-		m["page-left"] = micronsToPoints(ticket.Print.Margins.LeftMicrons)
-	}
-	if ticket.Print.DPI != nil {
-		if ticket.Print.DPI.VendorID != "" {
-			m["Resolution"] = ticket.Print.DPI.VendorID
-		} else {
-			m["Resolution"] = fmt.Sprintf("%dx%xdpi",
-				ticket.Print.DPI.HorizontalDPI, ticket.Print.DPI.VerticalDPI)
-		}
-	}
-	if ticket.Print.FitToPage != nil {
-		switch ticket.Print.FitToPage.Type {
-		case "FIT_TO_PAGE":
-			m["fit-to-page"] = "true"
-		case "NO_FITTING":
-			m["fit-to-page"] = "false"
-		}
-	}
-	if ticket.Print.MediaSize != nil {
-		if ticket.Print.MediaSize.VendorID != "" {
-			m["media"] = ticket.Print.MediaSize.VendorID
-		} else {
-			widthPoints := micronsToPoints(ticket.Print.MediaSize.WidthMicrons)
-			heightPoints := micronsToPoints(ticket.Print.MediaSize.HeightMicrons)
-			m["media"] = fmt.Sprintf("Custom.%sx%s", widthPoints, heightPoints)
-		}
-	}
-	if ticket.Print.Collate != nil {
-		if ticket.Print.Collate.Collate {
-			m["Collate"] = "true"
-		} else {
-			m["Collate"] = "false"
-		}
-	}
-	if ticket.Print.ReverseOrder != nil {
-		if ticket.Print.ReverseOrder.ReverseOrder {
-			m["outputorder"] = "reverse"
-		} else {
-			m["outputorder"] = "normal"
-		}
-	}
-
-	return m
-}
-
-func micronsToPoints(microns int32) string {
-	return strconv.Itoa(int(float32(microns)*72/25400 + 0.5))
 }
 
 // convertIPPDateToTime converts an RFC 2579 date to a time.Time object.
@@ -505,11 +447,10 @@ func convertIPPDateToTime(date *C.ipp_uchar_t) time.Time {
 	return time.Date(int(year), time.Month(month), int(day), int(hour), int(min), int(sec), nsec, loc)
 }
 
-// attributesToTags converts a slice of C.ipp_attribute_t to a
-// string:string "tag" map. Outside of this package, "printer attributes" are
-// known as "tags".
-func attributesToTags(attributes []*C.ipp_attribute_t) map[string][]string {
-	tags := make(map[string][]string)
+// attributesToMap converts a slice of C.ipp_attribute_t to a
+// string:string "tag" map.
+func attributesToMap(attributes []*C.ipp_attribute_t) map[string][]string {
+	m := make(map[string][]string)
 
 	for _, a := range attributes {
 		key := C.GoString(a.name)
@@ -566,7 +507,7 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string][]string {
 			}
 		}
 
-		if len(values) == 1 && values[0] == "none" {
+		if len(values) == 1 && (values[0] == "none" || len(values[0]) == 0) {
 			values = []string{}
 		}
 		// This block fixes some drivers' marker types, which list an extra
@@ -580,238 +521,10 @@ func attributesToTags(attributes []*C.ipp_attribute_t) map[string][]string {
 			newValues[len(newValues)-1] = strings.Join(values[len(values)-2:], ",")
 			values = newValues
 		}
-		tags[key] = values
+		m[key] = values
 	}
 
-	return tags
-}
-
-// tagsToPrinter converts a map of tags to a Printer.
-func tagsToPrinter(printerTags map[string][]string, systemTags map[string]string, infoToDisplayName bool) lib.Printer {
-	tags := make(map[string]string)
-
-	for k, v := range printerTags {
-		tags[k] = strings.Join(v, ",")
-	}
-	for k, v := range systemTags {
-		tags[k] = v
-	}
-
-	var name string
-	if n, ok := printerTags[attrPrinterName]; ok {
-		name = n[0]
-	}
-	var uuid string
-	if u, ok := printerTags[attrPrinterUUID]; ok {
-		uuid = u[0]
-	}
-
-	state := cdd.PrinterStateSection{}
-
-	if s, ok := printerTags[attrPrinterState]; ok {
-		switch s[0] {
-		case "3":
-			state.State = cdd.CloudDeviceStateIdle
-		case "4":
-			state.State = cdd.CloudDeviceStateProcessing
-		case "5":
-			state.State = cdd.CloudDeviceStateStopped
-		default:
-			state.State = cdd.CloudDeviceStateIdle
-		}
-	}
-
-	if reasons, ok := printerTags[attrPrinterStateReasons]; ok && len(reasons) > 0 {
-		sort.Strings(reasons)
-		state.VendorState = &cdd.VendorState{Item: make([]cdd.VendorStateItem, len(reasons))}
-		for i, reason := range reasons {
-			vendorState := cdd.VendorStateItem{DescriptionLocalized: cdd.NewLocalizedString(reason)}
-			if strings.HasSuffix(reason, "-error") {
-				vendorState.State = cdd.VendorStateError
-			} else if strings.HasSuffix(reason, "-warning") {
-				vendorState.State = cdd.VendorStateWarning
-			} else if strings.HasSuffix(reason, "-report") {
-				vendorState.State = cdd.VendorStateInfo
-			} else {
-				vendorState.State = cdd.VendorStateInfo
-			}
-			state.VendorState.Item[i] = vendorState
-		}
-	}
-
-	description := cdd.PrinterDescriptionSection{
-		Copies: &cdd.Copies{
-			Default: 1,
-			Max:     1000,
-		},
-		Collate: &cdd.Collate{
-			Default: true,
-		},
-		VendorCapability: &[]cdd.VendorCapability{numberUpCapability},
-	}
-
-	if mimeTypes, ok := printerTags[attrDocumentFormatSupported]; ok && len(mimeTypes) > 0 {
-		// Preferred order:
-		//  1) PDF because it's small.
-		//  2) Postscript because it's a vector format.
-		//  3) Any "native" formats so that they don't need conversion.
-		//  4) PWG-Raster because it should work any time, but it's huge.
-
-		sct := append(make([]cdd.SupportedContentType, 0, len(mimeTypes)),
-			cdd.SupportedContentType{ContentType: "application/pdf"},
-			cdd.SupportedContentType{ContentType: "application/postscript"})
-		for i := range mimeTypes {
-			if mimeTypes[i] == "application/octet-stream" || // Avoid random byte blobs.
-				mimeTypes[i] == "application/pdf" ||
-				mimeTypes[i] == "application/postscript" ||
-				mimeTypes[i] == "image/pwg-raster" {
-				continue
-			}
-			sct = append(sct, cdd.SupportedContentType{ContentType: mimeTypes[i]})
-		}
-		/*
-			TODO: Consider adding pwg-raster with config option to enable/disable.
-			- All clients authored by Google do not create PWG Raster jobs.
-			- cups-filters only supports pwg-raster input in recent versions.
-			  https://www.cups.org/pipermail/cups/2015-July/026927.html
-		*/
-		description.SupportedContentType = &sct
-	}
-
-	markers, markerState := convertMarkers(printerTags[attrMarkerNames], printerTags[attrMarkerTypes], printerTags[attrMarkerLevels])
-	state.MarkerState = markerState
-	description.Marker = markers
-
-	p := lib.Printer{
-		Name:               name,
-		DefaultDisplayName: name,
-		UUID:               uuid,
-		State:              &state,
-		Description:        &description,
-		Tags:               tags,
-	}
-	p.SetTagshash()
-
-	if printerInfo, ok := printerTags[attrPrinterInfo]; ok && infoToDisplayName && len(printerInfo) > 0 && printerInfo[0] != "" {
-		p.DefaultDisplayName = printerInfo[0]
-	}
-
-	return p
-}
-
-var cupsMarkerNameToGCP map[string]cdd.MarkerColorType = map[string]cdd.MarkerColorType{
-	"black":        cdd.MarkerColorBlack,
-	"color":        cdd.MarkerColorColor,
-	"cyan":         cdd.MarkerColorCyan,
-	"magenta":      cdd.MarkerColorMagenta,
-	"yellow":       cdd.MarkerColorYellow,
-	"lightcyan":    cdd.MarkerColorLightCyan,
-	"lightmagenta": cdd.MarkerColorLightMagenta,
-	"gray":         cdd.MarkerColorGray,
-	"lightgray":    cdd.MarkerColorLightGray,
-	"pigmentblack": cdd.MarkerColorPigmentBlack,
-	"matteblack":   cdd.MarkerColorMatteBlack,
-	"photocyan":    cdd.MarkerColorPhotoCyan,
-	"photomagenta": cdd.MarkerColorPhotoMagenta,
-	"photoyellow":  cdd.MarkerColorPhotoYellow,
-	"photogray":    cdd.MarkerColorPhotoGray,
-	"red":          cdd.MarkerColorRed,
-	"green":        cdd.MarkerColorGreen,
-	"blue":         cdd.MarkerColorBlue,
-}
-
-// convertMarkers converts CUPS marker-(names|types|levels) to *[]cdd.Marker and *cdd.MarkerState.
-//
-// Normalizes marker type: toner(Cartridge|-cartridge) => toner,
-// ink(Cartridge|-cartridge|Ribbon|-ribbon) => ink
-func convertMarkers(names, types, levels []string) (*[]cdd.Marker, *cdd.MarkerState) {
-	if len(names) == 0 || len(types) == 0 || len(levels) == 0 {
-		return nil, nil
-	}
-	if len(names) != len(types) || len(types) != len(levels) {
-		glog.Warningf("Received badly-formatted markers from CUPS: %s, %s, %s",
-			strings.Join(names, ";"), strings.Join(types, ";"), strings.Join(levels, ";"))
-		return nil, nil
-	}
-
-	markers := make([]cdd.Marker, 0, len(names))
-	states := cdd.MarkerState{make([]cdd.MarkerStateItem, 0, len(names))}
-	for i := 0; i < len(names); i++ {
-		if len(names[i]) == 0 {
-			return nil, nil
-		}
-		var markerType cdd.MarkerType
-		switch strings.ToLower(types[i]) {
-		case "toner", "tonercartridge", "toner-cartridge":
-			markerType = cdd.MarkerToner
-		case "ink", "inkcartridge", "ink-cartridge", "ink-ribbon", "inkribbon":
-			markerType = cdd.MarkerInk
-		case "staples":
-			markerType = cdd.MarkerStaples
-		default:
-			continue
-		}
-
-		nameStripped := strings.Replace(strings.Replace(strings.ToLower(names[i]), " ", "", -1), "-", "", -1)
-		colorType := cdd.MarkerColorCustom
-		for k, v := range cupsMarkerNameToGCP {
-			if strings.HasPrefix(nameStripped, k) {
-				colorType = v
-				break
-			}
-		}
-		color := cdd.MarkerColor{Type: colorType}
-		if colorType == cdd.MarkerColorCustom {
-			name := names[i]
-			name = strings.TrimSuffix(name, " Cartridge")
-			name = strings.TrimSuffix(name, " cartridge")
-			name = strings.TrimSuffix(name, " Ribbon")
-			name = strings.TrimSuffix(name, " ribbon")
-			name = strings.TrimSuffix(name, " Toner")
-			name = strings.TrimSuffix(name, " toner")
-			name = strings.TrimSuffix(name, " Ink")
-			name = strings.TrimSuffix(name, " ink")
-			name = strings.Replace(name, "-", " ", -1)
-			color.CustomDisplayNameLocalized = cdd.NewLocalizedString(name)
-		}
-
-		marker := cdd.Marker{
-			VendorID: names[i],
-			Type:     markerType,
-			Color:    &color,
-		}
-
-		level, err := strconv.ParseInt(levels[i], 10, 32)
-		if err != nil {
-			glog.Warningf("Failed to parse CUPS marker state %s=%s: %s", names[i], levels[i], err)
-			return nil, nil
-		}
-		if level > 100 {
-			// Lop off extra (proprietary?) bits.
-			level = level & 0x7f
-		}
-		if level < 0 || level > 100 {
-			return nil, nil
-		}
-
-		var state cdd.MarkerStateType
-		if level > 10 {
-			state = cdd.MarkerStateOK
-		} else {
-			state = cdd.MarkerStateExhausted
-		}
-		level32 := int32(level)
-		markerState := cdd.MarkerStateItem{
-			VendorID:     names[i],
-			State:        state,
-			LevelPercent: &level32,
-		}
-
-		markers = append(markers, marker)
-		states.Item = append(states.Item, markerState)
-	}
-
-	return &markers, &states
+	return m
 }
 
 func contains(haystack []string, needle string) bool {

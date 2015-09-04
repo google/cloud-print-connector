@@ -28,7 +28,6 @@ const (
 	ppdDuplexTumble            = "DuplexTumble"
 	ppdEnd                     = "End"
 	ppdHWMargins               = "HWMargins"
-	ppdInputSlot               = "InputSlot"
 	ppdInstallableOptions      = "InstallableOptions"
 	ppdJCLCloseUI              = "JCLCloseUI"
 	ppdJCLOpenUI               = "JCLOpenUI"
@@ -44,9 +43,7 @@ const (
 	ppdPickMany                = "PickMany"
 	ppdPickOne                 = "PickOne"
 	ppdPrintQualityTranslation = "Print Quality"
-	ppdPunchTranslation        = "Punch"
 	ppdResolution              = "Resolution"
-	ppdStapleLocation          = "StapleLocation"
 	ppdThroughput              = "Throughput"
 	ppdUIConstraints           = "UIConstraints"
 )
@@ -78,6 +75,7 @@ var (
 	rHWMargins  = regexp.MustCompile(`^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$`)
 )
 
+// statement represents a PPD statement.
 type statement struct {
 	mainKeyword   string
 	optionKeyword string
@@ -92,6 +90,7 @@ const (
 	entryTypeBoolean entryType = iota
 )
 
+// entry represents a PPD OpenUI entry.
 type entry struct {
 	mainKeyword  string
 	translation  string
@@ -121,11 +120,11 @@ func translatePPD(ppd string) (*cdd.PrinterDescriptionSection, string, string) {
 			pds.Duplex = convertDuplex(e)
 		case ppdResolution:
 			pds.DPI = convertDPI(e)
-		case ppdInputSlot, ppdOutputBin, ppdStapleLocation, ppdMediaType:
+		case ppdOutputBin:
 			*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
 		default:
 			switch e.translation {
-			case ppdPrintQualityTranslation, ppdPunchTranslation:
+			case ppdPrintQualityTranslation:
 				*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
 			}
 		}
@@ -474,6 +473,12 @@ func convertColor(e entry) *cdd.Color {
 	}
 
 	return nil
+}
+
+var duplexPPDByCDD = map[cdd.DuplexType]string{
+	cdd.DuplexNoDuplex:  ppdNone,
+	cdd.DuplexLongEdge:  ppdDuplexNoTumble,
+	cdd.DuplexShortEdge: ppdDuplexTumble,
 }
 
 func convertDuplex(e entry) *cdd.Duplex {

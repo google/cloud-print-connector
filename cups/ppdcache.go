@@ -38,7 +38,6 @@ type ppdCache struct {
 	cacheMutex sync.RWMutex
 }
 
-// TODO: Pass cc.getPPD instead of cc. Then move PPDCache to separate package.
 func newPPDCache(cc *cupsCore) *ppdCache {
 	cache := make(map[string]*ppdCacheEntry)
 	pc := ppdCache{
