@@ -119,10 +119,9 @@ type CUPS struct {
 	infoToDisplayName bool
 	printerAttributes []string
 	systemTags        map[string]string
-	translatePPDToCDD func(string) (*cdd.PrinterDescriptionSection, error)
 }
 
-func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections uint, connectTimeout time.Duration, translatePPDToCDD func(string) (*cdd.PrinterDescriptionSection, error)) (*CUPS, error) {
+func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections uint, connectTimeout time.Duration) (*CUPS, error) {
 	if err := checkPrinterAttributes(printerAttributes); err != nil {
 		return nil, err
 	}
@@ -131,7 +130,7 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections 
 	if err != nil {
 		return nil, err
 	}
-	pc := newPPDCache(cc, translatePPDToCDD)
+	pc := newPPDCache(cc)
 
 	systemTags, err := getSystemTags()
 	if err != nil {

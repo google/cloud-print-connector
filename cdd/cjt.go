@@ -34,16 +34,16 @@ type VendorTicketItem struct {
 }
 
 type ColorTicketItem struct {
-	VendorID string `json:"vendor_id"`
-	Type     string `json:"type"` // enum
+	VendorID string    `json:"vendor_id"`
+	Type     ColorType `json:"type"`
 }
 
 type DuplexTicketItem struct {
-	Type string `json:"type"` // enum
+	Type DuplexType `json:"type"`
 }
 
 type PageOrientationTicketItem struct {
-	Type string `json:"type"` // enum
+	Type PageOrientationType `json:"type"`
 }
 
 type CopiesTicketItem struct {
@@ -64,7 +64,7 @@ type DPITicketItem struct {
 }
 
 type FitToPageTicketItem struct {
-	Type string `json:"type"` // enum
+	Type FitToPageType `json:"type"`
 }
 
 type PageRangeTicketItem struct {

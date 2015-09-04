@@ -397,30 +397,6 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, error) {
 	return printer, p.QueuedJobsCount, err
 }
 
-// Translate calls google.com/cloudprint/tools/cdd/translate to translate
-// a PPD string to cdd.PrinterDescriptionSection.
-func (gcp *GoogleCloudPrint) Translate(ppd string) (*cdd.PrinterDescriptionSection, error) {
-	form := url.Values{}
-	form.Set("capabilities", ppd)
-
-	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"tools/cdd/translate", form)
-	if err != nil {
-		return nil, err
-	}
-
-	d := json.NewDecoder(bytes.NewReader(responseBody))
-	d.UseNumber() // Force large numbers not to be formatted with scientific notation.
-
-	var response struct {
-		CDD cdd.CloudDeviceDescription `json:"cdd"`
-	}
-	if err = d.Decode(&response); err != nil {
-		return nil, fmt.Errorf("Failed to unmarshal translated CDD: %s", err)
-	}
-
-	return response.CDD.Printer, nil
-}
-
 func marshalCapabilities(description *cdd.PrinterDescriptionSection) (string, error) {
 	capabilities := cdd.CloudDeviceDescription{
 		Version: "1.0",
