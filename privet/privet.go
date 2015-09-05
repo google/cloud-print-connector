@@ -58,9 +58,8 @@ func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) ([]byte
 }
 
 // AddPrinter makes a printer available locally.
-func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func() (lib.Printer, bool)) error {
-	getProximityToken := func(user string) ([]byte, int, error) { return p.getProximityToken(printer.GCPID, user) }
-	api, err := newPrivetAPI(printer.GCPID, p.gcpBaseURL, p.xsrf, &p.jc, p.jobs, getPrinter, getProximityToken, p.createTempFile)
+func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func(string) (lib.Printer, bool)) error {
+	api, err := newPrivetAPI(printer.GCPID, p.gcpBaseURL, p.xsrf, &p.jc, p.jobs, getPrinter, p.getProximityToken, p.createTempFile)
 	if err != nil {
 		return err
 	}

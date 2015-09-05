@@ -69,15 +69,15 @@ type privetAPI struct {
 	jc         *jobCache
 	jobs       chan<- *lib.Job
 
-	getPrinter        func() (lib.Printer, bool)
-	getProximityToken func(string) ([]byte, int, error)
+	getPrinter        func(string) (lib.Printer, bool)
+	getProximityToken func(string, string) ([]byte, int, error)
 	createTempFile    func() (*os.File, error)
 
 	listener  *quittableListener
 	startTime time.Time
 }
 
-func newPrivetAPI(gcpID, gcpBaseURL string, xsrf xsrfSecret, jc *jobCache, jobs chan<- *lib.Job, getPrinter func() (lib.Printer, bool), getProximityToken func(string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*privetAPI, error) {
+func newPrivetAPI(gcpID, gcpBaseURL string, xsrf xsrfSecret, jc *jobCache, jobs chan<- *lib.Job, getPrinter func(string) (lib.Printer, bool), getProximityToken func(string, string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*privetAPI, error) {
 	l, err := newQuittableListener()
 	if err != nil {
 		return nil, err
@@ -158,7 +158,7 @@ func (api *privetAPI) info(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	printer, exists := api.getPrinter()
+	printer, exists := api.getPrinter(api.gcpID)
 	if !exists {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -231,7 +231,7 @@ func (api *privetAPI) accesstoken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	responseBody, httpStatusCode, err := api.getProximityToken(user)
+	responseBody, httpStatusCode, err := api.getProximityToken(api.gcpID, user)
 	if err != nil {
 		glog.Errorf("Failed to get proximity token: %s", err)
 	}
@@ -285,7 +285,7 @@ func (api *privetAPI) capabilities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	printer, exists := api.getPrinter()
+	printer, exists := api.getPrinter(api.gcpID)
 	if !exists {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -323,7 +323,7 @@ func (api *privetAPI) createjob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	printer, exists := api.getPrinter()
+	printer, exists := api.getPrinter(api.gcpID)
 	if !exists {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -383,7 +383,7 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	printer, exists := api.getPrinter()
+	printer, exists := api.getPrinter(api.gcpID)
 	if !exists {
 		w.WriteHeader(http.StatusInternalServerError)
 		os.Remove(file.Name())
