@@ -192,14 +192,9 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	}
 
 	printers := c.responseToPrinters(response)
-	for i := range printers {
-		printers[i].GCPVersion = lib.GCPAPIVersion
-		printers[i].ConnectorVersion = lib.ShortName
-		printers[i].SetupURL = lib.ConnectorHomeURL
-		printers[i].SupportURL = lib.ConnectorHomeURL
-		printers[i].UpdateURL = lib.ConnectorHomeURL
-	}
-	printers = c.addDescriptionToPrinters(printers)
+	printers = filterRawPrinters(printers)
+	printers = c.addPPDDescriptionToPrinters(printers)
+	printers = addStaticDescriptionToPrinters(printers)
 
 	return printers, nil
 }
@@ -229,16 +224,10 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 			Name:               name,
 			DefaultDisplayName: defaultDisplayName,
 			UUID:               uuid,
-			GCPVersion:         lib.GCPAPIVersion,
-			SetupURL:           lib.ConnectorHomeURL,
-			SupportURL:         lib.ConnectorHomeURL,
-			UpdateURL:          lib.ConnectorHomeURL,
-			ConnectorVersion:   lib.ShortName,
 			State:              pss,
 			Description:        pds,
 			Tags:               tags,
 		}
-		p.SetTagshash()
 
 		printers = append(printers, p)
 		if a == nil {
@@ -249,31 +238,36 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 	return printers
 }
 
-// addDescriptionToPrinters fetches description, PPD hash, manufacturer, model
+// filterRawPrinters removes raw printers from the slice.
+func filterRawPrinters(printers []lib.Printer) []lib.Printer {
+	result := make([]lib.Printer, 0, len(printers))
+	for i := range printers {
+		if !lib.PrinterIsRaw(printers[i]) {
+			result = append(result, printers[i])
+		}
+	}
+	return result
+}
+
+// addPPDDescriptionToPrinters fetches description, PPD hash, manufacturer, model
 // for argument printers, concurrently. These are the fields derived from PPD.
-//
-// Returns a new printer slice, because it can shrink due to raw or
-// mis-configured printers.
-func (c *CUPS) addDescriptionToPrinters(printers []lib.Printer) []lib.Printer {
+func (c *CUPS) addPPDDescriptionToPrinters(printers []lib.Printer) []lib.Printer {
 	var wg sync.WaitGroup
 	ch := make(chan *lib.Printer, len(printers))
 
 	for i := range printers {
-		if !lib.PrinterIsRaw(printers[i]) {
-			wg.Add(1)
-			go func(p *lib.Printer) {
-				if description, ppdHash, manufacturer, model, err := c.pc.getPPDCacheEntry(p.Name); err == nil {
-					p.Description.Absorb(description)
-					p.CapsHash = ppdHash
-					p.Manufacturer = manufacturer
-					p.Model = model
-					ch <- p
-				} else {
-					glog.Error(err)
-				}
-				wg.Done()
-			}(&printers[i])
-		}
+		wg.Add(1)
+		go func(p *lib.Printer) {
+			if description, manufacturer, model, err := c.pc.getPPDCacheEntry(p.Name); err == nil {
+				p.Description.Absorb(description)
+				p.Manufacturer = manufacturer
+				p.Model = model
+				ch <- p
+			} else {
+				glog.Error(err)
+			}
+			wg.Done()
+		}(&printers[i])
 	}
 
 	wg.Wait()
@@ -285,6 +279,20 @@ func (c *CUPS) addDescriptionToPrinters(printers []lib.Printer) []lib.Printer {
 	}
 
 	return result
+}
+
+// addStaticDescriptionToPrinters adds information that is true for all
+// printers to printers.
+func addStaticDescriptionToPrinters(printers []lib.Printer) []lib.Printer {
+	for i := range printers {
+		printers[i].Description.Absorb(&cupsPDS)
+		printers[i].GCPVersion = lib.GCPAPIVersion
+		printers[i].ConnectorVersion = lib.ShortName
+		printers[i].SetupURL = lib.ConnectorHomeURL
+		printers[i].SupportURL = lib.ConnectorHomeURL
+		printers[i].UpdateURL = lib.ConnectorHomeURL
+	}
+	return printers
 }
 
 func getSystemTags() (map[string]string, error) {

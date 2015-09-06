@@ -8,11 +8,8 @@ https://developers.google.com/open-source/licenses/bsd
 package lib
 
 import (
-	"crypto/md5"
-	"fmt"
 	"reflect"
 	"regexp"
-	"sort"
 
 	"github.com/google/cups-connector/cdd"
 )
@@ -37,29 +34,6 @@ type Printer struct {
 	CapsHash           string                         // CUPS: hash of PPD;                 GCP: capsHash field
 	Tags               map[string]string              // CUPS: all printer attributes;      GCP: repeated tag field
 	CUPSJobSemaphore   *Semaphore
-}
-
-// SetTagshash calculates an MD5 sum for the Printer.Tags map,
-// sets Printer.Tags["tagshash"] to that value.
-func (p *Printer) SetTagshash() {
-	sortedKeys := make([]string, len(p.Tags))
-	i := 0
-	for key := range p.Tags {
-		sortedKeys[i] = key
-		i++
-	}
-	sort.Strings(sortedKeys)
-
-	tagshash := md5.New()
-	for _, key := range sortedKeys {
-		if key == "tagshash" {
-			continue
-		}
-		tagshash.Write([]byte(key))
-		tagshash.Write([]byte(p.Tags[key]))
-	}
-
-	p.Tags["tagshash"] = fmt.Sprintf("%x", tagshash.Sum(nil))
 }
 
 var rDeviceURIHostname *regexp.Regexp = regexp.MustCompile(
