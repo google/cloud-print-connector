@@ -10,6 +10,7 @@ package cups
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/google/cups-connector/cdd"
 )
@@ -25,8 +26,13 @@ func translateTicket(ticket *cdd.CloudJobTicket) map[string]string {
 		m[vti.ID] = vti.Value
 	}
 	if ticket.Print.Color != nil {
-		m[ppdColorModel] = ticket.Print.Color.VendorID
-		// TODO: Lookup Color.Type in CDD when ticket Color.VendorID is empty?
+		// TODO: Lookup VendorID by Color.Type in CDD when ticket Color.VendorID is empty?
+		v := ticket.Print.Color.VendorID
+		if strings.HasPrefix(v, ppdColorModel) {
+			m[ppdColorModel] = strings.TrimPrefix(v, ppdColorModel)
+		} else if strings.HasPrefix(v, attrPrintColorMode) {
+			m[attrPrintColorMode] = strings.TrimPrefix(v, attrPrintColorMode)
+		}
 	}
 	if ticket.Print.Duplex != nil {
 		if ppdValue, exists := duplexPPDByCDD[ticket.Print.Duplex.Type]; exists {

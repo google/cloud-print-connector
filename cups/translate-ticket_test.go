@@ -18,7 +18,7 @@ import (
 	"github.com/google/cups-connector/cdd"
 )
 
-func TestTicketToOptions(t *testing.T) {
+func TestTranslateTicket(t *testing.T) {
 	expected := map[string]string{}
 	o := translateTicket(nil)
 	if !reflect.DeepEqual(o, expected) {
@@ -37,7 +37,7 @@ func TestTicketToOptions(t *testing.T) {
 		VendorTicketItem: []cdd.VendorTicketItem{
 			cdd.VendorTicketItem{"number-up", "a"},
 		},
-		Color:           &cdd.ColorTicketItem{VendorID: "zebra-stripes", Type: cdd.ColorTypeCustomMonochrome},
+		Color:           &cdd.ColorTicketItem{VendorID: "ColorModelzebra-stripes", Type: cdd.ColorTypeCustomMonochrome},
 		Duplex:          &cdd.DuplexTicketItem{Type: cdd.DuplexNoDuplex},
 		PageOrientation: &cdd.PageOrientationTicketItem{Type: cdd.PageOrientationAuto},
 		Copies:          &cdd.CopiesTicketItem{Copies: 2},
@@ -80,13 +80,13 @@ func TestTicketToOptions(t *testing.T) {
 	}
 
 	ticket.Print = cdd.PrintTicketSection{
-		Color:           &cdd.ColorTicketItem{VendorID: "color", Type: cdd.ColorTypeStandardColor},
+		Color:           &cdd.ColorTicketItem{VendorID: "print-color-modecolor", Type: cdd.ColorTypeStandardColor},
 		PageOrientation: &cdd.PageOrientationTicketItem{Type: cdd.PageOrientationLandscape},
 		DPI:             &cdd.DPITicketItem{100, 100, ""},
 		MediaSize:       &cdd.MediaSizeTicketItem{100000, 100000, false, ""},
 	}
 	expected = map[string]string{
-		"ColorModel":            "color",
+		"print-color-mode":      "color",
 		"orientation-requested": "4",
 		"Resolution":            "100x100dpi",
 		"PageSize":              "Custom.283x283",

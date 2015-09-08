@@ -135,6 +135,8 @@ var DefaultConfig = Config{
 		"cups-version",
 		"device-uri",
 		"document-format-supported",
+		"print-color-mode-default",
+		"print-color-mode-supported",
 		"printer-name",
 		"printer-info",
 		"printer-location",

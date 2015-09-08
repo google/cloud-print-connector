@@ -9,21 +9,11 @@ package cups
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"reflect"
 	"testing"
 
 	"github.com/google/cups-connector/cdd"
 )
-
-func TestA(t *testing.T) {
-	f, err := ioutil.ReadFile("chuck.ppd")
-	if err != nil {
-		t.Fail()
-		t.Log(err)
-	}
-	translatePPD(string(f))
-}
 
 func translationTest(t *testing.T, ppd string, expected *cdd.PrinterDescriptionSection) {
 	description, _, _ := translatePPD(ppd)
@@ -84,8 +74,8 @@ func TestTrColor(t *testing.T) {
 	expected := &cdd.PrinterDescriptionSection{
 		Color: &cdd.Color{
 			Option: []cdd.ColorOption{
-				cdd.ColorOption{"CMYK", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
-				cdd.ColorOption{"Gray", cdd.ColorTypeStandardMonochrome, "", true, cdd.NewLocalizedString("Black and White")},
+				cdd.ColorOption{"ColorModelCMYK", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
+				cdd.ColorOption{"ColorModelGray", cdd.ColorTypeStandardMonochrome, "", true, cdd.NewLocalizedString("Black and White")},
 			},
 		},
 	}

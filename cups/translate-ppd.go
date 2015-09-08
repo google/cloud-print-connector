@@ -115,7 +115,7 @@ func translatePPD(ppd string) (*cdd.PrinterDescriptionSection, string, string) {
 		case ppdPageSize:
 			pds.MediaSize = convertMediaSize(e)
 		case ppdColorModel:
-			pds.Color = convertColor(e)
+			pds.Color = convertColorPPD(e)
 		case ppdDuplex:
 			pds.Duplex = convertDuplex(e)
 		case ppdResolution:
@@ -397,7 +397,7 @@ func convertPrintingSpeed(throughput string, color *cdd.Color) *cdd.PrintingSpee
 	}
 }
 
-func convertColor(e entry) *cdd.Color {
+func convertColorPPD(e entry) *cdd.Color {
 	var colorOptions, grayOptions, otherOptions []statement
 
 	for _, o := range e.options {
@@ -463,6 +463,12 @@ func convertColor(e entry) *cdd.Color {
 			c.Option[i].IsDefault = true
 			break
 		}
+	}
+
+	for i := range c.Option {
+		// Color can be specified by either attribute or PPD.
+		// Therefore, prepend "ColorModel" to these ColorOptions.
+		c.Option[i].VendorID = ppdColorModel + c.Option[i].VendorID
 	}
 
 	if len(c.Option) > 0 {

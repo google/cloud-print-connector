@@ -36,6 +36,7 @@ func translateAttrs(printerTags map[string][]string) (*cdd.PrinterDescriptionSec
 	desc.Marker, state.MarkerState = convertMarkers(printerTags)
 	desc.PageOrientation = convertPageOrientation(printerTags)
 	desc.Copies = convertCopies(printerTags)
+	desc.Color = convertColorAttrs(printerTags)
 	if vc := convertPagesPerSheet(printerTags); vc != nil {
 		*desc.VendorCapability = append(*desc.VendorCapability, *vc)
 	}
@@ -134,6 +135,11 @@ var mimeTypesAllowed = map[string]struct{}{
 }
 
 func convertSupportedContentType(printerTags map[string][]string) *[]cdd.SupportedContentType {
+	mimeTypes, exists := printerTags[attrDocumentFormatSupported]
+	if !exists || len(mimeTypes) < 1 {
+		return nil
+	}
+
 	pdfMin, pdfMax := getAdobeVersionRange(printerTags[attrPDFVersionsSupported])
 	pdf := cdd.SupportedContentType{ContentType: "application/pdf"}
 	if pdfMin != "" && pdfMax != "" {
@@ -141,11 +147,6 @@ func convertSupportedContentType(printerTags map[string][]string) *[]cdd.Support
 		pdf.MaxVersion = pdfMax
 	}
 	sct := []cdd.SupportedContentType{pdf, cdd.SupportedContentType{ContentType: "application/postscript"}}
-
-	mimeTypes, exists := printerTags[attrDocumentFormatSupported]
-	if !exists || len(mimeTypes) < 1 {
-		return &sct
-	}
 
 	// Preferred order:
 	//  1) PDF (vector and small).
@@ -385,4 +386,59 @@ func convertCopies(printerTags map[string][]string) *cdd.Copies {
 		Default: int32(def),
 		Max:     int32(max),
 	}
+}
+
+var colorByKeyword = map[string]cdd.ColorOption{
+	"auto": cdd.ColorOption{
+		VendorID: "auto",
+		Type:     cdd.ColorTypeAuto,
+		CustomDisplayNameLocalized: cdd.NewLocalizedString("Auto"),
+	},
+	"color": cdd.ColorOption{
+		VendorID: "color",
+		Type:     cdd.ColorTypeStandardColor,
+		CustomDisplayNameLocalized: cdd.NewLocalizedString("Color"),
+	},
+	"monochrome": cdd.ColorOption{
+		VendorID: "monochrome",
+		Type:     cdd.ColorTypeStandardMonochrome,
+		CustomDisplayNameLocalized: cdd.NewLocalizedString("Monochrome"),
+	},
+}
+
+func convertColorAttrs(printerTags map[string][]string) *cdd.Color {
+	colorSupported, exists := printerTags[attrPrintColorModeSupported]
+	if !exists {
+		return nil
+	}
+
+	colorDefault, exists := printerTags[attrPrintColorModeDefault]
+	if !exists || len(colorDefault) != 1 {
+		colorDefault = colorSupported[:1]
+	}
+
+	var c cdd.Color
+	for _, color := range colorSupported {
+		var co cdd.ColorOption
+		var exists bool
+		if co, exists = colorByKeyword[color]; !exists {
+			co = cdd.ColorOption{
+				VendorID: color,
+				Type:     cdd.ColorTypeCustomColor,
+				CustomDisplayNameLocalized: cdd.NewLocalizedString(color),
+			}
+		}
+		if color == colorDefault[0] {
+			co.IsDefault = true
+		}
+		c.Option = append(c.Option, co)
+	}
+
+	for i := range c.Option {
+		// Color can be specified by either attribute or PPD.
+		// Therefore, prepend "ColorModel" to these ColorOptions.
+		c.Option[i].VendorID = attrPrintColorMode + c.Option[i].VendorID
+	}
+
+	return &c
 }

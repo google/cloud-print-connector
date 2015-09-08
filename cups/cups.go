@@ -48,6 +48,8 @@ const (
 	attrOrientationRequestedDefault   = "orientation-requested-default"
 	attrOrientationRequestedSupported = "orientation-requested-supported"
 	attrPDFVersionsSupported          = "pdf-versions-supported"
+	attrPrintColorModeDefault         = "print-color-mode-default"
+	attrPrintColorModeSupported       = "print-color-mode-supported"
 	attrPrinterInfo                   = "printer-info"
 	attrPrinterName                   = "printer-name"
 	attrPrinterState                  = "printer-state"
@@ -67,6 +69,7 @@ const (
 	attrNumberUp             = "number-up"
 	attrOrientationRequested = "orientation-requested"
 	attrOutputOrder          = "outputorder"
+	attrPrintColorMode       = "print-color-mode"
 	attrReverse              = "reverse"
 	attrTrue                 = "true"
 
@@ -89,6 +92,8 @@ var (
 		attrOrientationRequestedDefault,
 		attrOrientationRequestedSupported,
 		attrPDFVersionsSupported,
+		attrPrintColorModeDefault,
+		attrPrintColorModeSupported,
 		attrPrinterInfo,
 		attrPrinterName,
 		attrPrinterState,

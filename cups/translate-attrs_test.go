@@ -137,14 +137,14 @@ func TestGetVendorState(t *testing.T) {
 func TestConvertSupportedContentType(t *testing.T) {
 	sct := convertSupportedContentType(nil)
 	if sct != nil {
-		t.Logf("expected nil")
+		t.Logf("expected nil, got %+v", sct)
 		t.Fail()
 	}
 
 	pt := map[string][]string{}
 	sct = convertSupportedContentType(pt)
 	if sct != nil {
-		t.Logf("expected nil")
+		t.Logf("expected nil, got %+v", sct)
 		t.Fail()
 	}
 
