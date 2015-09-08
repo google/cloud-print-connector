@@ -108,8 +108,7 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, xmpp *xmpp.XM
 	// Initialize Privet printers.
 	if privet != nil {
 		for _, printer := range pm.gcpPrintersByGCPID.GetAll() {
-			getPrinter := func() (lib.Printer, bool) { return pm.gcpPrintersByGCPID.Get(printer.GCPID) }
-			err := privet.AddPrinter(printer, getPrinter)
+			err := privet.AddPrinter(printer, pm.gcpPrintersByGCPID.Get)
 			if err != nil {
 				glog.Warningf("Failed to register %s locally: %s", printer.Name, err)
 			} else {
@@ -294,8 +293,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		diff.Printer.CUPSJobSemaphore = lib.NewSemaphore(pm.cupsQueueSize)
 
 		if pm.privet != nil && !ignorePrivet {
-			getPrinter := func() (lib.Printer, bool) { return pm.gcpPrintersByGCPID.Get(diff.Printer.GCPID) }
-			err := pm.privet.AddPrinter(diff.Printer, getPrinter)
+			err := pm.privet.AddPrinter(diff.Printer, pm.gcpPrintersByGCPID.Get)
 			if err != nil {
 				glog.Warningf("Failed to register %s locally: %s", diff.Printer.Name, err)
 			} else {
