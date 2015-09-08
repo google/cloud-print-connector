@@ -13,7 +13,7 @@ package cups
 import "C"
 import (
 	"bytes"
-	"crypto/md5"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -30,20 +30,17 @@ import (
 // So, this "cache":
 // (1) maintains temporary file copies of PPDs for each printer
 // (2) updates those PPD files as necessary
-// (3) and keeps MD5 hashes of the PPD contents, to minimize disk I/O.
 type ppdCache struct {
-	cc                *cupsCore
-	cache             map[string]*ppdCacheEntry
-	cacheMutex        sync.RWMutex
-	translatePPDToCDD func(string) (*cdd.PrinterDescriptionSection, error)
+	cc         *cupsCore
+	cache      map[string]*ppdCacheEntry
+	cacheMutex sync.RWMutex
 }
 
-func newPPDCache(cc *cupsCore, translatePPDToCDD func(string) (*cdd.PrinterDescriptionSection, error)) *ppdCache {
+func newPPDCache(cc *cupsCore) *ppdCache {
 	cache := make(map[string]*ppdCacheEntry)
 	pc := ppdCache{
-		cc:                cc,
-		cache:             cache,
-		translatePPDToCDD: translatePPDToCDD,
+		cc:    cc,
+		cache: cache,
 	}
 	return &pc
 }
@@ -69,7 +66,7 @@ func (pc *ppdCache) removePPD(printername string) {
 	}
 }
 
-func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptionSection, string, string, string, error) {
+func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptionSection, string, string, error) {
 	pc.cacheMutex.RLock()
 	pce, exists := pc.cache[printername]
 	pc.cacheMutex.RUnlock()
@@ -77,10 +74,10 @@ func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptio
 	if !exists {
 		pce, err := createPPDCacheEntry(printername)
 		if err != nil {
-			return nil, "", "", "", err
+			return nil, "", "", err
 		}
-		if err = pce.refresh(pc.cc, pc.translatePPDToCDD); err != nil {
-			return nil, "", "", "", err
+		if err = pce.refresh(pc.cc); err != nil {
+			return nil, "", "", err
 		}
 
 		pc.cacheMutex.Lock()
@@ -92,15 +89,15 @@ func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptio
 			go firstPCE.free()
 		}
 		pc.cache[printername] = pce
-		description, hash, manufacturer, model := pce.getFields()
-		return &description, hash, manufacturer, model, nil
+		description, manufacturer, model := pce.getFields()
+		return &description, manufacturer, model, nil
 
 	} else {
-		if err := pce.refresh(pc.cc, pc.translatePPDToCDD); err != nil {
-			return nil, "", "", "", err
+		if err := pce.refresh(pc.cc); err != nil {
+			return nil, "", "", err
 		}
-		description, hash, manufacturer, model := pce.getFields()
-		return &description, hash, manufacturer, model, nil
+		description, manufacturer, model := pce.getFields()
+		return &description, manufacturer, model, nil
 	}
 }
 
@@ -109,7 +106,6 @@ type ppdCacheEntry struct {
 	printername  *C.char
 	modtime      C.time_t
 	filename     string
-	hash         string
 	description  cdd.PrinterDescriptionSection
 	manufacturer string
 	model        string
@@ -138,10 +134,10 @@ func createPPDCacheEntry(name string) (*ppdCacheEntry, error) {
 
 // getFields gets externally-interesting fields from this ppdCacheEntry under
 // a lock. The description is passed as a value (copy), to protect the cached copy.
-func (pce *ppdCacheEntry) getFields() (cdd.PrinterDescriptionSection, string, string, string) {
+func (pce *ppdCacheEntry) getFields() (cdd.PrinterDescriptionSection, string, string) {
 	pce.mutex.Lock()
 	defer pce.mutex.Unlock()
-	return pce.description, pce.hash, pce.manufacturer, pce.model
+	return pce.description, pce.manufacturer, pce.model
 }
 
 // free frees the memory that stores the name and buffer fields, and deletes
@@ -157,7 +153,7 @@ func (pce *ppdCacheEntry) free() {
 
 // refresh calls cupsGetPPD3() to refresh this PPD information, in
 // case CUPS has a new PPD for the printer.
-func (pce *ppdCacheEntry) refresh(cc *cupsCore, translatePPDToCDD func(string) (*cdd.PrinterDescriptionSection, error)) error {
+func (pce *ppdCacheEntry) refresh(cc *cupsCore) error {
 	pce.mutex.Lock()
 	defer pce.mutex.Unlock()
 
@@ -189,30 +185,21 @@ func (pce *ppdCacheEntry) refresh(cc *cupsCore, translatePPDToCDD func(string) (
 	}
 	defer file.Close()
 
-	// Also write to an MD5 hash.
-	hash := md5.New()
-	w := io.MultiWriter(hash, file)
-
 	// Also write to a buffer for translation.
 	var content bytes.Buffer
-	w = io.MultiWriter(&content, w)
 
+	// Write to these simultaneously.
+	w := io.MultiWriter(&content, file)
 	if _, err := io.Copy(w, r); err != nil {
 		return err
 	}
 
-	contentString := content.String()
-	manufacturer, model := parseManufacturerAndModel(contentString)
-	description, err := translatePPDToCDD(contentString)
-	if err != nil {
-		return err
+	description, manufacturer, model := translatePPD(content.String())
+	if description == nil || manufacturer == "" || model == "" {
+		return errors.New("Failed to parse PPD")
 	}
 
-	// Allow this field to be overridden by cdd.PrinterDescriptionSection.Absorb().
-	description.SupportedContentType = nil
-
 	pce.description = *description
-	pce.hash = fmt.Sprintf("%x", hash.Sum(nil))
 	pce.manufacturer = manufacturer
 	pce.model = model
 

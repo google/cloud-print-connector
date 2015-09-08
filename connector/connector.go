@@ -77,7 +77,7 @@ func main() {
 	createTempFile := cups.CreateTempFile
 
 	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes,
-		config.CUPSMaxConnections, cupsConnectTimeout, gcp.Translate)
+		config.CUPSMaxConnections, cupsConnectTimeout)
 	if err != nil {
 		glog.Fatal(err)
 	}

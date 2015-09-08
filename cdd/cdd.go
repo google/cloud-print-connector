@@ -132,13 +132,13 @@ func NewSupportedContentType(contentType string) *[]SupportedContentType {
 }
 
 type PrintingSpeed struct {
-	Option *PrintingSpeedOption `json:"option,omitempty"`
+	Option []PrintingSpeedOption `json:"option,omitempty"`
 }
 
 type PrintingSpeedOption struct {
-	SpeedPPM      float32   `json:"speed_ppm"`
-	ColorType     *[]string `json:"color_type,omitempty"`      // enum
-	MediaSizeName *[]string `json:"media_size_name,omitempty"` // enum
+	SpeedPPM      float32          `json:"speed_ppm"`
+	ColorType     *[]ColorType     `json:"color_type,omitempty"`
+	MediaSizeName *[]MediaSizeName `json:"media_size_name,omitempty"`
 }
 
 type PWGRasterConfig struct {
@@ -304,10 +304,10 @@ type SelectCapabilityOption struct {
 type TypedValueCapabilityValueType string
 
 const (
-	TypedValueCapabilityValueBoolean TypedValueCapabilityValueType = "BOOLEAN"
-	TypedValueCapabilityValueFloat   TypedValueCapabilityValueType = "FLOAT"
-	TypedValueCapabilityValueInteger TypedValueCapabilityValueType = "INTEGER"
-	TypedValueCapabilityValueString  TypedValueCapabilityValueType = "STRING"
+	TypedValueCapabilityTypeBoolean TypedValueCapabilityValueType = "BOOLEAN"
+	TypedValueCapabilityTypeFloat   TypedValueCapabilityValueType = "FLOAT"
+	TypedValueCapabilityTypeInteger TypedValueCapabilityValueType = "INTEGER"
+	TypedValueCapabilityTypeString  TypedValueCapabilityValueType = "STRING"
 )
 
 type TypedValueCapability struct {
@@ -410,7 +410,7 @@ type DPIOption struct {
 	VerticalDPI                int32              `json:"vertical_dpi"`
 	IsDefault                  bool               `json:"is_default"` // default = false
 	CustomDisplayName          string             `json:"custom_display_name,omitempty"`
-	VendorID                   string             `json:"vendor_id"`
+	VendorID                   string             `json:"vendor_id,omitempty"`
 	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
 }
 
@@ -451,7 +451,7 @@ type MediaSize struct {
 }
 
 type MediaSizeOption struct {
-	Name                       string             `json:"name"` // enum; default = "CUSTOM"
+	Name                       MediaSizeName      `json:"name"` // default = "CUSTOM"
 	WidthMicrons               int32              `json:"width_microns,omitempty"`
 	HeightMicrons              int32              `json:"height_microns,omitempty"`
 	IsContinuousFeed           bool               `json:"is_continuous_feed"` // default = false
@@ -460,6 +460,176 @@ type MediaSizeOption struct {
 	VendorID                   string             `json:"vendor_id,omitempty"`
 	CustomDisplayNameLocalized *[]LocalizedString `json:"custom_display_name_localized,omitempty"`
 }
+
+type MediaSizeName string
+
+const (
+	MediaSizeCustom        MediaSizeName = "CUSTOM"
+	MediaSizeNAIndex3x5    MediaSizeName = "NA_INDEX_3X5"
+	MediaSizeNAPersonal    MediaSizeName = "NA_PERSONAL"
+	MediaSizeNAMonarch     MediaSizeName = "NA_MONARCH"
+	MediaSizeNANumber9     MediaSizeName = "NA_NUMBER_9"
+	MediaSizeNAIndex4x6    MediaSizeName = "NA_INDEX_4X6"
+	MediaSizeNANumber10    MediaSizeName = "NA_NUMBER_10"
+	MediaSizeNAA2          MediaSizeName = "NA_A2"
+	MediaSizeNANumber11    MediaSizeName = "NA_NUMBER_11"
+	MediaSizeNANumber12    MediaSizeName = "NA_NUMBER_12"
+	MediaSizeNA5x7         MediaSizeName = "NA_5X7"
+	MediaSizeNAIndex5x8    MediaSizeName = "NA_INDEX_5X8"
+	MediaSizeNANumber14    MediaSizeName = "NA_NUMBER_14"
+	MediaSizeNAInvoice     MediaSizeName = "NA_INVOICE"
+	MediaSizeNAIndex4x6Ext MediaSizeName = "NA_INDEX_4X6_EXT"
+	MediaSizeNA6x9         MediaSizeName = "NA_6X9"
+	MediaSizeNAC5          MediaSizeName = "NA_C5"
+	MediaSizeNA7x9         MediaSizeName = "NA_7X9"
+	MediaSizeNAExecutive   MediaSizeName = "NA_EXECUTIVE"
+	MediaSizeNAGovtLetter  MediaSizeName = "NA_GOVT_LETTER"
+	MediaSizeNAGovtLegal   MediaSizeName = "NA_GOVT_LEGAL"
+	MediaSizeNAQuarto      MediaSizeName = "NA_QUARTO"
+	MediaSizeNALetter      MediaSizeName = "NA_LETTER"
+	MediaSizeNAFanfoldEur  MediaSizeName = "NA_FANFOLD_EUR"
+	MediaSizeNALetterPlus  MediaSizeName = "NA_LETTER_PLUS"
+	MediaSizeNAFoolscap    MediaSizeName = "NA_FOOLSCAP"
+	MediaSizeNALegal       MediaSizeName = "NA_LEGAL"
+	MediaSizeNASuperA      MediaSizeName = "NA_SUPER_A"
+	MediaSizeNA9x11        MediaSizeName = "NA_9X11"
+	MediaSizeNAArchA       MediaSizeName = "NA_ARCH_A"
+	MediaSizeNALetterExtra MediaSizeName = "NA_LETTER_EXTRA"
+	MediaSizeNALegalExtra  MediaSizeName = "NA_LEGAL_EXTRA"
+	MediaSizeNA10x11       MediaSizeName = "NA_10X11"
+	MediaSizeNA10x13       MediaSizeName = "NA_10X13"
+	MediaSizeNA10x14       MediaSizeName = "NA_10X14"
+	MediaSizeNA10x15       MediaSizeName = "NA_10X15"
+	MediaSizeNA11x12       MediaSizeName = "NA_11X12"
+	MediaSizeNAEDP         MediaSizeName = "NA_EDP"
+	MediaSizeNAFanfoldUS   MediaSizeName = "NA_FANFOLD_US"
+	MediaSizeNA11x15       MediaSizeName = "NA_11X15"
+	MediaSizeNALedger      MediaSizeName = "NA_LEDGER"
+	MediaSizeNAEurEDP      MediaSizeName = "NA_EUR_EDP"
+	MediaSizeNAArchB       MediaSizeName = "NA_ARCH_B"
+	MediaSizeNA12x19       MediaSizeName = "NA_12X19"
+	MediaSizeNABPlus       MediaSizeName = "NA_B_PLUS"
+	MediaSizeNASuperB      MediaSizeName = "NA_SUPER_B"
+	MediaSizeNAC           MediaSizeName = "NA_C"
+	MediaSizeNAArchC       MediaSizeName = "NA_ARCH_C"
+	MediaSizeNAD           MediaSizeName = "NA_D"
+	MediaSizeNAArchD       MediaSizeName = "NA_ARCH_D"
+	MediaSizeNAAsmeF       MediaSizeName = "NA_ASME_F"
+	MediaSizeNAWideFormat  MediaSizeName = "NA_WIDE_FORMAT"
+	MediaSizeNAE           MediaSizeName = "NA_E"
+	MediaSizeNAArchE       MediaSizeName = "NA_ARCH_E"
+	MediaSizeNAF           MediaSizeName = "NA_F"
+	MediaSizeROC16k        MediaSizeName = "ROC_16K"
+	MediaSizeROC8k         MediaSizeName = "ROC_8K"
+	MediaSizePRC32k        MediaSizeName = "PRC_32K"
+	MediaSizePRC1          MediaSizeName = "PRC_1"
+	MediaSizePRC2          MediaSizeName = "PRC_2"
+	MediaSizePRC4          MediaSizeName = "PRC_4"
+	MediaSizePRC5          MediaSizeName = "PRC_5"
+	MediaSizePRC8          MediaSizeName = "PRC_8"
+	MediaSizePRC6          MediaSizeName = "PRC_6"
+	MediaSizePRC3          MediaSizeName = "PRC_3"
+	MediaSizePRC16k        MediaSizeName = "PRC_16K"
+	MediaSizePRC7          MediaSizeName = "PRC_7"
+	MediaSizeOMJuuroKuKai  MediaSizeName = "OM_JUURO_KU_KAI"
+	MediaSizeOMPaKai       MediaSizeName = "OM_PA_KAI"
+	MediaSizeOMDaiPaKai    MediaSizeName = "OM_DAI_PA_KAI"
+	MediaSizePRC10         MediaSizeName = "PRC_10"
+	MediaSizeISOA10        MediaSizeName = "ISO_A10"
+	MediaSizeISOA9         MediaSizeName = "ISO_A9"
+	MediaSizeISOA8         MediaSizeName = "ISO_A8"
+	MediaSizeISOA7         MediaSizeName = "ISO_A7"
+	MediaSizeISOA6         MediaSizeName = "ISO_A6"
+	MediaSizeISOA5         MediaSizeName = "ISO_A5"
+	MediaSizeISOA5Extra    MediaSizeName = "ISO_A5_EXTRA"
+	MediaSizeISOA4         MediaSizeName = "ISO_A4"
+	MediaSizeISOA4Tab      MediaSizeName = "ISO_A4_TAB"
+	MediaSizeISOA4Extra    MediaSizeName = "ISO_A4_EXTRA"
+	MediaSizeISOA3         MediaSizeName = "ISO_A3"
+	MediaSizeISOA4x3       MediaSizeName = "ISO_A4X3"
+	MediaSizeISOA4x4       MediaSizeName = "ISO_A4X4"
+	MediaSizeISOA4x5       MediaSizeName = "ISO_A4X5"
+	MediaSizeISOA4x6       MediaSizeName = "ISO_A4X6"
+	MediaSizeISOA4x7       MediaSizeName = "ISO_A4X7"
+	MediaSizeISOA4x8       MediaSizeName = "ISO_A4X8"
+	MediaSizeISOA4x9       MediaSizeName = "ISO_A4X9"
+	MediaSizeISOA3Extra    MediaSizeName = "ISO_A3_EXTRA"
+	MediaSizeISOA2         MediaSizeName = "ISO_A2"
+	MediaSizeISOA3x3       MediaSizeName = "ISO_A3X3"
+	MediaSizeISOA3x4       MediaSizeName = "ISO_A3X4"
+	MediaSizeISOA3x5       MediaSizeName = "ISO_A3X5"
+	MediaSizeISOA3x6       MediaSizeName = "ISO_A3X6"
+	MediaSizeISOA3x7       MediaSizeName = "ISO_A3X7"
+	MediaSizeISOA1         MediaSizeName = "ISO_A1"
+	MediaSizeISOA2x3       MediaSizeName = "ISO_A2X3"
+	MediaSizeISOA2x4       MediaSizeName = "ISO_A2X4"
+	MediaSizeISOA2x5       MediaSizeName = "ISO_A2X5"
+	MediaSizeISOA0         MediaSizeName = "ISO_A0"
+	MediaSizeISOA1x3       MediaSizeName = "ISO_A1X3"
+	MediaSizeISOA1x4       MediaSizeName = "ISO_A1X4"
+	MediaSizeISO2A0        MediaSizeName = "ISO_2A0"
+	MediaSizeISOA0x3       MediaSizeName = "ISO_A0X3"
+	MediaSizeISOB10        MediaSizeName = "ISO_B10"
+	MediaSizeISOB9         MediaSizeName = "ISO_B9"
+	MediaSizeISOB8         MediaSizeName = "ISO_B8"
+	MediaSizeISOB7         MediaSizeName = "ISO_B7"
+	MediaSizeISOB6         MediaSizeName = "ISO_B6"
+	MediaSizeISOB6C4       MediaSizeName = "ISO_B6C4"
+	MediaSizeISOB5         MediaSizeName = "ISO_B5"
+	MediaSizeISOB5Extra    MediaSizeName = "ISO_B5_EXTRA"
+	MediaSizeISOB4         MediaSizeName = "ISO_B4"
+	MediaSizeISOB3         MediaSizeName = "ISO_B3"
+	MediaSizeISOB2         MediaSizeName = "ISO_B2"
+	MediaSizeISOB1         MediaSizeName = "ISO_B1"
+	MediaSizeISOB0         MediaSizeName = "ISO_B0"
+	MediaSizeISOC10        MediaSizeName = "ISO_C10"
+	MediaSizeISOC9         MediaSizeName = "ISO_C9"
+	MediaSizeISOC8         MediaSizeName = "ISO_C8"
+	MediaSizeISOC7         MediaSizeName = "ISO_C7"
+	MediaSizeISOC7c6       MediaSizeName = "ISO_C7C6"
+	MediaSizeISOC6         MediaSizeName = "ISO_C6"
+	MediaSizeISOC6c5       MediaSizeName = "ISO_C6C5"
+	MediaSizeISOC5         MediaSizeName = "ISO_C5"
+	MediaSizeISOC4         MediaSizeName = "ISO_C4"
+	MediaSizeISOC3         MediaSizeName = "ISO_C3"
+	MediaSizeISOC2         MediaSizeName = "ISO_C2"
+	MediaSizeISOC1         MediaSizeName = "ISO_C1"
+	MediaSizeISOC0         MediaSizeName = "ISO_C0"
+	MediaSizeISODL         MediaSizeName = "ISO_DL"
+	MediaSizeISORA2        MediaSizeName = "ISO_RA2"
+	MediaSizeISOSRA2       MediaSizeName = "ISO_SRA2"
+	MediaSizeISORA1        MediaSizeName = "ISO_RA1"
+	MediaSizeISOSRA1       MediaSizeName = "ISO_SRA1"
+	MediaSizeISORA0        MediaSizeName = "ISO_RA0"
+	MediaSizeISOSRA0       MediaSizeName = "ISO_SRA0"
+	MediaSizeJISB10        MediaSizeName = "JIS_B10"
+	MediaSizeJISB9         MediaSizeName = "JIS_B9"
+	MediaSizeJISB8         MediaSizeName = "JIS_B8"
+	MediaSizeJISB7         MediaSizeName = "JIS_B7"
+	MediaSizeJISB6         MediaSizeName = "JIS_B6"
+	MediaSizeJISB5         MediaSizeName = "JIS_B5"
+	MediaSizeJISB4         MediaSizeName = "JIS_B4"
+	MediaSizeJISB3         MediaSizeName = "JIS_B3"
+	MediaSizeJISB2         MediaSizeName = "JIS_B2"
+	MediaSizeJISB1         MediaSizeName = "JIS_B1"
+	MediaSizeJISB0         MediaSizeName = "JIS_B0"
+	MediaSizeJISExec       MediaSizeName = "JIS_EXEC"
+	MediaSizeJPNChou4      MediaSizeName = "JPN_CHOU4"
+	MediaSizeJPNHagaki     MediaSizeName = "JPN_HAGAKI"
+	MediaSizeJPNYou4       MediaSizeName = "JPN_YOU4"
+	MediaSizeJPNChou2      MediaSizeName = "JPN_CHOU2"
+	MediaSizeJPNChou3      MediaSizeName = "JPN_CHOU3"
+	MediaSizeJPNOufuku     MediaSizeName = "JPN_OUFUKU"
+	MediaSizeJPNKahu       MediaSizeName = "JPN_KAHU"
+	MediaSizeJPNKaku2      MediaSizeName = "JPN_KAKU2"
+	MediaSizeOMSmallPhoto  MediaSizeName = "OM_SMALL_PHOTO"
+	MediaSizeOMItalian     MediaSizeName = "OM_ITALIAN"
+	MediaSizeOMPostfix     MediaSizeName = "OM_POSTFIX"
+	MediaSizeOMLargePhoto  MediaSizeName = "OM_LARGE_PHOTO"
+	MediaSizeOMFolio       MediaSizeName = "OM_FOLIO"
+	MediaSizeOMFolioSP     MediaSizeName = "OM_FOLIO_SP"
+	MediaSizeOMInvite      MediaSizeName = "OM_INVITE"
+)
 
 type Collate struct {
 	Default bool `json:"default"` // default = true

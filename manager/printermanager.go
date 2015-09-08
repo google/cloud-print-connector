@@ -10,6 +10,7 @@ package manager
 
 import (
 	"bytes"
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"os"
@@ -233,6 +234,17 @@ func (pm *PrinterManager) syncPrinters(ignorePrivet bool) error {
 		if err != nil {
 			glog.Warningf("Failed to augment printers with SNMP data: %s", err)
 		}
+	}
+
+	// Set CapsHash on all printers.
+	for i := range cupsPrinters {
+		h := md5.New()
+		lib.DeepHash(cupsPrinters[i].Tags, h)
+		cupsPrinters[i].Tags["tagshash"] = fmt.Sprintf("%x", h.Sum(nil))
+
+		h = md5.New()
+		lib.DeepHash(cupsPrinters[i].Description, h)
+		cupsPrinters[i].CapsHash = fmt.Sprintf("%x", h.Sum(nil))
 	}
 
 	// Compare the snapshot to what we know currently.
