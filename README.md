@@ -149,4 +149,4 @@ In order for the connector to function properly, it needs to make the following 
 - www.google.com - HTTPS port 443 (/cloudprint API endpoints)
 - talk.google.com - XMPP port 443 (print job notification channel)
 
-you need to ensure your firewall allows connections to each of these hosts.
+Ensure your firewall allows connections to each of these hosts.
