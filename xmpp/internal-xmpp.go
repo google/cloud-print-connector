@@ -286,7 +286,7 @@ func dial(server string, port uint16) (*tls.Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to connect to XMPP server: %s", err)
 	}
-	if err = conn.VerifyHostname("talk.google.com"); err != nil {
+	if err = conn.VerifyHostname(server); err != nil {
 		return nil, fmt.Errorf("Failed to verify hostname of XMPP server: %s", err)
 	}
 
