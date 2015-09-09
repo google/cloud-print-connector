@@ -59,7 +59,7 @@ func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) ([]byte
 
 // AddPrinter makes a printer available locally.
 func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func(string) (lib.Printer, bool)) error {
-	api, err := newPrivetAPI(printer.GCPID, p.gcpBaseURL, p.xsrf, &p.jc, p.jobs, getPrinter, p.getProximityToken, p.createTempFile)
+	api, err := newPrivetAPI(printer.GCPID, printer.Name, p.gcpBaseURL, p.xsrf, &p.jc, p.jobs, getPrinter, p.getProximityToken, p.createTempFile)
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func(string) (lib.Pr
 	p.apisMutex.Lock()
 	defer p.apisMutex.Unlock()
 
-	p.apis[printer.GCPID] = api
+	p.apis[printer.Name] = api
 
 	return nil
 }
@@ -103,14 +103,14 @@ func (p *Privet) UpdatePrinter(diff *lib.PrinterDiff) error {
 }
 
 // DeletePrinter removes a printer from Privet.
-func (p *Privet) DeletePrinter(gcpID string) error {
+func (p *Privet) DeletePrinter(cupsPrinterName string) error {
 	p.apisMutex.Lock()
 	defer p.apisMutex.Unlock()
 
-	err := p.zc.removePrinter(gcpID)
-	if api, ok := p.apis[gcpID]; ok {
+	err := p.zc.removePrinter(cupsPrinterName)
+	if api, ok := p.apis[cupsPrinterName]; ok {
 		api.quit()
-		delete(p.apis, gcpID)
+		delete(p.apis, cupsPrinterName)
 	}
 	return err
 }
@@ -125,8 +125,8 @@ func (p *Privet) Quit() {
 	defer p.apisMutex.Unlock()
 
 	p.zc.quit()
-	for gcpID, api := range p.apis {
+	for cupsPrinterName, api := range p.apis {
 		api.quit()
-		delete(p.apis, gcpID)
+		delete(p.apis, cupsPrinterName)
 	}
 }

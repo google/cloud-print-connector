@@ -38,11 +38,11 @@ func newZeroconf() (*zeroconf, error) {
 	return &z, nil
 }
 
-func (z *zeroconf) addPrinter(gcpID, name string, port uint16, ty, url, id string, online bool) error {
+func (z *zeroconf) addPrinter(cupsPrinterName, name string, port uint16, ty, url, id string, online bool) error {
 	z.pMutex.RLock()
-	if _, exists := z.printers[gcpID]; exists {
+	if _, exists := z.printers[cupsPrinterName]; exists {
 		z.pMutex.RUnlock()
-		return fmt.Errorf("Bonjour already has printer %s", gcpID)
+		return fmt.Errorf("Bonjour already has printer %s", cupsPrinterName)
 	}
 	z.pMutex.RUnlock()
 
@@ -74,12 +74,12 @@ func (z *zeroconf) addPrinter(gcpID, name string, port uint16, ty, url, id strin
 	z.pMutex.Lock()
 	defer z.pMutex.Unlock()
 
-	z.printers[gcpID] = service
+	z.printers[cupsPrinterName] = service
 	return nil
 }
 
 // updatePrinterTXT updates the advertised TXT record.
-func (z *zeroconf) updatePrinterTXT(gcpID, ty, url, id string, online bool) error {
+func (z *zeroconf) updatePrinterTXT(cupsPrinterName, ty, url, id string, online bool) error {
 	tyC := C.CString(ty)
 	defer C.free(unsafe.Pointer(tyC))
 	urlC := C.CString(url)
@@ -97,23 +97,23 @@ func (z *zeroconf) updatePrinterTXT(gcpID, ty, url, id string, online bool) erro
 	z.pMutex.RLock()
 	defer z.pMutex.RUnlock()
 
-	if service, exists := z.printers[gcpID]; exists {
+	if service, exists := z.printers[cupsPrinterName]; exists {
 		C.updateBonjour(service, tyC, urlC, idC, onlineC)
 	} else {
-		return fmt.Errorf("Bonjour can't update printer %s that hasn't been added", gcpID)
+		return fmt.Errorf("Bonjour can't update printer %s that hasn't been added", cupsPrinterName)
 	}
 	return nil
 }
 
-func (z *zeroconf) removePrinter(gcpID string) error {
+func (z *zeroconf) removePrinter(cupsPrinterName string) error {
 	z.pMutex.Lock()
 	defer z.pMutex.Unlock()
 
-	if service, exists := z.printers[gcpID]; exists {
+	if service, exists := z.printers[cupsPrinterName]; exists {
 		C.stopBonjour(service)
-		delete(z.printers, gcpID)
+		delete(z.printers, cupsPrinterName)
 	} else {
-		return fmt.Errorf("Bonjour can't remove printer %s that hasn't been added", gcpID)
+		return fmt.Errorf("Bonjour can't remove printer %s that hasn't been added", cupsPrinterName)
 	}
 	return nil
 }
@@ -122,9 +122,9 @@ func (z *zeroconf) quit() {
 	z.pMutex.Lock()
 	defer z.pMutex.Unlock()
 
-	for gcpID, service := range z.printers {
+	for cupsPrinterName, service := range z.printers {
 		C.stopBonjour(service)
-		delete(z.printers, gcpID)
+		delete(z.printers, cupsPrinterName)
 	}
 }
 

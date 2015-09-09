@@ -63,7 +63,9 @@ func (e privetError) json() []byte {
 }
 
 type privetAPI struct {
-	gcpID      string
+	gcpID string
+	name  string
+
 	gcpBaseURL string
 	xsrf       xsrfSecret
 	jc         *jobCache
@@ -77,13 +79,14 @@ type privetAPI struct {
 	startTime time.Time
 }
 
-func newPrivetAPI(gcpID, gcpBaseURL string, xsrf xsrfSecret, jc *jobCache, jobs chan<- *lib.Job, getPrinter func(string) (lib.Printer, bool), getProximityToken func(string, string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*privetAPI, error) {
+func newPrivetAPI(gcpID, name, gcpBaseURL string, xsrf xsrfSecret, jc *jobCache, jobs chan<- *lib.Job, getPrinter func(string) (lib.Printer, bool), getProximityToken func(string, string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*privetAPI, error) {
 	l, err := newQuittableListener()
 	if err != nil {
 		return nil, err
 	}
 	api := &privetAPI{
 		gcpID:      gcpID,
+		name:       name,
 		gcpBaseURL: gcpBaseURL,
 		xsrf:       xsrf,
 		jc:         jc,
@@ -158,7 +161,7 @@ func (api *privetAPI) info(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	printer, exists := api.getPrinter(api.gcpID)
+	printer, exists := api.getPrinter(api.name)
 	if !exists {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -285,7 +288,7 @@ func (api *privetAPI) capabilities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	printer, exists := api.getPrinter(api.gcpID)
+	printer, exists := api.getPrinter(api.name)
 	if !exists {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -323,7 +326,7 @@ func (api *privetAPI) createjob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	printer, exists := api.getPrinter(api.gcpID)
+	printer, exists := api.getPrinter(api.name)
 	if !exists {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -333,7 +336,7 @@ func (api *privetAPI) createjob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jobID, expiresIn := api.jc.createJob(api.gcpID, &ticket)
+	jobID, expiresIn := api.jc.createJob(&ticket)
 	var response struct {
 		JobID     string `json:"job_id"`
 		ExpiresIn int32  `json:"expires_in"`
@@ -383,7 +386,7 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	printer, exists := api.getPrinter(api.gcpID)
+	printer, exists := api.getPrinter(api.name)
 	if !exists {
 		w.WriteHeader(http.StatusInternalServerError)
 		os.Remove(file.Name())
@@ -401,7 +404,7 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 	var expiresIn int32
 	var ticket *cdd.CloudJobTicket
 	if jobID == "" {
-		jobID, expiresIn = api.jc.createJob(api.gcpID, nil)
+		jobID, expiresIn = api.jc.createJob(nil)
 	} else {
 		var ok bool
 		if expiresIn, ticket, ok = api.jc.getJobExpiresIn(jobID); !ok {
@@ -416,13 +419,13 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.jobs <- &lib.Job{
-		GCPPrinterID: api.gcpID,
-		Filename:     file.Name(),
-		Title:        jobName,
-		User:         userName,
-		JobID:        jobID,
-		Ticket:       ticket,
-		UpdateJob:    api.jc.updateJob,
+		CUPSPrinterName: api.name,
+		Filename:        file.Name(),
+		Title:           jobName,
+		User:            userName,
+		JobID:           jobID,
+		Ticket:          ticket,
+		UpdateJob:       api.jc.updateJob,
 	}
 
 	var response struct {

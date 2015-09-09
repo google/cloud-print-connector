@@ -22,10 +22,9 @@ import (
 const jobLifetime = time.Hour
 
 type entry struct {
-	jobID        string
-	gcpPrinterID string
-	ticket       *cdd.CloudJobTicket
-	expiresAt    time.Time
+	jobID     string
+	ticket    *cdd.CloudJobTicket
+	expiresAt time.Time
 
 	state        cdd.JobState
 	pagesPrinted *int32
@@ -37,7 +36,7 @@ type entry struct {
 	timer *time.Timer
 }
 
-func newEntry(jobID, gcpPrinterID string, ticket *cdd.CloudJobTicket) *entry {
+func newEntry(jobID string, ticket *cdd.CloudJobTicket) *entry {
 	var state cdd.JobState
 	if ticket == nil {
 		state.Type = cdd.JobStateDraft
@@ -45,11 +44,10 @@ func newEntry(jobID, gcpPrinterID string, ticket *cdd.CloudJobTicket) *entry {
 		state.Type = cdd.JobStateQueued
 	}
 	entry := entry{
-		jobID:        jobID,
-		gcpPrinterID: gcpPrinterID,
-		ticket:       ticket,
-		expiresAt:    time.Now().Add(jobLifetime),
-		state:        state,
+		jobID:     jobID,
+		ticket:    ticket,
+		expiresAt: time.Now().Add(jobLifetime),
+		state:     state,
 	}
 
 	return &entry
@@ -86,9 +84,9 @@ func (jc *jobCache) getNextJobID() string {
 }
 
 // createJob creates a new job, returns the new jobID and expires_in value.
-func (jc *jobCache) createJob(gcpPrinterID string, ticket *cdd.CloudJobTicket) (string, int32) {
+func (jc *jobCache) createJob(ticket *cdd.CloudJobTicket) (string, int32) {
 	jobID := jc.getNextJobID()
-	entry := newEntry(jobID, gcpPrinterID, ticket)
+	entry := newEntry(jobID, ticket)
 
 	jc.entriesMutex.Lock()
 	defer jc.entriesMutex.Unlock()
