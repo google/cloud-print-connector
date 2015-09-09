@@ -142,3 +142,11 @@ you should change to your own username:
 #   &:         run the command "in the background"
 su --login --command "go/bin/connector" pi &
 ```
+
+### Firewall Requirements
+In order for the connector to function properly, it needs to make the following connections:
+- accounts.google.com - HTTPS port 443 (OAuth authorize and token refresh)
+- www.google.com - HTTPS port 443 (/cloudprint API endpoints)
+- talk.google.com - XMPP port 443 (print job notification channel)
+
+Ensure your firewall allows connections to each of these hosts.
