@@ -61,9 +61,12 @@ func main() {
 		glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
 	}
 
-	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken, config.UserRefreshToken,
-		config.ProxyName, config.GCPOAuthClientID, config.GCPOAuthClientSecret,
-		config.GCPOAuthAuthURL, config.GCPOAuthTokenURL, gcpXMPPPingIntervalDefault)
+	jobs := make(chan *lib.Job, 10)
+
+	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
+		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
+		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
+		gcpXMPPPingIntervalDefault, config.GCPMaxConcurrentDownloads, jobs)
 	if err != nil {
 		glog.Fatal(err)
 	}
@@ -95,7 +98,7 @@ func main() {
 
 	var priv *privet.Privet
 	if config.LocalPrintingEnable {
-		priv, err = privet.NewPrivet(config.GCPBaseURL, gcp.ProximityToken, createTempFile)
+		priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, gcp.ProximityToken, createTempFile)
 		if err != nil {
 			glog.Fatal(err)
 		}
@@ -103,8 +106,8 @@ func main() {
 	}
 
 	pm, err := manager.NewPrinterManager(cups, gcp, xmpp, priv, snmpManager, config.CUPSPrinterPollInterval,
-		config.GCPMaxConcurrentDownloads, config.CUPSJobQueueSize, config.CUPSJobFullUsername,
-		config.CUPSIgnoreRawPrinters, config.ShareScope)
+		config.CUPSJobQueueSize, config.CUPSJobFullUsername,
+		config.CUPSIgnoreRawPrinters, config.ShareScope, jobs)
 	if err != nil {
 		glog.Fatal(err)
 	}

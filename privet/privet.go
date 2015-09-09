@@ -23,7 +23,7 @@ type Privet struct {
 	apisMutex sync.RWMutex // Protects apis
 	zc        *zeroconf
 
-	jobs chan *lib.Job
+	jobs chan<- *lib.Job
 	jc   jobCache
 
 	gcpBaseURL        string
@@ -35,7 +35,7 @@ type Privet struct {
 //
 // getProximityToken should be GoogleCloudPrint.ProximityToken()
 // createTempFile should be cups.CreateTempFile()
-func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*Privet, error) {
+func NewPrivet(jobs chan<- *lib.Job, gcpBaseURL string, getProximityToken func(string, string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*Privet, error) {
 	zc, err := newZeroconf()
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) ([]byte
 		apis: make(map[string]*privetAPI),
 		zc:   zc,
 
-		jobs: make(chan *lib.Job, 10),
+		jobs: jobs,
 		jc:   *newJobCache(),
 
 		gcpBaseURL:        gcpBaseURL,
@@ -113,11 +113,6 @@ func (p *Privet) DeletePrinter(cupsPrinterName string) error {
 		delete(p.apis, cupsPrinterName)
 	}
 	return err
-}
-
-// Jobs returns a channel that emits new print jobs.
-func (p *Privet) Jobs() <-chan *lib.Job {
-	return p.jobs
 }
 
 func (p *Privet) Quit() {

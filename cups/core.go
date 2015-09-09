@@ -101,8 +101,8 @@ func (cc *cupsCore) printFile(user, printername, filename, title *C.char, numOpt
 	C.cupsSetUser(user)
 	jobID := C.cupsPrintFile2(http, printername, filename, title, numOptions, options)
 	if jobID == 0 {
-		return 0, fmt.Errorf("Failed to call cupsPrintFile2(): %d %s",
-			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
+		return 0, fmt.Errorf("Failed to call cupsPrintFile2() for file %s: %d %s",
+			C.GoString(filename), int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 	}
 
 	return jobID, nil
