@@ -36,7 +36,7 @@ type XMPP struct {
 	pingInterval   time.Duration
 	getAccessToken func() (string, error)
 
-	notifications       chan PrinterNotification
+	notifications       chan<- PrinterNotification
 	pingIntervalUpdates chan time.Duration
 	dead                chan struct{}
 
@@ -45,7 +45,7 @@ type XMPP struct {
 	ix *internalXMPP
 }
 
-func NewXMPP(jid, proxyName, server string, port uint16, pingTimeout, pingInterval time.Duration, getAccessToken func() (string, error)) (*XMPP, error) {
+func NewXMPP(jid, proxyName, server string, port uint16, pingTimeout, pingInterval time.Duration, getAccessToken func() (string, error), notifications chan<- PrinterNotification) (*XMPP, error) {
 	x := XMPP{
 		jid:                 jid,
 		proxyName:           proxyName,
@@ -54,7 +54,7 @@ func NewXMPP(jid, proxyName, server string, port uint16, pingTimeout, pingInterv
 		pingTimeout:         pingTimeout,
 		pingInterval:        pingInterval,
 		getAccessToken:      getAccessToken,
-		notifications:       make(chan PrinterNotification, 10),
+		notifications:       notifications,
 		pingIntervalUpdates: make(chan time.Duration, 10),
 		dead:                make(chan struct{}),
 		quit:                make(chan struct{}),
@@ -127,11 +127,6 @@ func (x *XMPP) keepXMPPAlive() {
 			return
 		}
 	}
-}
-
-// Notifications returns a channel on which PrinterNotifications arrive.
-func (x *XMPP) Notifications() <-chan PrinterNotification {
-	return x.notifications
 }
 
 // SetPingInterval sets the XMPP ping interval. Should be the min of all

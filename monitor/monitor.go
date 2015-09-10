@@ -112,10 +112,12 @@ func (m *Monitor) getStats() (string, error) {
 	cupsConnOpen := m.cups.ConnQtyOpen()
 	cupsConnMax := m.cups.ConnQtyMax()
 
-	if gcpPrinters, err := m.gcp.List(); err != nil {
-		return "", err
-	} else {
-		gcpPrinterQuantity = len(gcpPrinters)
+	if m.gcp != nil {
+		if gcpPrinters, err := m.gcp.List(); err != nil {
+			return "", err
+		} else {
+			gcpPrinterQuantity = len(gcpPrinters)
+		}
 	}
 
 	jobsDone, jobsError, jobsProcessing, err := m.pm.GetJobStats()

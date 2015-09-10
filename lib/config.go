@@ -120,6 +120,9 @@ type Config struct {
 
 	// Enable local discovery and printing.
 	LocalPrintingEnable bool `json:"local_printing_enable"`
+
+	// Enable cloud discovery and printing.
+	CloudPrintingEnable bool `json:"cloud_printing_enable"`
 }
 
 // DefaultConfig represents reasonable default values for Config fields.
@@ -172,6 +175,7 @@ var DefaultConfig = Config{
 	SNMPCommunity:                "public",
 	SNMPMaxConnections:           100,
 	LocalPrintingEnable:          false,
+	CloudPrintingEnable:          true,
 }
 
 // ConfigFromFile reads a Config object from the config file indicated by

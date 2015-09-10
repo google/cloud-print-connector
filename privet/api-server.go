@@ -27,9 +27,15 @@ import (
 )
 
 var (
-	closed        = errors.New("closed")
-	supportedAPIs = []string{
+	closed              = errors.New("closed")
+	supportedAPIsOnline = []string{
 		"/privet/accesstoken",
+		"/privet/capabilities",
+		"/privet/printer/createjob",
+		"/privet/printer/submitdoc",
+		"/privet/printer/jobstate",
+	}
+	supportedAPIsOffline = []string{
 		"/privet/capabilities",
 		"/privet/printer/createjob",
 		"/privet/printer/submitdoc",
@@ -68,6 +74,7 @@ type privetAPI struct {
 
 	gcpBaseURL string
 	xsrf       xsrfSecret
+	online     bool
 	jc         *jobCache
 	jobs       chan<- *lib.Job
 
@@ -79,7 +86,7 @@ type privetAPI struct {
 	startTime time.Time
 }
 
-func newPrivetAPI(gcpID, name, gcpBaseURL string, xsrf xsrfSecret, jc *jobCache, jobs chan<- *lib.Job, getPrinter func(string) (lib.Printer, bool), getProximityToken func(string, string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*privetAPI, error) {
+func newPrivetAPI(gcpID, name, gcpBaseURL string, xsrf xsrfSecret, online bool, jc *jobCache, jobs chan<- *lib.Job, getPrinter func(string) (lib.Printer, bool), getProximityToken func(string, string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*privetAPI, error) {
 	l, err := newQuittableListener()
 	if err != nil {
 		return nil, err
@@ -89,6 +96,7 @@ func newPrivetAPI(gcpID, name, gcpBaseURL string, xsrf xsrfSecret, jc *jobCache,
 		name:       name,
 		gcpBaseURL: gcpBaseURL,
 		xsrf:       xsrf,
+		online:     online,
 		jc:         jc,
 		jobs:       jobs,
 
@@ -115,7 +123,9 @@ func (api *privetAPI) quit() {
 func (api *privetAPI) serve() {
 	sm := http.NewServeMux()
 	sm.HandleFunc("/privet/info", api.info)
-	sm.HandleFunc("/privet/accesstoken", api.accesstoken)
+	if api.online {
+		sm.HandleFunc("/privet/accesstoken", api.accesstoken)
+	}
 	sm.HandleFunc("/privet/capabilities", api.capabilities)
 	sm.HandleFunc("/privet/printer/createjob", api.createjob)
 	sm.HandleFunc("/privet/printer/submitdoc", api.submitdoc)
@@ -167,21 +177,36 @@ func (api *privetAPI) info(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s := cdd.CloudConnectionStateOnline
+	var s cdd.CloudConnectionStateType
+	if api.online {
+		s = cdd.CloudConnectionStateOnline
+	} else {
+		s = cdd.CloudConnectionStateOffline
+	}
 	state := cdd.CloudDeviceState{
 		Version:              "1.0",
 		CloudConnectionState: &s,
 		Printer:              printer.State,
 	}
 
+	var connectionState string
+	var supportedAPIs []string
+	if api.online {
+		connectionState = "online"
+		supportedAPIs = supportedAPIsOnline
+	} else {
+		connectionState = "offline"
+		supportedAPIs = supportedAPIsOffline
+	}
+
 	response := infoResponse{
 		Version:         "1.0",
-		Name:            printer.Name,
+		Name:            printer.DefaultDisplayName,
 		URL:             api.gcpBaseURL,
 		Type:            []string{"printer"},
 		ID:              printer.GCPID,
 		DeviceState:     strings.ToLower(string(printer.State.State)),
-		ConnectionState: "online",
+		ConnectionState: connectionState,
 		Manufacturer:    printer.Manufacturer,
 		Model:           printer.Model,
 		SerialNumber:    printer.UUID,

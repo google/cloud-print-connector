@@ -69,7 +69,7 @@ func newZeroconf() (*zeroconf, error) {
 	return &z, nil
 }
 
-func (z *zeroconf) addPrinter(cupsPrinterName, name string, port uint16, ty, url, id string, online bool) error {
+func (z *zeroconf) addPrinter(name string, port uint16, ty, url, id string, online bool) error {
 	r := record{
 		name:   C.CString(name),
 		port:   port,
@@ -82,8 +82,8 @@ func (z *zeroconf) addPrinter(cupsPrinterName, name string, port uint16, ty, url
 	z.spMutex.Lock()
 	defer z.spMutex.Unlock()
 
-	if _, exists := z.printers[cupsPrinterName]; exists {
-		return fmt.Errorf("printer %s was already added to Avahi publishing", cupsPrinterName)
+	if _, exists := z.printers[name]; exists {
+		return fmt.Errorf("printer %s was already added to Avahi publishing", name)
 	}
 	if z.state == C.AVAHI_CLIENT_S_RUNNING {
 		tyC := C.CString(ty)
@@ -113,17 +113,17 @@ func (z *zeroconf) addPrinter(cupsPrinterName, name string, port uint16, ty, url
 		}
 	}
 
-	z.printers[cupsPrinterName] = r
+	z.printers[name] = r
 	return nil
 }
 
-func (z *zeroconf) updatePrinterTXT(cupsPrinterName, ty, url, id string, online bool) error {
+func (z *zeroconf) updatePrinterTXT(name, ty, url, id string, online bool) error {
 	z.spMutex.Lock()
 	defer z.spMutex.Unlock()
 
-	r, exists := z.printers[cupsPrinterName]
+	r, exists := z.printers[name]
 	if !exists {
-		return fmt.Errorf("printer %s cannot be updated for Avahi publishing; it was never added", cupsPrinterName)
+		return fmt.Errorf("printer %s cannot be updated for Avahi publishing; it was never added", name)
 	}
 
 	r.ty = ty
@@ -158,17 +158,17 @@ func (z *zeroconf) updatePrinterTXT(cupsPrinterName, ty, url, id string, online 
 		}
 	}
 
-	z.printers[cupsPrinterName] = r
+	z.printers[name] = r
 	return nil
 }
 
-func (z *zeroconf) removePrinter(cupsPrinterName string) error {
+func (z *zeroconf) removePrinter(name string) error {
 	z.spMutex.Lock()
 	defer z.spMutex.Unlock()
 
-	r, exists := z.printers[cupsPrinterName]
+	r, exists := z.printers[name]
 	if !exists {
-		return fmt.Errorf("printer %s cannot be updated for Avahi publishing; it was never added", cupsPrinterName)
+		return fmt.Errorf("printer %s cannot be updated for Avahi publishing; it was never added", name)
 	}
 
 	if z.state == C.AVAHI_CLIENT_S_RUNNING && r.group != nil {
@@ -186,7 +186,7 @@ func (z *zeroconf) removePrinter(cupsPrinterName string) error {
 
 	C.free(unsafe.Pointer(r.name))
 
-	delete(z.printers, cupsPrinterName)
+	delete(z.printers, name)
 	return nil
 }
 
@@ -212,8 +212,8 @@ func (z *zeroconf) restartAndQuit() {
 			}
 
 		case <-z.q:
-			for cupsPrinterName := range z.printers {
-				z.removePrinter(cupsPrinterName)
+			for name := range z.printers {
+				z.removePrinter(name)
 			}
 			C.stopAvahiClient(z.threadedPoll, z.client)
 			close(z.q)
@@ -238,7 +238,7 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 	// Transition from running to not running. Free all groups.
 	if z.state == C.AVAHI_CLIENT_S_RUNNING && newState != C.AVAHI_CLIENT_S_RUNNING {
 		glog.Info("Avahi client stopped running.")
-		for cupsPrinterName, r := range z.printers {
+		for name, r := range z.printers {
 			if r.group != nil {
 				var errstr *C.char
 				C.removeAvahiGroup(z.threadedPoll, r.group, &errstr)
@@ -247,7 +247,7 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 					C.free(unsafe.Pointer(errstr))
 				}
 				r.group = nil
-				z.printers[cupsPrinterName] = r
+				z.printers[name] = r
 			}
 		}
 	}
@@ -255,7 +255,7 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 	// Transition from not running to running. Recreate all groups.
 	if z.state != C.AVAHI_CLIENT_S_RUNNING && newState == C.AVAHI_CLIENT_S_RUNNING {
 		glog.Info("Avahi client running.")
-		for cupsPrinterName, r := range z.printers {
+		for name, r := range z.printers {
 			tyC := C.CString(r.ty)
 			defer C.free(unsafe.Pointer(tyC))
 			urlC := C.CString(r.url)
@@ -279,7 +279,7 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 				glog.Error(err)
 			}
 
-			z.printers[cupsPrinterName] = r
+			z.printers[name] = r
 		}
 	}
 

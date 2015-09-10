@@ -57,22 +57,24 @@ func NewPrivet(jobs chan<- *lib.Job, gcpBaseURL string, getProximityToken func(s
 	return &p, nil
 }
 
+// TODO move getPrinter to NewPrivet.
 // AddPrinter makes a printer available locally.
 func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func(string) (lib.Printer, bool)) error {
-	api, err := newPrivetAPI(printer.GCPID, printer.Name, p.gcpBaseURL, p.xsrf, &p.jc, p.jobs, getPrinter, p.getProximityToken, p.createTempFile)
-	if err != nil {
-		return err
-	}
-
 	online := false
 	if printer.GCPID != "" {
 		online = true
 	}
 
-	// TODO once we add local-only support we should hide the append behind an if ! local-only
+	api, err := newPrivetAPI(printer.GCPID, printer.Name, p.gcpBaseURL, p.xsrf, online, &p.jc, p.jobs, getPrinter, p.getProximityToken, p.createTempFile)
+	if err != nil {
+		return err
+	}
+
 	var localDefaultDisplayName = printer.DefaultDisplayName
-	localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
-	err = p.zc.addPrinter(printer.GCPID, printer.Name, api.port(), localDefaultDisplayName, p.gcpBaseURL, printer.GCPID, online)
+	if online {
+		localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
+	}
+	err = p.zc.addPrinter(printer.Name, api.port(), localDefaultDisplayName, p.gcpBaseURL, printer.GCPID, online)
 	if err != nil {
 		api.quit()
 		return err
@@ -95,9 +97,10 @@ func (p *Privet) UpdatePrinter(diff *lib.PrinterDiff) error {
 		online = true
 	}
 
-	// TODO once we add local-only support we should hide the append behind an if ! local-only
 	var localDefaultDisplayName = diff.Printer.DefaultDisplayName
-	localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
+	if online {
+		localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
+	}
 
 	return p.zc.updatePrinterTXT(diff.Printer.GCPID, localDefaultDisplayName, p.gcpBaseURL, diff.Printer.GCPID, online)
 }

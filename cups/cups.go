@@ -352,18 +352,12 @@ func (c *CUPS) GetJobState(jobID uint32) (cdd.PrintJobStateDiff, error) {
 	s := C.ippFindAttribute(response, C.JOB_STATE, C.IPP_TAG_ENUM)
 	state := int32(C.getAttributeIntegerValue(s, C.int(0)))
 
-	p := C.ippFindAttribute(response, C.JOB_MEDIA_SHEETS_COMPLETED, C.IPP_TAG_INTEGER)
-	var pages int32
-	if p != nil {
-		pages = int32(C.getAttributeIntegerValue(p, C.int(0)))
-	}
-
-	return convertJobState(state, pages), nil
+	return convertJobState(state), nil
 }
 
 // convertJobState converts CUPS job state to cdd.PrintJobStateDiff.
-func convertJobState(cupsState, pages int32) cdd.PrintJobStateDiff {
-	state := cdd.PrintJobStateDiff{PagesPrinted: &pages}
+func convertJobState(cupsState int32) cdd.PrintJobStateDiff {
+	var state cdd.PrintJobStateDiff
 
 	switch cupsState {
 	case 3, 4, 5: // PENDING, HELD, PROCESSING

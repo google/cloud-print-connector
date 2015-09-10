@@ -38,6 +38,10 @@ func main() {
 		glog.Fatal(err)
 	}
 
+	if !config.CloudPrintingEnable && !config.LocalPrintingEnable {
+		glog.Fatal("Cannot run connector with both local_printing_enable and cloud_printing_enable set to false")
+	}
+
 	if _, err := os.Stat(config.MonitorSocketFilename); !os.IsNotExist(err) {
 		if err != nil {
 			glog.Fatal(err)
@@ -62,58 +66,66 @@ func main() {
 	}
 
 	jobs := make(chan *lib.Job, 10)
+	xmppNotifications := make(chan xmpp.PrinterNotification, 5)
 
-	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
-		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
-		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		gcpXMPPPingIntervalDefault, config.GCPMaxConcurrentDownloads, jobs)
-	if err != nil {
-		glog.Fatal(err)
+	var g *gcp.GoogleCloudPrint
+	var x *xmpp.XMPP
+	if config.CloudPrintingEnable {
+		g, err = gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
+			config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
+			config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
+			gcpXMPPPingIntervalDefault, config.GCPMaxConcurrentDownloads, jobs)
+		if err != nil {
+			glog.Fatal(err)
+		}
+
+		x, err = xmpp.NewXMPP(config.XMPPJID, config.ProxyName, config.XMPPServer, config.XMPPPort,
+			gcpXMPPPingTimeout, gcpXMPPPingIntervalDefault, g.GetRobotAccessToken, xmppNotifications)
+		if err != nil {
+			glog.Fatal(err)
+		}
+		defer x.Quit()
 	}
 
-	xmpp, err := xmpp.NewXMPP(config.XMPPJID, config.ProxyName, config.XMPPServer, config.XMPPPort, gcpXMPPPingTimeout, gcpXMPPPingIntervalDefault, gcp.GetRobotAccessToken)
-	if err != nil {
-		glog.Fatal(err)
-	}
-	defer xmpp.Quit()
-
-	createTempFile := cups.CreateTempFile
-
-	cups, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes,
+	c, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.CUPSPrinterAttributes,
 		config.CUPSMaxConnections, cupsConnectTimeout)
 	if err != nil {
 		glog.Fatal(err)
 	}
-	defer cups.Quit()
+	defer c.Quit()
 
-	var snmpManager *snmp.SNMPManager
+	var s *snmp.SNMPManager
 	if config.SNMPEnable {
 		glog.Info("SNMP enabled")
-		snmpManager, err = snmp.NewSNMPManager(config.SNMPCommunity, config.SNMPMaxConnections)
+		s, err = snmp.NewSNMPManager(config.SNMPCommunity, config.SNMPMaxConnections)
 		if err != nil {
 			glog.Fatal(err)
 		}
-		defer snmpManager.Quit()
+		defer s.Quit()
 	}
 
 	var priv *privet.Privet
 	if config.LocalPrintingEnable {
-		priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, gcp.ProximityToken, createTempFile)
+		if g == nil {
+			priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, nil, cups.CreateTempFile)
+		} else {
+			priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, g.ProximityToken, cups.CreateTempFile)
+		}
 		if err != nil {
 			glog.Fatal(err)
 		}
 		defer priv.Quit()
 	}
 
-	pm, err := manager.NewPrinterManager(cups, gcp, xmpp, priv, snmpManager, config.CUPSPrinterPollInterval,
-		config.CUPSJobQueueSize, config.CUPSJobFullUsername,
-		config.CUPSIgnoreRawPrinters, config.ShareScope, jobs)
+	pm, err := manager.NewPrinterManager(c, g, priv, s, config.CUPSPrinterPollInterval,
+		config.CUPSJobQueueSize, config.CUPSJobFullUsername, config.CUPSIgnoreRawPrinters,
+		config.ShareScope, jobs, xmppNotifications)
 	if err != nil {
 		glog.Fatal(err)
 	}
 	defer pm.Quit()
 
-	m, err := monitor.NewMonitor(cups, gcp, pm, config.MonitorSocketFilename)
+	m, err := monitor.NewMonitor(c, g, pm, config.MonitorSocketFilename)
 	if err != nil {
 		glog.Fatal(err)
 	}

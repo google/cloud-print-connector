@@ -20,6 +20,7 @@ type ConcurrentPrinterMap struct {
 // NewConcurrentPrinterMap initializes an empty ConcurrentPrinterMap.
 func NewConcurrentPrinterMap(printers []Printer) *ConcurrentPrinterMap {
 	cpm := ConcurrentPrinterMap{}
+	// TODO will this fail on nil?
 	cpm.Refresh(printers)
 	return &cpm
 }

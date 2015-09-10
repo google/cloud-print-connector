@@ -103,7 +103,10 @@ var (
 		"Max connections to SNMP agents")
 	localPrintingEnableFlag = flag.String(
 		"local-printing-enable", "",
-		"Enable local discovery and printing, aka Privet")
+		"Enable local discovery and printing")
+	cloudPrintingEnableFlag = flag.String(
+		"cloud-printing-enable", "",
+		"Enable cloud discovery and printing")
 
 	gcpUserOAuthRefreshTokenFlag = flag.String(
 		"gcp-user-refresh-token", "",
@@ -349,6 +352,7 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		flagToString(snmpCommunityFlag, lib.DefaultConfig.SNMPCommunity),
 		flagToUint(snmpMaxConnectionsFlag, lib.DefaultConfig.SNMPMaxConnections),
 		flagToBool(localPrintingEnableFlag, lib.DefaultConfig.LocalPrintingEnable),
+		flagToBool(cloudPrintingEnableFlag, lib.DefaultConfig.CloudPrintingEnable),
 	}
 
 	if err := config.ToFile(); err != nil {

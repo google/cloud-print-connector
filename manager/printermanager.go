@@ -56,23 +56,31 @@ type PrinterManager struct {
 	quit chan struct{}
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, xmpp *xmpp.XMPP, privet *privet.Privet, snmp *snmp.SNMPManager, printerPollInterval string, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string, jobs <-chan *lib.Job) (*PrinterManager, error) {
-	// Get all GCP printers.
-	gcpPrinters, queuedJobsCount, err := gcp.ListPrinters()
-	if err != nil {
-		return nil, err
+func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, snmp *snmp.SNMPManager, printerPollInterval string, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string, jobs <-chan *lib.Job, xmppNotifications <-chan xmpp.PrinterNotification) (*PrinterManager, error) {
+	var printers *lib.ConcurrentPrinterMap
+	var queuedJobsCount map[string]uint
+
+	var err error
+	if gcp != nil {
+		// Get all GCP printers.
+		var gcpPrinters []lib.Printer
+		gcpPrinters, queuedJobsCount, err = gcp.ListPrinters()
+		if err != nil {
+			return nil, err
+		}
+		// Organize the GCP printers into a map.
+		for i := range gcpPrinters {
+			gcpPrinters[i].CUPSJobSemaphore = lib.NewSemaphore(cupsQueueSize)
+		}
+		printers = lib.NewConcurrentPrinterMap(gcpPrinters)
+	} else {
+		printers = lib.NewConcurrentPrinterMap(nil)
 	}
-	// Organize the GCP printers into a map.
-	for i := range gcpPrinters {
-		gcpPrinters[i].CUPSJobSemaphore = lib.NewSemaphore(cupsQueueSize)
-	}
-	printers := lib.NewConcurrentPrinterMap(gcpPrinters)
 
 	// Construct.
 	pm := PrinterManager{
 		cups:   cups,
 		gcp:    gcp,
-		xmpp:   xmpp,
 		privet: privet,
 		snmp:   snmp,
 
@@ -117,11 +125,13 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, xmpp *xmpp.XM
 		return nil, err
 	}
 	pm.syncPrintersPeriodically(ppi)
-	pm.listenNotifications(xmpp.Notifications(), jobs)
+	pm.listenNotifications(jobs, xmppNotifications)
 
-	for gcpPrinterID := range queuedJobsCount {
-		p, _ := printers.GetByGCPID(gcpPrinterID)
-		go gcp.HandleJobs(&p, func() { pm.incrementJobsProcessed(false) })
+	if gcp != nil {
+		for gcpPrinterID := range queuedJobsCount {
+			p, _ := printers.GetByGCPID(gcpPrinterID)
+			go gcp.HandleJobs(&p, func() { pm.incrementJobsProcessed(false) })
+		}
 	}
 
 	return &pm, nil
@@ -212,17 +222,19 @@ func (pm *PrinterManager) syncPrinters(ignorePrivet bool) error {
 func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer, ignorePrivet bool) {
 	switch diff.Operation {
 	case lib.RegisterPrinter:
-		if err := pm.gcp.Register(&diff.Printer); err != nil {
-			glog.Errorf("Failed to register printer %s: %s", diff.Printer.Name, err)
-			break
-		}
-		glog.Infof("Registered %s in the cloud", diff.Printer.Name)
+		if pm.gcp != nil {
+			if err := pm.gcp.Register(&diff.Printer); err != nil {
+				glog.Errorf("Failed to register printer %s: %s", diff.Printer.Name, err)
+				break
+			}
+			glog.Infof("Registered %s in the cloud", diff.Printer.Name)
 
-		if pm.gcp.CanShare() {
-			if err := pm.gcp.Share(diff.Printer.GCPID, pm.shareScope); err != nil {
-				glog.Errorf("Failed to share printer %s: %s", diff.Printer.Name, err)
-			} else {
-				glog.Infof("Shared %s", diff.Printer.Name)
+			if pm.gcp.CanShare() {
+				if err := pm.gcp.Share(diff.Printer.GCPID, pm.shareScope); err != nil {
+					glog.Errorf("Failed to share printer %s: %s", diff.Printer.Name, err)
+				} else {
+					glog.Infof("Shared %s", diff.Printer.Name)
+				}
 			}
 		}
 
@@ -241,10 +253,12 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		return
 
 	case lib.UpdatePrinter:
-		if err := pm.gcp.Update(diff); err != nil {
-			glog.Errorf("Failed to update %s: %s", diff.Printer.Name, err)
-		} else {
-			glog.Infof("Updated %s in the cloud", diff.Printer.Name)
+		if pm.gcp != nil {
+			if err := pm.gcp.Update(diff); err != nil {
+				glog.Errorf("Failed to update %s: %s", diff.Printer.Name, err)
+			} else {
+				glog.Infof("Updated %s in the cloud", diff.Printer.Name)
+			}
 		}
 
 		if pm.privet != nil && !ignorePrivet && diff.DefaultDisplayNameChanged {
@@ -261,11 +275,14 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 
 	case lib.DeletePrinter:
 		pm.cups.RemoveCachedPPD(diff.Printer.Name)
-		if err := pm.gcp.Delete(diff.Printer.GCPID); err != nil {
-			glog.Errorf("Failed to delete a printer %s: %s", diff.Printer.GCPID, err)
-			break
+
+		if pm.gcp != nil {
+			if err := pm.gcp.Delete(diff.Printer.GCPID); err != nil {
+				glog.Errorf("Failed to delete a printer %s: %s", diff.Printer.GCPID, err)
+				break
+			}
+			glog.Infof("Deleted %s in the cloud", diff.Printer.Name)
 		}
-		glog.Infof("Deleted %s in the cloud", diff.Printer.Name)
 
 		if pm.privet != nil && !ignorePrivet {
 			err := pm.privet.DeletePrinter(diff.Printer.Name)
@@ -285,12 +302,15 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 }
 
 // listenNotifications handles the messages found on the channels.
-func (pm *PrinterManager) listenNotifications(xmppMessages <-chan xmpp.PrinterNotification, jobs <-chan *lib.Job) {
+func (pm *PrinterManager) listenNotifications(jobs <-chan *lib.Job, xmppMessages <-chan xmpp.PrinterNotification) {
 	go func() {
 		for {
 			select {
 			case <-pm.quit:
 				return
+
+			case job := <-jobs:
+				go pm.printJob(job.CUPSPrinterName, job.Filename, job.Title, job.User, job.JobID, job.Ticket, job.UpdateJob)
 
 			case notification := <-xmppMessages:
 				switch notification.Type {
@@ -301,9 +321,6 @@ func (pm *PrinterManager) listenNotifications(xmppMessages <-chan xmpp.PrinterNo
 				case xmpp.PrinterDelete:
 					glog.Errorf("Received XMPP request to delete %s but deleting printers is not supported yet", notification.GCPID)
 				}
-
-			case job := <-jobs:
-				go pm.printJob(job.CUPSPrinterName, job.Filename, job.Title, job.User, job.JobID, job.Ticket, job.UpdateJob)
 			}
 		}
 	}()
