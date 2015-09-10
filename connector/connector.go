@@ -33,9 +33,16 @@ func main() {
 	glog.Error(lib.FullName)
 	fmt.Println(lib.FullName)
 
-	config, err := lib.ConfigFromFile()
-	if err != nil {
-		glog.Fatal(err)
+	var config *lib.Config
+	if lib.ConfigFileExists() {
+		var err error
+		config, err = lib.ConfigFromFile()
+		if err != nil {
+			glog.Fatal(err)
+		}
+	} else {
+		config = &lib.DefaultConfig
+		glog.Info("No config file was found, so using defaults")
 	}
 
 	if !config.CloudPrintingEnable && !config.LocalPrintingEnable {
@@ -131,8 +138,18 @@ func main() {
 	}
 	defer m.Quit()
 
-	glog.Errorf("Ready to rock as proxy '%s'\n", config.ProxyName)
-	fmt.Printf("Ready to rock as proxy '%s'\n", config.ProxyName)
+	if config.CloudPrintingEnable {
+		if config.LocalPrintingEnable {
+			glog.Errorf("Ready to rock as proxy '%s' and in local mode", config.ProxyName)
+			fmt.Printf("Ready to rock as proxy '%s' and in local mode\n", config.ProxyName)
+		} else {
+			glog.Errorf("Ready to rock as proxy '%s'", config.ProxyName)
+			fmt.Printf("Ready to rock as proxy '%s'\n", config.ProxyName)
+		}
+	} else {
+		glog.Error("Ready to rock in local-only mode")
+		fmt.Println("Ready to rock in local-only mode")
+	}
 
 	waitIndefinitely()
 

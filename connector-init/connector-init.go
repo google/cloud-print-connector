@@ -222,13 +222,12 @@ func getUserClientFromUser(retainUserOAuthToken bool) (*http.Client, string) {
 	fmt.Println(config.AuthCodeURL("state", oauth2.AccessTypeOffline))
 	fmt.Println("")
 
-	authCode := scanNonEmptyString("After authenticating, enter the provided code here:")
+	authCode := scanNonEmptyString("After authenticating, paste the provided code here:")
 	token, err := config.Exchange(oauth2.NoContext, authCode)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("")
 	fmt.Println("Acquired OAuth credentials for user account")
 
 	var userRefreshToken string
@@ -290,8 +289,6 @@ func initRobotAccount(userClient *http.Client) (string, string) {
 		log.Fatal("failed to initialize robot account: " + robotInit.Message)
 	}
 
-	fmt.Println("Requested OAuth credentials for robot account")
-
 	return robotInit.XMPPJID, robotInit.AuthCode
 }
 
@@ -322,7 +319,7 @@ func createRobotAccount(userClient *http.Client) (string, string) {
 	return xmppJID, token
 }
 
-func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxy string) {
+func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxy string, localEnable, cloudEnable bool) {
 	config := lib.Config{
 		xmppJID,
 		robotRefreshToken,
@@ -351,8 +348,8 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		flagToBool(snmpEnableFlag, lib.DefaultConfig.SNMPEnable),
 		flagToString(snmpCommunityFlag, lib.DefaultConfig.SNMPCommunity),
 		flagToUint(snmpMaxConnectionsFlag, lib.DefaultConfig.SNMPMaxConnections),
-		flagToBool(localPrintingEnableFlag, lib.DefaultConfig.LocalPrintingEnable),
-		flagToBool(cloudPrintingEnableFlag, lib.DefaultConfig.CloudPrintingEnable),
+		localEnable,
+		cloudEnable,
 	}
 
 	if err := config.ToFile(); err != nil {
@@ -367,6 +364,7 @@ func scanNonEmptyString(prompt string) string {
 		if length, err := fmt.Scan(&answer); err != nil {
 			log.Fatal(err)
 		} else if length > 0 {
+			fmt.Println("")
 			return answer
 		}
 	}
@@ -380,6 +378,7 @@ func scanYesOrNo(question string) bool {
 		if _, err := fmt.Scan(&answer); err != nil {
 			log.Fatal(err)
 		} else if parsed, value := stringToBool(answer); parsed {
+			fmt.Println("")
 			return value
 		}
 	}
@@ -406,47 +405,69 @@ func main() {
 	flag.Parse()
 	fmt.Println(lib.FullName)
 
-	var parsed bool
-	var retainUserOAuthToken bool
-	if parsed, retainUserOAuthToken = stringToBool(*retainUserOAuthTokenFlag); !parsed {
-		retainUserOAuthToken = scanYesOrNo(
-			"Would you like to retain the user OAuth token to enable automatic sharing?")
+	var localEnable bool
+	if len(*localPrintingEnableFlag) < 1 {
+		fmt.Println("\"Local printing\" means that clients print directly to the connector via local subnet,")
+		fmt.Println("and that an Internet connection is neither necessary nor used.")
+		localEnable = scanYesOrNo("Enable local printing?")
+	} else {
+		localEnable = flagToBool(localPrintingEnableFlag, false)
 	}
 
-	var shareScope string
-	if retainUserOAuthToken {
-		if len(*shareScopeFlag) > 0 {
-			shareScope = *shareScopeFlag
-		} else {
-			shareScope = scanNonEmptyString("User or group email address, or domain name, to share with:")
+	var cloudEnable bool
+	if len(*cloudPrintingEnableFlag) < 1 {
+		fmt.Println("\"Cloud printing\" means that clients can print from anywhere on the Internet,")
+		fmt.Println("and that printers must be explicitly shared with users.")
+		cloudEnable = scanYesOrNo("Enable cloud printing?")
+	} else {
+		cloudEnable = flagToBool(cloudPrintingEnableFlag, false)
+	}
+
+	var xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string
+	if cloudEnable {
+		var parsed bool
+		var retainUserOAuthToken bool
+		if parsed, retainUserOAuthToken = stringToBool(*retainUserOAuthTokenFlag); !parsed {
+			retainUserOAuthToken = scanYesOrNo(
+				"Retain the user OAuth token to enable automatic sharing?")
 		}
-	} else {
-		fmt.Println(
-			"The user account OAuth token will be thrown away; printers will not be shared automatically.")
+
+		if retainUserOAuthToken {
+			if len(*shareScopeFlag) > 0 {
+				shareScope = *shareScopeFlag
+			} else {
+				shareScope = scanNonEmptyString("User or group email address, or domain name, to share with:")
+			}
+		} else {
+			fmt.Println(
+				"The user account OAuth token will be thrown away; printers will not be shared automatically.")
+		}
+
+		proxyName = *proxyNameFlag
+		if len(proxyName) < 1 {
+			proxyName = scanNonEmptyString("Proxy name for this GCP CUPS Connector:")
+		}
+
+		var userClient *http.Client
+		userRefreshToken = flagToString(gcpUserOAuthRefreshTokenFlag, "")
+		if userRefreshToken == "" {
+			userClient, userRefreshToken = getUserClientFromUser(retainUserOAuthToken)
+		} else {
+			userClient = getUserClientFromToken(userRefreshToken)
+		}
+
+		xmppJID, robotRefreshToken = createRobotAccount(userClient)
+
+		fmt.Println("Acquired OAuth credentials for robot account")
 	}
 
-	proxyName := *proxyNameFlag
-	if len(proxyName) < 1 {
-		proxyName = scanNonEmptyString("Proxy name for this CloudPrint-CUPS server:")
-	}
-
-	var userClient *http.Client
-	userRefreshToken := flagToString(gcpUserOAuthRefreshTokenFlag, "")
-	if userRefreshToken == "" {
-		userClient, userRefreshToken = getUserClientFromUser(retainUserOAuthToken)
-	} else {
-		userClient = getUserClientFromToken(userRefreshToken)
-	}
 	fmt.Println("")
 
-	xmppJID, robotRefreshToken := createRobotAccount(userClient)
-
-	fmt.Println("Acquired OAuth credentials for robot account")
-	fmt.Println("")
-
-	createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName)
+	createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName, localEnable, cloudEnable)
 	fmt.Printf("The config file %s is ready to rock.\n", *lib.ConfigFilename)
-	fmt.Println("Keep it somewhere safe, as it contains an OAuth refresh token.")
+	if cloudEnable {
+		fmt.Println("Keep it somewhere safe, as it contains an OAuth refresh token.")
+	}
 
 	socketDirectory := filepath.Dir(flagToString(monitorSocketFilenameFlag, lib.DefaultConfig.MonitorSocketFilename))
 	if _, err := os.Stat(socketDirectory); os.IsNotExist(err) {
