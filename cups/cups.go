@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unsafe"
 
@@ -298,6 +299,21 @@ func addStaticDescriptionToPrinters(printers []lib.Printer) []lib.Printer {
 		printers[i].UpdateURL = lib.ConnectorHomeURL
 	}
 	return printers
+}
+
+// uname returns strings similar to the Unix uname command:
+// sysname, nodename, release, version, machine
+func uname() (string, string, string, string, string, error) {
+	var name C.struct_utsname
+	_, err := C.uname(&name)
+	if err != nil {
+		var errno syscall.Errno = err.(syscall.Errno)
+		return "", "", "", "", "", fmt.Errorf("Failed to call uname: %s", errno)
+	}
+
+	return C.GoString(&name.sysname[0]), C.GoString(&name.nodename[0]),
+		C.GoString(&name.release[0]), C.GoString(&name.version[0]),
+		C.GoString(&name.machine[0]), nil
 }
 
 func getSystemTags() (map[string]string, error) {

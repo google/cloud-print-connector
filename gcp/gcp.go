@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -26,7 +27,6 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/cups"
 	"github.com/google/cups-connector/lib"
 )
 
@@ -614,7 +614,7 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 			}
 	}
 
-	file, err := cups.CreateTempFile()
+	file, err := ioutil.TempFile("", "cups-connector-gcp-")
 	if err != nil {
 		return nil, "",
 			fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err),

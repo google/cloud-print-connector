@@ -10,7 +10,6 @@ package privet
 
 import (
 	"fmt"
-	"os"
 	"sync"
 
 	"github.com/google/cups-connector/lib"
@@ -28,14 +27,12 @@ type Privet struct {
 
 	gcpBaseURL        string
 	getProximityToken func(string, string) ([]byte, int, error)
-	createTempFile    func() (*os.File, error)
 }
 
 // NewPrivet constructs a new Privet object.
 //
 // getProximityToken should be GoogleCloudPrint.ProximityToken()
-// createTempFile should be cups.CreateTempFile()
-func NewPrivet(jobs chan<- *lib.Job, gcpBaseURL string, getProximityToken func(string, string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*Privet, error) {
+func NewPrivet(jobs chan<- *lib.Job, gcpBaseURL string, getProximityToken func(string, string) ([]byte, int, error)) (*Privet, error) {
 	zc, err := newZeroconf()
 	if err != nil {
 		return nil, err
@@ -51,7 +48,6 @@ func NewPrivet(jobs chan<- *lib.Job, gcpBaseURL string, getProximityToken func(s
 
 		gcpBaseURL:        gcpBaseURL,
 		getProximityToken: getProximityToken,
-		createTempFile:    createTempFile,
 	}
 
 	return &p, nil
@@ -65,7 +61,7 @@ func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func(string) (lib.Pr
 		online = true
 	}
 
-	api, err := newPrivetAPI(printer.GCPID, printer.Name, p.gcpBaseURL, p.xsrf, online, &p.jc, p.jobs, getPrinter, p.getProximityToken, p.createTempFile)
+	api, err := newPrivetAPI(printer.GCPID, printer.Name, p.gcpBaseURL, p.xsrf, online, &p.jc, p.jobs, getPrinter, p.getProximityToken)
 	if err != nil {
 		return err
 	}

@@ -29,6 +29,11 @@ const (
 	// jobURIFormat is the string format required by the CUPS API
 	// to do things like query the state of a job.
 	jobURIFormat = "/jobs/%d"
+
+	// filePathMaxLength varies by operating system and file system.
+	// This value should be large enough to be useful and small enough
+	// to work on any platform.
+	filePathMaxLength = 1024
 )
 
 // cupsCore handles CUPS API interaction and connection management.

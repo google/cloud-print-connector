@@ -80,13 +80,12 @@ type privetAPI struct {
 
 	getPrinter        func(string) (lib.Printer, bool)
 	getProximityToken func(string, string) ([]byte, int, error)
-	createTempFile    func() (*os.File, error)
 
 	listener  *quittableListener
 	startTime time.Time
 }
 
-func newPrivetAPI(gcpID, name, gcpBaseURL string, xsrf xsrfSecret, online bool, jc *jobCache, jobs chan<- *lib.Job, getPrinter func(string) (lib.Printer, bool), getProximityToken func(string, string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*privetAPI, error) {
+func newPrivetAPI(gcpID, name, gcpBaseURL string, xsrf xsrfSecret, online bool, jc *jobCache, jobs chan<- *lib.Job, getPrinter func(string) (lib.Printer, bool), getProximityToken func(string, string) ([]byte, int, error)) (*privetAPI, error) {
 	l, err := newQuittableListener()
 	if err != nil {
 		return nil, err
@@ -102,7 +101,6 @@ func newPrivetAPI(gcpID, name, gcpBaseURL string, xsrf xsrfSecret, online bool, 
 
 		getPrinter:        getPrinter,
 		getProximityToken: getProximityToken,
-		createTempFile:    createTempFile,
 
 		listener:  l,
 		startTime: time.Now(),
@@ -383,7 +381,7 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, err := api.createTempFile()
+	file, err := ioutil.TempFile("", "cups-connector-privet-")
 	if err != nil {
 		glog.Errorf("Failed to create file for new Privet job: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)

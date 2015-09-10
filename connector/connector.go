@@ -114,9 +114,9 @@ func main() {
 	var priv *privet.Privet
 	if config.LocalPrintingEnable {
 		if g == nil {
-			priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, nil, cups.CreateTempFile)
+			priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, nil)
 		} else {
-			priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, g.ProximityToken, cups.CreateTempFile)
+			priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, g.ProximityToken)
 		}
 		if err != nil {
 			glog.Fatal(err)
