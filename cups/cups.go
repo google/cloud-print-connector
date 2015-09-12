@@ -523,17 +523,6 @@ func attributesToMap(attributes []*C.ipp_attribute_t) map[string][]string {
 		if len(values) == 1 && (values[0] == "none" || len(values[0]) == 0) {
 			values = []string{}
 		}
-		// This block fixes some drivers' marker types, which list an extra
-		// type containing a comma, which CUPS interprets as an extra type.
-		// The extra type starts with a space, so it's easy to detect.
-		if len(values) > 1 && len(values[len(values)-1]) > 1 && values[len(values)-1][0:1] == " " {
-			newValues := make([]string, len(values)-1)
-			for i := 0; i < len(values)-2; i++ {
-				newValues[i] = values[i]
-			}
-			newValues[len(newValues)-1] = strings.Join(values[len(values)-2:], ",")
-			values = newValues
-		}
 		m[key] = values
 	}
 
