@@ -204,10 +204,25 @@ func convertMarkers(printerTags map[string][]string) (*[]cdd.Marker, *cdd.Marker
 	if len(names) == 0 || len(types) == 0 || len(levels) == 0 {
 		return nil, nil
 	}
-	if len(names) != len(types) || len(types) != len(levels) {
-		glog.Warningf("Received badly-formatted markers from CUPS: %s, %s, %s",
-			strings.Join(names, ";"), strings.Join(types, ";"), strings.Join(levels, ";"))
-		return nil, nil
+
+	if len(names) != len(levels) {
+		newNames := fixMarkers(names)
+		if len(newNames) != len(levels) {
+			glog.Warningf("Received badly-formatted marker-names from CUPS: %s, %s, %s",
+				strings.Join(names, ";"), strings.Join(types, ";"), strings.Join(levels, ";"))
+			return nil, nil
+		}
+		names = newNames
+	}
+
+	if len(types) != len(levels) {
+		newTypes := fixMarkers(types)
+		if len(newTypes) != len(levels) {
+			glog.Warningf("Received badly-formatted marker-types from CUPS: %s, %s, %s",
+				strings.Join(names, ";"), strings.Join(types, ";"), strings.Join(levels, ";"))
+			return nil, nil
+		}
+		types = newTypes
 	}
 
 	markers := make([]cdd.Marker, 0, len(names))
@@ -291,6 +306,21 @@ func convertMarkers(printerTags map[string][]string) (*[]cdd.Marker, *cdd.Marker
 	}
 
 	return &markers, &states
+}
+
+//fixMarkers corrects some drivers' marker names/types where CUPS detects names/types with a comma
+// as two separate values. The second value of these pairs contain a space, so it's easy to detect.
+func fixMarkers(values []string) []string {
+	var newValues []string
+
+	for i := range values {
+		if i > 0 && len(values[i]) > 1 && values[i][0] == ' ' {
+			newValues[len(newValues)-1] = strings.Join([]string{newValues[len(newValues)-1], values[i]}, ",")
+		} else {
+			newValues = append(newValues, values[i])
+		}
+	}
+	return newValues
 }
 
 func convertPagesPerSheet(printerTags map[string][]string) *cdd.VendorCapability {

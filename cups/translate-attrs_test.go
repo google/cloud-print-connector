@@ -207,13 +207,43 @@ func TestConvertMarkers(t *testing.T) {
 	}
 
 	pt = map[string][]string{
-		attrMarkerNames:  []string{"black", "color", "rainbow", "zebra", "pony"},
-		attrMarkerTypes:  []string{"toner", "toner", "ink", "staples", "water"},
+		attrMarkerNames:  []string{"black", "color"},
+		attrMarkerTypes:  []string{"toner", "toner", "ink"},
+		attrMarkerLevels: []string{"10", "11", "12"},
+	}
+	m, ms = convertMarkers(pt)
+	if m != nil {
+		t.Logf("expected nil")
+		t.Fail()
+	}
+	if ms != nil {
+		t.Logf("expected nil")
+		t.Fail()
+	}
+
+	pt = map[string][]string{
+		attrMarkerNames:  []string{"black", "color", "rainbow"},
+		attrMarkerTypes:  []string{"toner", "toner"},
+		attrMarkerLevels: []string{"10", "11", "12"},
+	}
+	m, ms = convertMarkers(pt)
+	if m != nil {
+		t.Logf("expected nil")
+		t.Fail()
+	}
+	if ms != nil {
+		t.Logf("expected nil")
+		t.Fail()
+	}
+
+	pt = map[string][]string{
+		attrMarkerNames:  []string{"black", " Reorder Part #12345", "color", "rainbow", "zebra", "pony"},
+		attrMarkerTypes:  []string{"toner", "toner", "ink", "staples", "water", " Reorder H2O"},
 		attrMarkerLevels: []string{"10", "11", "12", "208", "13"},
 	}
 	mExpected := &[]cdd.Marker{
 		cdd.Marker{
-			VendorID: "black",
+			VendorID: "black, Reorder Part #12345",
 			Type:     cdd.MarkerToner,
 			Color:    &cdd.MarkerColor{Type: cdd.MarkerColorBlack},
 		},
@@ -237,6 +267,72 @@ func TestConvertMarkers(t *testing.T) {
 	}
 	ten, eleven, twelve, eighty := int32(10), int32(11), int32(12), int32(80)
 	msExpected := &cdd.MarkerState{
+		Item: []cdd.MarkerStateItem{
+			cdd.MarkerStateItem{
+				VendorID:     "black, Reorder Part #12345",
+				State:        cdd.MarkerStateExhausted,
+				LevelPercent: &ten,
+			},
+			cdd.MarkerStateItem{
+				VendorID:     "color",
+				State:        cdd.MarkerStateOK,
+				LevelPercent: &eleven,
+			},
+			cdd.MarkerStateItem{
+				VendorID:     "rainbow",
+				State:        cdd.MarkerStateOK,
+				LevelPercent: &twelve,
+			},
+			cdd.MarkerStateItem{
+				VendorID:     "zebra",
+				State:        cdd.MarkerStateOK,
+				LevelPercent: &eighty,
+			},
+		},
+	}
+	m, ms = convertMarkers(pt)
+	if !reflect.DeepEqual(mExpected, m) {
+		e, _ := json.Marshal(mExpected)
+		f, _ := json.Marshal(m)
+		t.Logf("expected\n %s\ngot\n %s", e, f)
+		t.Fail()
+	}
+	if !reflect.DeepEqual(msExpected, ms) {
+		e, _ := json.Marshal(msExpected)
+		f, _ := json.Marshal(ms)
+		t.Logf("expected\n %s\ngot\n %s", e, f)
+		t.Fail()
+	}
+	pt = map[string][]string{
+		attrMarkerNames:  []string{"black", "color", "rainbow", "zebra", "pony"},
+		attrMarkerTypes:  []string{"toner", "toner", "ink", "staples", "water"},
+		attrMarkerLevels: []string{"10", "11", "12", "208", "13"},
+	}
+	mExpected = &[]cdd.Marker{
+		cdd.Marker{
+			VendorID: "black",
+			Type:     cdd.MarkerToner,
+			Color:    &cdd.MarkerColor{Type: cdd.MarkerColorBlack},
+		},
+		cdd.Marker{
+			VendorID: "color",
+			Type:     cdd.MarkerToner,
+			Color:    &cdd.MarkerColor{Type: cdd.MarkerColorColor},
+		},
+		cdd.Marker{
+			VendorID: "rainbow",
+			Type:     cdd.MarkerInk,
+			Color: &cdd.MarkerColor{
+				Type: cdd.MarkerColorCustom,
+				CustomDisplayNameLocalized: cdd.NewLocalizedString("rainbow"),
+			},
+		},
+		cdd.Marker{
+			VendorID: "zebra",
+			Type:     cdd.MarkerStaples,
+		},
+	}
+	msExpected = &cdd.MarkerState{
 		Item: []cdd.MarkerStateItem{
 			cdd.MarkerStateItem{
 				VendorID:     "black",
