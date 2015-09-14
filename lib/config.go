@@ -172,7 +172,7 @@ var DefaultConfig = Config{
 	GCPOAuthClientSecret:         "V9BfPOvdiYuw12hDx5Y5nR0a",
 	GCPOAuthAuthURL:              "https://accounts.google.com/o/oauth2/auth",
 	GCPOAuthTokenURL:             "https://accounts.google.com/o/oauth2/token",
-	SNMPEnable:                   true,
+	SNMPEnable:                   false,
 	SNMPCommunity:                "public",
 	SNMPMaxConnections:           100,
 	LocalPrintingEnable:          true,
