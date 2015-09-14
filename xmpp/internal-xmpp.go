@@ -10,6 +10,7 @@ https://developers.google.com/open-source/licenses/bsd
 package xmpp
 
 import (
+	"bufio"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/xml"
@@ -17,6 +18,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -65,10 +68,15 @@ func newInternalXMPP(jid, accessToken, proxyName, server string, port uint16, pi
 		domain = parts[1]
 	}
 
-	// Anyone home?
-	conn, err := dial(server, port)
+	conn, err := dialViaHTTPProxy(server, port)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to dial XMPP service: %s", err)
+		return nil, fmt.Errorf("Failed to dial XMPP server via proxy: %s", err)
+	}
+	if conn == nil {
+		conn, err = dial(server, port)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to dial XMPP service: %s", err)
+		}
 	}
 
 	var xmlEncoder *xml.Encoder
@@ -273,24 +281,71 @@ func (x *internalXMPP) ping(timeout time.Duration) (bool, error) {
 	panic("unreachable")
 }
 
-func dial(server string, port uint16) (*tls.Conn, error) {
-	tlsConfig := &tls.Config{
-		ServerName: server,
+func dialViaHTTPProxy(server string, port uint16) (*tls.Conn, error) {
+	xmppHost := fmt.Sprintf("%s:%d", server, port)
+	fakeRequest := http.Request{
+		URL: &url.URL{
+			Scheme: "https",
+			Host:   xmppHost,
+		},
 	}
-	netDialer := &net.Dialer{
+	proxyURL, err := http.ProxyFromEnvironment(&fakeRequest)
+	if err != nil {
+		return nil, err
+	}
+	if proxyURL == nil {
+		return nil, nil
+	}
+
+	dialer := net.Dialer{
 		KeepAlive: netKeepAlive,
 		Timeout:   netTimeout,
 	}
-	addr := fmt.Sprintf("%s:%d", server, port)
-	conn, err := tls.DialWithDialer(netDialer, "tcp", addr, tlsConfig)
+	conn, err := dialer.Dial("tcp", proxyURL.Host)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to connect to HTTP proxy server: %s", err)
+	}
+
+	fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", xmppHost, xmppHost)
+
+	response, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: "CONNECT"})
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Failed to connect to proxy: %s", response.Status)
+	}
+
+	return addTLS(server, conn)
+}
+
+func dial(server string, port uint16) (*tls.Conn, error) {
+	dialer := net.Dialer{
+		KeepAlive: netKeepAlive,
+		Timeout:   netTimeout,
+	}
+	conn, err := dialer.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
 	if err != nil {
 		return nil, fmt.Errorf("Failed to connect to XMPP server: %s", err)
 	}
-	if err = conn.VerifyHostname(server); err != nil {
+
+	return addTLS(server, conn)
+}
+
+func addTLS(server string, conn net.Conn) (*tls.Conn, error) {
+	tlsConfig := tls.Config{
+		ServerName: server,
+	}
+	tlsClient := tls.Client(conn, &tlsConfig)
+
+	if err := tlsClient.Handshake(); err != nil {
+		return nil, fmt.Errorf("Failed to TLS handshake with XMPP server: %s", err)
+	}
+	if err := tlsClient.VerifyHostname(server); err != nil {
 		return nil, fmt.Errorf("Failed to verify hostname of XMPP server: %s", err)
 	}
 
-	return conn, nil
+	return tlsClient, nil
 }
 
 func saslHandshake(xmlEncoder *xml.Encoder, xmlDecoder *xml.Decoder, domain, user, accessToken string) error {
