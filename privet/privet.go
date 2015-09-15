@@ -10,7 +10,6 @@ package privet
 
 import (
 	"fmt"
-	"os"
 	"sync"
 
 	"github.com/google/cups-connector/lib"
@@ -23,19 +22,17 @@ type Privet struct {
 	apisMutex sync.RWMutex // Protects apis
 	zc        *zeroconf
 
-	jobs chan *lib.Job
+	jobs chan<- *lib.Job
 	jc   jobCache
 
 	gcpBaseURL        string
 	getProximityToken func(string, string) ([]byte, int, error)
-	createTempFile    func() (*os.File, error)
 }
 
 // NewPrivet constructs a new Privet object.
 //
 // getProximityToken should be GoogleCloudPrint.ProximityToken()
-// createTempFile should be cups.CreateTempFile()
-func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) ([]byte, int, error), createTempFile func() (*os.File, error)) (*Privet, error) {
+func NewPrivet(jobs chan<- *lib.Job, gcpBaseURL string, getProximityToken func(string, string) ([]byte, int, error)) (*Privet, error) {
 	zc, err := newZeroconf()
 	if err != nil {
 		return nil, err
@@ -46,33 +43,34 @@ func NewPrivet(gcpBaseURL string, getProximityToken func(string, string) ([]byte
 		apis: make(map[string]*privetAPI),
 		zc:   zc,
 
-		jobs: make(chan *lib.Job, 10),
+		jobs: jobs,
 		jc:   *newJobCache(),
 
 		gcpBaseURL:        gcpBaseURL,
 		getProximityToken: getProximityToken,
-		createTempFile:    createTempFile,
 	}
 
 	return &p, nil
 }
 
+// TODO move getPrinter to NewPrivet.
 // AddPrinter makes a printer available locally.
 func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func(string) (lib.Printer, bool)) error {
-	api, err := newPrivetAPI(printer.GCPID, p.gcpBaseURL, p.xsrf, &p.jc, p.jobs, getPrinter, p.getProximityToken, p.createTempFile)
-	if err != nil {
-		return err
-	}
-
 	online := false
 	if printer.GCPID != "" {
 		online = true
 	}
 
-	// TODO once we add local-only support we should hide the append behind an if ! local-only
+	api, err := newPrivetAPI(printer.GCPID, printer.Name, p.gcpBaseURL, p.xsrf, online, &p.jc, p.jobs, getPrinter, p.getProximityToken)
+	if err != nil {
+		return err
+	}
+
 	var localDefaultDisplayName = printer.DefaultDisplayName
-	localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
-	err = p.zc.addPrinter(printer.GCPID, printer.Name, api.port(), localDefaultDisplayName, p.gcpBaseURL, printer.GCPID, online)
+	if online {
+		localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
+	}
+	err = p.zc.addPrinter(printer.Name, api.port(), localDefaultDisplayName, p.gcpBaseURL, printer.GCPID, online)
 	if err != nil {
 		api.quit()
 		return err
@@ -81,7 +79,7 @@ func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func(string) (lib.Pr
 	p.apisMutex.Lock()
 	defer p.apisMutex.Unlock()
 
-	p.apis[printer.GCPID] = api
+	p.apis[printer.Name] = api
 
 	return nil
 }
@@ -95,29 +93,25 @@ func (p *Privet) UpdatePrinter(diff *lib.PrinterDiff) error {
 		online = true
 	}
 
-	// TODO once we add local-only support we should hide the append behind an if ! local-only
 	var localDefaultDisplayName = diff.Printer.DefaultDisplayName
-	localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
+	if online {
+		localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
+	}
 
 	return p.zc.updatePrinterTXT(diff.Printer.GCPID, localDefaultDisplayName, p.gcpBaseURL, diff.Printer.GCPID, online)
 }
 
 // DeletePrinter removes a printer from Privet.
-func (p *Privet) DeletePrinter(gcpID string) error {
+func (p *Privet) DeletePrinter(cupsPrinterName string) error {
 	p.apisMutex.Lock()
 	defer p.apisMutex.Unlock()
 
-	err := p.zc.removePrinter(gcpID)
-	if api, ok := p.apis[gcpID]; ok {
+	err := p.zc.removePrinter(cupsPrinterName)
+	if api, ok := p.apis[cupsPrinterName]; ok {
 		api.quit()
-		delete(p.apis, gcpID)
+		delete(p.apis, cupsPrinterName)
 	}
 	return err
-}
-
-// Jobs returns a channel that emits new print jobs.
-func (p *Privet) Jobs() <-chan *lib.Job {
-	return p.jobs
 }
 
 func (p *Privet) Quit() {
@@ -125,8 +119,8 @@ func (p *Privet) Quit() {
 	defer p.apisMutex.Unlock()
 
 	p.zc.quit()
-	for gcpID, api := range p.apis {
+	for cupsPrinterName, api := range p.apis {
 		api.quit()
-		delete(p.apis, gcpID)
+		delete(p.apis, cupsPrinterName)
 	}
 }

@@ -10,40 +10,63 @@ package lib
 import "sync"
 
 // ConcurrentPrinterMap is a map-like data structure that is also
-// thread-safe. Printers are keyed by Printer.GCPID.
+// thread-safe. Printers are keyed by Printer.Name and Printer.GCPID.
 type ConcurrentPrinterMap struct {
-	printers map[string]Printer
-	mutex    sync.RWMutex
+	byCUPSName map[string]Printer
+	byGCPID    map[string]Printer
+	mutex      sync.RWMutex
 }
 
 // NewConcurrentPrinterMap initializes an empty ConcurrentPrinterMap.
 func NewConcurrentPrinterMap(printers []Printer) *ConcurrentPrinterMap {
 	cpm := ConcurrentPrinterMap{}
+	// TODO will this fail on nil?
 	cpm.Refresh(printers)
 	return &cpm
 }
 
 // Refresh replaces the internal (non-concurrent) map with newPrinters.
 func (cpm *ConcurrentPrinterMap) Refresh(newPrinters []Printer) {
-	m := make(map[string]Printer, len(newPrinters))
+	c := make(map[string]Printer, len(newPrinters))
 	for _, printer := range newPrinters {
-		m[printer.GCPID] = printer
+		c[printer.Name] = printer
+	}
+
+	g := make(map[string]Printer, len(newPrinters))
+	for _, printer := range newPrinters {
+		if len(printer.GCPID) > 0 {
+			g[printer.GCPID] = printer
+		}
 	}
 
 	cpm.mutex.Lock()
 	defer cpm.mutex.Unlock()
 
-	cpm.printers = m
+	cpm.byCUPSName = c
+	cpm.byGCPID = g
 }
 
-// Get gets a printer from the map.
+// Get gets a printer, using the CUPS name as key.
 //
 // The second return value is true if the entry exists.
-func (cpm *ConcurrentPrinterMap) Get(gcpID string) (Printer, bool) {
+func (cpm *ConcurrentPrinterMap) GetByCUPSName(name string) (Printer, bool) {
 	cpm.mutex.RLock()
 	defer cpm.mutex.RUnlock()
 
-	if p, exists := cpm.printers[gcpID]; exists {
+	if p, exists := cpm.byCUPSName[name]; exists {
+		return p, true
+	}
+	return Printer{}, false
+}
+
+// Get gets a printer, using the GCP ID as key.
+//
+// The second return value is true if the entry exists.
+func (cpm *ConcurrentPrinterMap) GetByGCPID(gcpID string) (Printer, bool) {
+	cpm.mutex.RLock()
+	defer cpm.mutex.RUnlock()
+
+	if p, exists := cpm.byGCPID[gcpID]; exists {
 		return p, true
 	}
 	return Printer{}, false
@@ -54,9 +77,9 @@ func (cpm *ConcurrentPrinterMap) GetAll() []Printer {
 	cpm.mutex.RLock()
 	defer cpm.mutex.RUnlock()
 
-	printers := make([]Printer, len(cpm.printers))
+	printers := make([]Printer, len(cpm.byCUPSName))
 	i := 0
-	for _, printer := range cpm.printers {
+	for _, printer := range cpm.byCUPSName {
 		printers[i] = printer
 		i++
 	}

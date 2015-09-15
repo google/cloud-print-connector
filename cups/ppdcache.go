@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"sync"
 	"unsafe"
@@ -116,7 +117,7 @@ type ppdCacheEntry struct {
 // all else empty. The caller must free the name and buffer fields with
 // ppdCacheEntry.free()
 func createPPDCacheEntry(name string) (*ppdCacheEntry, error) {
-	file, err := CreateTempFile()
+	file, err := ioutil.TempFile("", "cups-connector-ppd-")
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create PPD cache entry file: %s", err)
 	}

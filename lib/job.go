@@ -10,11 +10,11 @@ package lib
 import "github.com/google/cups-connector/cdd"
 
 type Job struct {
-	GCPPrinterID string
-	Filename     string
-	Title        string
-	User         string
-	JobID        string
-	Ticket       *cdd.CloudJobTicket
-	UpdateJob    func(string, cdd.PrintJobStateDiff) error
+	CUPSPrinterName string
+	Filename        string
+	Title           string
+	User            string
+	JobID           string
+	Ticket          *cdd.CloudJobTicket
+	UpdateJob       func(string, cdd.PrintJobStateDiff) error
 }

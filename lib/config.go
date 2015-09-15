@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"flag"
 	"io/ioutil"
+	"os"
 	"runtime"
 )
 
@@ -36,10 +37,10 @@ var (
 
 type Config struct {
 	// Associated with root account. XMPP credential.
-	XMPPJID string `json:"xmpp_jid"`
+	XMPPJID string `json:"xmpp_jid,omitempty"`
 
 	// Associated with robot account. Used for acquiring OAuth access tokens.
-	RobotRefreshToken string `json:"robot_refresh_token"`
+	RobotRefreshToken string `json:"robot_refresh_token,omitempty"`
 
 	// Associated with user account. Used for sharing GCP printers; may be omitted.
 	UserRefreshToken string `json:"user_refresh_token,omitempty"`
@@ -48,7 +49,7 @@ type Config struct {
 	ShareScope string `json:"share_scope,omitempty"`
 
 	// User-chosen name of this proxy. Should be unique per Google user account.
-	ProxyName string `json:"proxy_name"`
+	ProxyName string `json:"proxy_name,omitempty"`
 
 	// Maximum quantity of jobs (data) to download concurrently.
 	GCPMaxConcurrentDownloads uint `json:"gcp_max_concurrent_downloads"`
@@ -120,6 +121,9 @@ type Config struct {
 
 	// Enable local discovery and printing.
 	LocalPrintingEnable bool `json:"local_printing_enable"`
+
+	// Enable cloud discovery and printing.
+	CloudPrintingEnable bool `json:"cloud_printing_enable"`
 }
 
 // DefaultConfig represents reasonable default values for Config fields.
@@ -127,7 +131,7 @@ type Config struct {
 // connector instance.
 var DefaultConfig = Config{
 	GCPMaxConcurrentDownloads: 5,
-	CUPSMaxConnections:        5,
+	CUPSMaxConnections:        50,
 	CUPSConnectTimeout:        "5s",
 	CUPSJobQueueSize:          3,
 	CUPSPrinterPollInterval:   "1m",
@@ -158,7 +162,7 @@ var DefaultConfig = Config{
 	CUPSJobFullUsername:          false,
 	CUPSIgnoreRawPrinters:        true,
 	CopyPrinterInfoToDisplayName: true,
-	MonitorSocketFilename:        "/var/run/cups-connector/monitor.sock",
+	MonitorSocketFilename:        "/tmp/cups-connector-monitor.sock",
 	GCPBaseURL:                   "https://www.google.com/cloudprint/",
 	XMPPServer:                   "talk.google.com",
 	XMPPPort:                     443,
@@ -171,7 +175,19 @@ var DefaultConfig = Config{
 	SNMPEnable:                   false,
 	SNMPCommunity:                "public",
 	SNMPMaxConnections:           100,
-	LocalPrintingEnable:          false,
+	LocalPrintingEnable:          true,
+	CloudPrintingEnable:          false,
+}
+
+func ConfigFileExists() bool {
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+
+	if fi, err := os.Stat(*ConfigFilename); err == nil && !fi.IsDir() {
+		return true
+	}
+	return false
 }
 
 // ConfigFromFile reads a Config object from the config file indicated by

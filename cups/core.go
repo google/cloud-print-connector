@@ -29,6 +29,11 @@ const (
 	// jobURIFormat is the string format required by the CUPS API
 	// to do things like query the state of a job.
 	jobURIFormat = "/jobs/%d"
+
+	// filePathMaxLength varies by operating system and file system.
+	// This value should be large enough to be useful and small enough
+	// to work on any platform.
+	filePathMaxLength = 1024
 )
 
 // cupsCore handles CUPS API interaction and connection management.
@@ -101,8 +106,8 @@ func (cc *cupsCore) printFile(user, printername, filename, title *C.char, numOpt
 	C.cupsSetUser(user)
 	jobID := C.cupsPrintFile2(http, printername, filename, title, numOptions, options)
 	if jobID == 0 {
-		return 0, fmt.Errorf("Failed to call cupsPrintFile2(): %d %s",
-			int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
+		return 0, fmt.Errorf("Failed to call cupsPrintFile2() for file %s: %d %s",
+			C.GoString(filename), int(C.cupsLastError()), C.GoString(C.cupsLastErrorString()))
 	}
 
 	return jobID, nil

@@ -15,14 +15,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
 
+	"github.com/golang/glog"
 	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/lib"
 )
@@ -47,10 +50,13 @@ type GoogleCloudPrint struct {
 	userClient              *http.Client
 	proxyName               string
 	xmppPingIntervalDefault time.Duration
+
+	jobs              chan<- *lib.Job
+	downloadSemaphore *lib.Semaphore
 }
 
 // NewGoogleCloudPrint establishes a connection with GCP, returns a new GoogleCloudPrint object.
-func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL string, xmppPingIntervalDefault time.Duration) (*GoogleCloudPrint, error) {
+func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL string, xmppPingIntervalDefault time.Duration, maxConcurrentDownload uint, jobs chan<- *lib.Job) (*GoogleCloudPrint, error) {
 	robotClient, err := newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, robotRefreshToken, ScopeCloudPrint, ScopeGoogleTalk)
 	if err != nil {
 		return nil, err
@@ -70,6 +76,8 @@ func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName
 		userClient:              userClient,
 		proxyName:               proxyName,
 		xmppPingIntervalDefault: xmppPingIntervalDefault,
+		jobs:              jobs,
+		downloadSemaphore: lib.NewSemaphore(maxConcurrentDownload),
 	}
 
 	return gcp, nil
@@ -483,4 +491,162 @@ func (gcp *GoogleCloudPrint) ProximityToken(gcpID, user string) ([]byte, int, er
 
 	responseBody, _, httpStatus, err := postWithRetry(gcp.robotClient, gcp.baseURL+"proximitytoken", form)
 	return responseBody, httpStatus, err
+}
+
+// ListPrinters calls gcp.List, then calls gcp.Printer, one goroutine per
+// printer. This is a fast way to fetch all printers with corresponding CDD
+// info, which the List API does not provide.
+//
+// The second return value is a map of GCPID -> queued print job quantity.
+func (gcp *GoogleCloudPrint) ListPrinters() ([]lib.Printer, map[string]uint, error) {
+	ids, err := gcp.List()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	type response struct {
+		printer         *lib.Printer
+		queuedJobsCount uint
+		err             error
+	}
+	ch := make(chan response)
+	for id := range ids {
+		go func(id string) {
+			printer, queuedJobsCount, err := gcp.Printer(id)
+			ch <- response{printer, queuedJobsCount, err}
+		}(id)
+	}
+
+	errs := make([]error, 0)
+	printers := make([]lib.Printer, 0, len(ids))
+	queuedJobsCount := make(map[string]uint)
+	for _ = range ids {
+		r := <-ch
+		if r.err != nil {
+			errs = append(errs, r.err)
+			continue
+		}
+		printers = append(printers, *r.printer)
+		if r.queuedJobsCount > 0 {
+			queuedJobsCount[r.printer.GCPID] = r.queuedJobsCount
+		}
+	}
+
+	if len(errs) == 0 {
+		return printers, queuedJobsCount, nil
+	} else if len(errs) == 1 {
+		return nil, nil, errs[0]
+	} else {
+		// Return an error that is somewhat human-readable.
+		b := bytes.NewBufferString(fmt.Sprintf("%d errors: ", len(errs)))
+		for i, err := range errs {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(err.Error())
+		}
+		return nil, nil, errors.New(b.String())
+	}
+}
+
+// HandleJobs gets and processes jobs waiting on a printer.
+func (gcp *GoogleCloudPrint) HandleJobs(printer *lib.Printer, reportJobFailed func()) {
+	jobs, err := gcp.Fetch(printer.GCPID)
+	if err != nil {
+		glog.Errorf("Failed to fetch jobs for GCP printer %s: %s", printer.GCPID, err)
+	} else {
+		for i := range jobs {
+			go gcp.processJob(&jobs[i], printer, reportJobFailed)
+		}
+	}
+}
+
+// processJob performs these steps:
+//
+// 1) Assembles the job resources (printer, ticket, data)
+// 2) Creates a new job in CUPS.
+// 3) Follows up with the job state until done or error.
+// 4) Deletes temporary file.
+//
+// Nothing is returned; intended for use as goroutine.
+func (gcp *GoogleCloudPrint) processJob(job *Job, printer *lib.Printer, reportJobFailed func()) {
+	glog.Infof("Received GCP job %s", job.GCPJobID)
+
+	ticket, filename, message, state := gcp.assembleJob(job)
+	if message != "" {
+		reportJobFailed()
+		glog.Error(message)
+		if err := gcp.Control(job.GCPJobID, state); err != nil {
+			glog.Error(err)
+		}
+		return
+	}
+
+	jobTitle := fmt.Sprintf("gcp:%s %s", job.GCPJobID, job.Title)
+
+	gcp.jobs <- &lib.Job{
+		CUPSPrinterName: printer.Name,
+		Filename:        filename,
+		Title:           jobTitle,
+		User:            job.OwnerID,
+		JobID:           job.GCPJobID,
+		Ticket:          ticket,
+		UpdateJob:       gcp.Control,
+	}
+}
+
+// assembleJob prepares for printing a job by fetching the job's ticket and payload.
+//
+// The caller is responsible to remove the returned file.
+//
+// Errors are returned as a string (last return value), for reporting
+// to GCP and local logging.
+func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string, string, cdd.PrintJobStateDiff) {
+	ticket, err := gcp.Ticket(job.GCPJobID)
+	if err != nil {
+		return nil, "",
+			fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err),
+			cdd.PrintJobStateDiff{
+				State: &cdd.JobState{
+					Type:              cdd.JobStateAborted,
+					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseInvalidTicket},
+				},
+			}
+	}
+
+	file, err := ioutil.TempFile("", "cups-connector-gcp-")
+	if err != nil {
+		return nil, "",
+			fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err),
+			cdd.PrintJobStateDiff{
+				State: &cdd.JobState{
+					Type:              cdd.JobStateAborted,
+					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseOther},
+				},
+			}
+	}
+
+	gcp.downloadSemaphore.Acquire()
+	t := time.Now()
+	// Do not check err until semaphore is released and timer is stopped.
+	err = gcp.Download(file, job.FileURL)
+	dt := time.Since(t)
+	gcp.downloadSemaphore.Release()
+	if err != nil {
+		// Clean up this temporary file so the caller doesn't need extra logic.
+		os.Remove(file.Name())
+		return nil, "",
+			fmt.Sprintf("Failed to download data for job %s: %s", job.GCPJobID, err),
+			cdd.PrintJobStateDiff{
+				State: &cdd.JobState{
+					Type:              cdd.JobStateAborted,
+					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseDownloadFailure},
+				},
+			}
+	}
+
+	glog.Infof("Downloaded job %s in %s", job.GCPJobID, dt.String())
+	defer file.Close()
+
+	return ticket, file.Name(), "", cdd.PrintJobStateDiff{}
 }

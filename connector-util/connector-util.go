@@ -194,6 +194,11 @@ func updateConfigFile() {
 		fmt.Println("Added local_printing_enable")
 		config.LocalPrintingEnable = lib.DefaultConfig.LocalPrintingEnable
 	}
+	if _, exists := configMap["cloud_printing_enable"]; !exists {
+		dirty = true
+		fmt.Println("Added cloud_printing_enable")
+		config.CloudPrintingEnable = lib.DefaultConfig.CloudPrintingEnable
+	}
 
 	if dirty {
 		config.ToFile()
@@ -219,7 +224,7 @@ func deleteAllGCPPrinters() {
 	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		gcpXMPPPingIntervalDefault)
+		gcpXMPPPingIntervalDefault, 0, nil)
 	if err != nil {
 		glog.Fatal(err)
 	}
