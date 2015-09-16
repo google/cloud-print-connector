@@ -56,7 +56,7 @@ type GoogleCloudPrint struct {
 }
 
 // NewGoogleCloudPrint establishes a connection with GCP, returns a new GoogleCloudPrint object.
-func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL string, xmppPingIntervalDefault time.Duration, maxConcurrentDownload uint, jobs chan<- *lib.Job) (*GoogleCloudPrint, error) {
+func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL string, maxConcurrentDownload uint, jobs chan<- *lib.Job) (*GoogleCloudPrint, error) {
 	robotClient, err := newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, robotRefreshToken, ScopeCloudPrint, ScopeGoogleTalk)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,6 @@ func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName
 		robotClient:             robotClient,
 		userClient:              userClient,
 		proxyName:               proxyName,
-		xmppPingIntervalDefault: xmppPingIntervalDefault,
 		jobs:              jobs,
 		downloadSemaphore: lib.NewSemaphore(maxConcurrentDownload),
 	}

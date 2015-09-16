@@ -81,7 +81,7 @@ func main() {
 		g, err = gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 			config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 			config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-			gcpXMPPPingIntervalDefault, config.GCPMaxConcurrentDownloads, jobs)
+			config.GCPMaxConcurrentDownloads, jobs)
 		if err != nil {
 			glog.Fatal(err)
 		}
