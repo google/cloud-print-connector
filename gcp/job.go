@@ -7,10 +7,13 @@ https://developers.google.com/open-source/licenses/bsd
 */
 package gcp
 
+import "github.com/google/cups-connector/cdd"
+
 type Job struct {
-	GCPPrinterID string
-	GCPJobID     string
-	FileURL      string
-	OwnerID      string
-	Title        string
+	GCPPrinterID  string
+	GCPJobID      string
+	FileURL       string
+	OwnerID       string
+	Title         string
+	SemanticState *cdd.PrintJobState
 }
