@@ -127,6 +127,17 @@ func (gcp *GoogleCloudPrint) Delete(gcpID string) error {
 	return nil
 }
 
+// DeleteJob deletes a print job
+func (gcp *GoogleCloudPrint) DeleteJob(gcpJobID string) (error) {
+	form := url.Values{}
+	form.Set("jobid", gcpJobID)
+
+	if _, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"deletejob", form); err != nil {
+		return err
+	}
+
+	return nil
+}
 // Fetch calls google.com/cloudprint/fetch to get the outstanding print jobs for
 // a GCP printer.
 func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]Job, error) {
@@ -163,6 +174,44 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]Job, error) {
 			FileURL:      jobData.FileURL,
 			OwnerID:      jobData.OwnerID,
 			Title:        jobData.Title,
+		}
+	}
+
+	return jobs, nil
+}
+
+
+// Jobs calls google.com/cloudprint/jobs to get print jobs for a GCP printer.
+func (gcp *GoogleCloudPrint) Jobs(gcpID string) ([]Job, error) {
+	form := url.Values{}
+	form.Set("printerid", gcpID)
+
+	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"jobs", form)
+	if err != nil {
+		return nil, err
+	}
+
+	var jobsData struct {
+		Jobs []struct {
+			ID      string
+			Title   string
+			OwnerID string
+			SemanticState *cdd.PrintJobState
+		}
+	}
+	if err = json.Unmarshal(responseBody, &jobsData); err != nil {
+		return nil, err
+	}
+
+	jobs := make([]Job, len(jobsData.Jobs))
+
+	for i, jobData := range jobsData.Jobs {
+		jobs[i] = Job{
+			GCPPrinterID:  gcpID,
+			GCPJobID:      jobData.ID,
+			OwnerID:       jobData.OwnerID,
+			Title:         jobData.Title,
+			SemanticState: jobData.SemanticState,
 		}
 	}
 
