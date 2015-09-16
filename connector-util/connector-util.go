@@ -12,7 +12,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"time"
 
 	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/gcp"
@@ -257,15 +256,10 @@ func deleteAllGCPPrinters() {
 		panic(err)
 	}
 
-	gcpXMPPPingIntervalDefault, err := time.ParseDuration(config.XMPPPingIntervalDefault)
-	if err != nil {
-		glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
-	}
-
 	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		gcpXMPPPingIntervalDefault, 0, nil)
+		0, nil)
 	if err != nil {
 		glog.Fatal(err)
 	}
@@ -300,15 +294,10 @@ func deleteGCPJob() {
 		panic(err)
 	}
 
-	gcpXMPPPingIntervalDefault, err := time.ParseDuration(config.XMPPPingIntervalDefault)
-	if err != nil {
-		glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
-	}
-
 	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		gcpXMPPPingIntervalDefault, 0, nil)
+		0, nil)
 	if err != nil {
 		glog.Fatal(err)
 	}
@@ -328,15 +317,10 @@ func cancelGCPJob() {
 		panic(err)
 	}
 
-	gcpXMPPPingIntervalDefault, err := time.ParseDuration(config.XMPPPingIntervalDefault)
-	if err != nil {
-		glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
-	}
-
 	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		gcpXMPPPingIntervalDefault, 0, nil)
+		0, nil)
 	if err != nil {
 		glog.Fatal(err)
 	}
@@ -364,15 +348,10 @@ func deleteAllGCPPrinterJobs() {
 		panic(err)
 	}
 
-	gcpXMPPPingIntervalDefault, err := time.ParseDuration(config.XMPPPingIntervalDefault)
-	if err != nil {
-		glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
-	}
-
 	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		gcpXMPPPingIntervalDefault, 0, nil)
+		0, nil)
 	if err != nil {
 		glog.Fatal(err)
 	}
@@ -403,15 +382,10 @@ func cancelAllGCPPrinterJobs() {
 		panic(err)
 	}
 
-	gcpXMPPPingIntervalDefault, err := time.ParseDuration(config.XMPPPingIntervalDefault)
-	if err != nil {
-		glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
-	}
-
 	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		gcpXMPPPingIntervalDefault, 0, nil)
+		0, nil)
 	if err != nil {
 		glog.Fatal(err)
 	}
@@ -449,15 +423,10 @@ func showGCPPrinterStatus() {
 		panic(err)
 	}
 
-	gcpXMPPPingIntervalDefault, err := time.ParseDuration(config.XMPPPingIntervalDefault)
-	if err != nil {
-		glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
-	}
-
 	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		gcpXMPPPingIntervalDefault, 0, nil)
+		0, nil)
 	if err != nil {
 		glog.Fatal(err)
 	}
