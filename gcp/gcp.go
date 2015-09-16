@@ -127,7 +127,7 @@ func (gcp *GoogleCloudPrint) Delete(gcpID string) error {
 	return nil
 }
 
-// DeleteJob deletes a print job
+// DeleteJob calls google.com/cloudprint/deletejob to delete a print job.
 func (gcp *GoogleCloudPrint) DeleteJob(gcpJobID string) (error) {
 	form := url.Values{}
 	form.Set("jobid", gcpJobID)
