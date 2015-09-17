@@ -13,6 +13,14 @@ https://developers.google.com/open-source/licenses/bsd
 ### Get Ready
 Get the most recent version of the Go compiler: https://golang.org/doc/install
 
+Go 1.4 or newer is required. We recommend using the latest release. To check run:
+
+```
+$ go version
+go version go1.5.1 linux/arm
+```
+Make sure you see at least go.1.4 or higher returned. Old versions of Go can't compile cups-connector and will throw errors in the next step.
+
 The CUPS Connector also uses some C libraries. Get the necessary build tools and libraries for your platform:
 
 #### Debian, Ubuntu, Raspberry Pi and friends
