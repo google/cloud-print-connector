@@ -12,8 +12,8 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"time"
 
+	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
 
@@ -27,6 +27,24 @@ var (
 	updateConfigFileFlag = flag.Bool(
 		"update-config-file", false,
 		"Add new options to config file after update")
+	deleteGCPJobFlag = flag.String(
+		"delete-gcp-job", "",
+		"Deletes one GCP job")
+	cancelGCPJobFlag = flag.String(
+		"cancel-gcp-job", "",
+		"Cancels one GCP job")
+	deleteAllGCPPrinterJobsFlag = flag.Bool(
+		"delete-all-gcp-printer-jobs", false,
+		"Delete all queued jobs associated with a printer")
+	cancelAllGCPPrinterJobsFlag = flag.Bool(
+		"cancel-all-gcp-printer-jobs", false,
+		"Cancels all queued jobs associated with a printer")
+	showGCPPrinterStatusFlag = flag.Bool(
+		"show-gcp-printer-status", false,
+		"Shows the current status of a printer and it's jobs")
+	printerIdFlag = flag.String(
+		"printer-id", "",
+		"Specifies ID of printer to use")
 )
 
 func main() {
@@ -37,19 +55,58 @@ func main() {
 		deleteAllGCPPrinters()
 	} else if *updateConfigFileFlag {
 		updateConfigFile()
+	} else if *deleteGCPJobFlag != "" {
+		deleteGCPJob()
+	} else if *cancelGCPJobFlag != "" {
+		cancelGCPJob()
+	} else if *deleteAllGCPPrinterJobsFlag {
+		if *printerIdFlag == "" {
+			fmt.Println("-printer-id is required.")
+		} else {
+			deleteAllGCPPrinterJobs()
+		}
+	} else if *cancelAllGCPPrinterJobsFlag {
+		if *printerIdFlag == "" {
+			fmt.Println("-printer-id is required.")
+		} else {
+			cancelAllGCPPrinterJobs()
+		}
+	} else if *showGCPPrinterStatusFlag {
+		if *printerIdFlag == "" {
+			fmt.Println("-printer-id is required.")
+		} else {
+			showGCPPrinterStatus()
+		}
 	} else {
 		fmt.Println("no tool specified")
 	}
 }
 
-// updateConfigFile opens the config file, adds any missing fields,
-// writes the config file back.
-func updateConfigFile() {
-	// Config as parsed by the connector.
+// getConfig returns a config object
+func getConfig() *lib.Config {
 	config, err := lib.ConfigFromFile()
 	if err != nil {
 		panic(err)
 	}
+	return config
+}
+
+// getGCP returns a GoogleCloudPrint object
+func getGCP(config *lib.Config) *gcp.GoogleCloudPrint {
+	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
+		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
+		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
+		0, nil)
+	if err != nil {
+		panic(err)
+	}
+	return gcp
+}
+
+// updateConfigFile opens the config file, adds any missing fields,
+// writes the config file back.
+func updateConfigFile() {
+	config := getConfig()
 
 	// Same config in []byte format.
 	configRaw, err := ioutil.ReadFile(*lib.ConfigFilename)
@@ -211,23 +268,8 @@ func updateConfigFile() {
 // deleteAllGCPPrinters finds all GCP printers associated with this
 // connector, deletes them from GCP.
 func deleteAllGCPPrinters() {
-	config, err := lib.ConfigFromFile()
-	if err != nil {
-		panic(err)
-	}
-
-	gcpXMPPPingIntervalDefault, err := time.ParseDuration(config.XMPPPingIntervalDefault)
-	if err != nil {
-		glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
-	}
-
-	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
-		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
-		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		gcpXMPPPingIntervalDefault, 0, nil)
-	if err != nil {
-		glog.Fatal(err)
-	}
+	config := getConfig()
+	gcp := getGCP(config)
 
 	printers, err := gcp.List()
 	if err != nil {
@@ -249,5 +291,150 @@ func deleteAllGCPPrinters() {
 
 	for _ = range printers {
 		<-ch
+	}
+}
+
+// deleteGCPJob deletes one GCP job
+func deleteGCPJob() {
+	config := getConfig()
+	gcp := getGCP(config)
+
+	err := gcp.DeleteJob(*deleteGCPJobFlag)
+	if err != nil {
+		fmt.Printf("Failed to delete GCP job %s: %s\n", *deleteGCPJobFlag, err)
+	} else {
+		fmt.Printf("Deleted GCP job %s\n", *deleteGCPJobFlag)
+	}
+}
+
+// cancelGCPJob cancels one GCP job
+func cancelGCPJob() {
+	config := getConfig()
+	gcp := getGCP(config)
+
+	cancelState := cdd.PrintJobStateDiff{
+		State: &cdd.JobState{
+			Type:            cdd.JobStateAborted,
+			UserActionCause: &cdd.UserActionCause{ActionCode: cdd.UserActionCauseCanceled},
+		},
+	}
+
+	err := gcp.Control(*cancelGCPJobFlag, cancelState)
+	if err != nil {
+		fmt.Printf("Failed to cancel GCP job %s: %s\n", *cancelGCPJobFlag, err)
+	} else {
+		fmt.Printf("Canceled GCP job %s\n", *cancelGCPJobFlag)
+	}
+}
+
+// deleteAllGCPPrinterJobs finds all GCP printer jobs associated with a
+// a given printer id and deletes them.
+func deleteAllGCPPrinterJobs() {
+	config := getConfig()
+	gcp := getGCP(config)
+
+	jobs, err := gcp.Fetch(*printerIdFlag)
+	if err != nil {
+		glog.Fatal(err)
+	}
+
+	if len(jobs) == 0 {
+		fmt.Printf("No queued jobs\n")
+	}
+
+	ch := make(chan bool)
+	for _, job := range jobs {
+		go func(gcpJobID string) {
+			err := gcp.DeleteJob(gcpJobID)
+			if err != nil {
+				fmt.Printf("Failed to delete GCP job %s: %s\n", gcpJobID, err)
+			} else {
+				fmt.Printf("Deleted GCP job %s\n", gcpJobID)
+			}
+			ch <- true
+		}(job.GCPJobID)
+	}
+
+	for _ = range jobs {
+		<-ch
+	}
+}
+
+// cancelAllGCPPrinterJobs finds all GCP printer jobs associated with a
+// a given printer id and cancels them.
+func cancelAllGCPPrinterJobs() {
+	config := getConfig()
+	gcp := getGCP(config)
+
+	jobs, err := gcp.Fetch(*printerIdFlag)
+	if err != nil {
+		glog.Fatal(err)
+	}
+
+	if len(jobs) == 0 {
+		fmt.Printf("No queued jobs\n")
+	}
+
+	cancelState := cdd.PrintJobStateDiff{
+		State: &cdd.JobState{
+			Type:            cdd.JobStateAborted,
+			UserActionCause: &cdd.UserActionCause{ActionCode: cdd.UserActionCauseCanceled},
+		},
+	}
+
+	ch := make(chan bool)
+	for _, job := range jobs {
+		go func(gcpJobID string) {
+			err := gcp.Control(gcpJobID, cancelState)
+			if err != nil {
+				fmt.Printf("Failed to cancel GCP job %s: %s\n", gcpJobID, err)
+			} else {
+				fmt.Printf("Cancelled GCP job %s\n", gcpJobID)
+			}
+			ch <- true
+		}(job.GCPJobID)
+	}
+
+	for _ = range jobs {
+		<-ch
+	}
+}
+
+// showGCPPrinterStatus shows the current status of a GCP printer and it's jobs
+func showGCPPrinterStatus() {
+	config := getConfig()
+	gcp := getGCP(config)
+
+	printer, _, err := gcp.Printer(*printerIdFlag)
+	if err != nil {
+		glog.Fatal(err)
+	}
+
+	fmt.Println("Name:", printer.DefaultDisplayName)
+	fmt.Println("State:", printer.State.State)
+
+	jobs, err := gcp.Jobs(*printerIdFlag)
+	if err != nil {
+		glog.Fatal(err)
+	}
+
+	// Only init common states. Unusual states like DRAFT will only be shown
+	// if there are jobs in that state.
+	jobStateCounts := map[string]int{
+		"DONE":        0,
+		"ABORTED":     0,
+		"QUEUED":      0,
+		"STOPPED":     0,
+		"IN_PROGRESS": 0,
+	}
+
+	for _, job := range jobs {
+		jobState := string(job.SemanticState.State.Type)
+		jobStateCounts[jobState]++
+	}
+
+	fmt.Println("Printer jobs:")
+	for state, count := range jobStateCounts {
+		fmt.Println(" ", state, ":", count)
 	}
 }

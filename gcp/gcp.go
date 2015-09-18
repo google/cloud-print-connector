@@ -56,7 +56,7 @@ type GoogleCloudPrint struct {
 }
 
 // NewGoogleCloudPrint establishes a connection with GCP, returns a new GoogleCloudPrint object.
-func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL string, xmppPingIntervalDefault time.Duration, maxConcurrentDownload uint, jobs chan<- *lib.Job) (*GoogleCloudPrint, error) {
+func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL string, maxConcurrentDownload uint, jobs chan<- *lib.Job) (*GoogleCloudPrint, error) {
 	robotClient, err := newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, robotRefreshToken, ScopeCloudPrint, ScopeGoogleTalk)
 	if err != nil {
 		return nil, err
@@ -71,11 +71,10 @@ func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName
 	}
 
 	gcp := &GoogleCloudPrint{
-		baseURL:                 baseURL,
-		robotClient:             robotClient,
-		userClient:              userClient,
-		proxyName:               proxyName,
-		xmppPingIntervalDefault: xmppPingIntervalDefault,
+		baseURL:           baseURL,
+		robotClient:       robotClient,
+		userClient:        userClient,
+		proxyName:         proxyName,
 		jobs:              jobs,
 		downloadSemaphore: lib.NewSemaphore(maxConcurrentDownload),
 	}
@@ -127,6 +126,18 @@ func (gcp *GoogleCloudPrint) Delete(gcpID string) error {
 	return nil
 }
 
+// DeleteJob calls google.com/cloudprint/deletejob to delete a print job.
+func (gcp *GoogleCloudPrint) DeleteJob(gcpJobID string) error {
+	form := url.Values{}
+	form.Set("jobid", gcpJobID)
+
+	if _, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"deletejob", form); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Fetch calls google.com/cloudprint/fetch to get the outstanding print jobs for
 // a GCP printer.
 func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]Job, error) {
@@ -163,6 +174,43 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]Job, error) {
 			FileURL:      jobData.FileURL,
 			OwnerID:      jobData.OwnerID,
 			Title:        jobData.Title,
+		}
+	}
+
+	return jobs, nil
+}
+
+// Jobs calls google.com/cloudprint/jobs to get print jobs for a GCP printer.
+func (gcp *GoogleCloudPrint) Jobs(gcpID string) ([]Job, error) {
+	form := url.Values{}
+	form.Set("printerid", gcpID)
+
+	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"jobs", form)
+	if err != nil {
+		return nil, err
+	}
+
+	var jobsData struct {
+		Jobs []struct {
+			ID            string
+			Title         string
+			OwnerID       string
+			SemanticState *cdd.PrintJobState
+		}
+	}
+	if err = json.Unmarshal(responseBody, &jobsData); err != nil {
+		return nil, err
+	}
+
+	jobs := make([]Job, len(jobsData.Jobs))
+
+	for i, jobData := range jobsData.Jobs {
+		jobs[i] = Job{
+			GCPPrinterID:  gcpID,
+			GCPJobID:      jobData.ID,
+			OwnerID:       jobData.OwnerID,
+			Title:         jobData.Title,
+			SemanticState: jobData.SemanticState,
 		}
 	}
 
