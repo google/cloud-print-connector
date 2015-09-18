@@ -83,16 +83,16 @@ func main() {
 }
 
 // getConfig returns a config object
-func getConfig() lib.Config {
+func getConfig() *lib.Config {
 	config, err := lib.ConfigFromFile()
 	if err != nil {
 		panic(err)
 	}
-	return *config
+	return config
 }
 
 // getGCP returns a GoogleCloudPrint object
-func getGCP(config lib.Config) gcp.GoogleCloudPrint {
+func getGCP(config *lib.Config) *gcp.GoogleCloudPrint {
 	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
@@ -100,7 +100,7 @@ func getGCP(config lib.Config) gcp.GoogleCloudPrint {
 	if err != nil {
 		panic(err)
 	}
-	return *gcp
+	return gcp
 }
 
 // updateConfigFile opens the config file, adds any missing fields,
