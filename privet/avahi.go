@@ -8,6 +8,7 @@
 
 package privet
 
+// #cgo CFLAGS: -D_GNU_SOURCE
 // #cgo LDFLAGS: -lavahi-client -lavahi-common
 // #include "avahi.h"
 import "C"
