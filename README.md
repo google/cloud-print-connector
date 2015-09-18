@@ -104,24 +104,13 @@ To create a config file called `cups-connector.config.json`, run
   "gcp_oauth_client_secret": "V9BfPOvdiYuw12hDx5Y5nR0a",
   "gcp_oauth_auth_url": "https://accounts.google.com/o/oauth2/auth",
   "gcp_oauth_token_url": "https://accounts.google.com/o/oauth2/token",
-  "snmp_enable": true,
+  "snmp_enable": false,
   "snmp_community": "public",
-  "snmp_max_connections": 100
+  "snmp_max_connections": 100,
+  "local_enable": false,
+  "cloud_enable": true
 }
 ```
-
-### Prepare monitor socket directory
-Make sure that the socket directory (see `monitor_socket_filename` above),
-exists and is writeable by the user that the connector will run as:
-```
-$ sudo mkdir /var/run/cups-connector
-$ sudo chown $USER /var/run/cups-connector
-```
-
-Of course, you'll have to do this every time the platform boots, because
-`/var/run` isn't persistent. If you prefer to keep things simple, then forget
-what I said before about `mkdir` and `chown`, and change the config file value for
-`monitor_socket_filename` to `/tmp/cups-connector-monitor.sock`.
 
 ### Configure CUPS client => server conversation
 Your platform is probably configured to talk to the CUPS server on localhost,
