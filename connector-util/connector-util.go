@@ -82,14 +82,31 @@ func main() {
 	}
 }
 
-// updateConfigFile opens the config file, adds any missing fields,
-// writes the config file back.
-func updateConfigFile() {
-	// Config as parsed by the connector.
+// getConfig returns a config object
+func getConfig() lib.Config {
 	config, err := lib.ConfigFromFile()
 	if err != nil {
 		panic(err)
 	}
+	return *config
+}
+
+// getGCP returns a GoogleCloudPrint object
+func getGCP(config lib.Config) gcp.GoogleCloudPrint {
+	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
+		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
+		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
+		0, nil)
+	if err != nil {
+		panic(err)
+	}
+	return *gcp
+}
+
+// updateConfigFile opens the config file, adds any missing fields,
+// writes the config file back.
+func updateConfigFile() {
+	config := getConfig()
 
 	// Same config in []byte format.
 	configRaw, err := ioutil.ReadFile(*lib.ConfigFilename)
@@ -251,18 +268,8 @@ func updateConfigFile() {
 // deleteAllGCPPrinters finds all GCP printers associated with this
 // connector, deletes them from GCP.
 func deleteAllGCPPrinters() {
-	config, err := lib.ConfigFromFile()
-	if err != nil {
-		panic(err)
-	}
-
-	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
-		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
-		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		0, nil)
-	if err != nil {
-		glog.Fatal(err)
-	}
+	config := getConfig()
+	gcp := getGCP(config)
 
 	printers, err := gcp.List()
 	if err != nil {
@@ -289,20 +296,10 @@ func deleteAllGCPPrinters() {
 
 // deleteGCPJob deletes one GCP job
 func deleteGCPJob() {
-	config, err := lib.ConfigFromFile()
-	if err != nil {
-		panic(err)
-	}
+	config := getConfig()
+	gcp := getGCP(config)
 
-	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
-		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
-		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		0, nil)
-	if err != nil {
-		glog.Fatal(err)
-	}
-
-	err = gcp.DeleteJob(*deleteGCPJobFlag)
+	err := gcp.DeleteJob(*deleteGCPJobFlag)
 	if err != nil {
 		fmt.Printf("Failed to delete GCP job %s: %s\n", *deleteGCPJobFlag, err)
 	} else {
@@ -312,27 +309,17 @@ func deleteGCPJob() {
 
 // cancelGCPJob cancels one GCP job
 func cancelGCPJob() {
-	config, err := lib.ConfigFromFile()
-	if err != nil {
-		panic(err)
-	}
-
-	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
-		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
-		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		0, nil)
-	if err != nil {
-		glog.Fatal(err)
-	}
+	config := getConfig()
+	gcp := getGCP(config)
 
 	cancelState := cdd.PrintJobStateDiff{
 		State: &cdd.JobState{
-			Type:               cdd.JobStateAborted,
+			Type:            cdd.JobStateAborted,
 			UserActionCause: &cdd.UserActionCause{ActionCode: cdd.UserActionCauseCanceled},
 		},
 	}
 
-	err = gcp.Control(*cancelGCPJobFlag, cancelState)
+	err := gcp.Control(*cancelGCPJobFlag, cancelState)
 	if err != nil {
 		fmt.Printf("Failed to cancel GCP job %s: %s\n", *cancelGCPJobFlag, err)
 	} else {
@@ -343,18 +330,8 @@ func cancelGCPJob() {
 // deleteAllGCPPrinterJobs finds all GCP printer jobs associated with a
 // a given printer id and deletes them.
 func deleteAllGCPPrinterJobs() {
-	config, err := lib.ConfigFromFile()
-	if err != nil {
-		panic(err)
-	}
-
-	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
-		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
-		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		0, nil)
-	if err != nil {
-		glog.Fatal(err)
-	}
+	config := getConfig()
+	gcp := getGCP(config)
 
 	jobs, err := gcp.Fetch(*printerIdFlag)
 	if err != nil {
@@ -364,35 +341,34 @@ func deleteAllGCPPrinterJobs() {
 	if len(jobs) == 0 {
 		fmt.Printf("No queued jobs\n")
 	}
+
+	ch := make(chan bool)
 	for _, job := range jobs {
-		err := gcp.DeleteJob(job.GCPJobID)
-		if err != nil {
-			fmt.Printf("Failed to delete GCP job %s \"%s\": %s\n", job.GCPJobID, job.Title, err)
-		} else {
-			fmt.Printf("Deleted GCP job %s \"%s\"\n", job.GCPJobID, job.Title)
-		}
+		go func(gcpJobID string) {
+			err := gcp.DeleteJob(gcpJobID)
+			if err != nil {
+				fmt.Printf("Failed to delete GCP job %s: %s\n", gcpJobID, err)
+			} else {
+				fmt.Printf("Deleted GCP job %s\n", gcpJobID)
+			}
+			ch <- true
+		}(job.GCPJobID)
+	}
+
+	for _ = range jobs {
+		<-ch
 	}
 }
 
 // cancelAllGCPPrinterJobs finds all GCP printer jobs associated with a
 // a given printer id and cancels them.
 func cancelAllGCPPrinterJobs() {
-	config, err := lib.ConfigFromFile()
-	if err != nil {
-		panic(err)
-	}
-
-	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
-		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
-		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		0, nil)
-	if err != nil {
-		glog.Fatal(err)
-	}
+	config := getConfig()
+	gcp := getGCP(config)
 
 	jobs, err := gcp.Fetch(*printerIdFlag)
 	if err != nil {
-	glog.Fatal(err)
+		glog.Fatal(err)
 	}
 
 	if len(jobs) == 0 {
@@ -401,35 +377,33 @@ func cancelAllGCPPrinterJobs() {
 
 	cancelState := cdd.PrintJobStateDiff{
 		State: &cdd.JobState{
-			Type:               cdd.JobStateAborted,
+			Type:            cdd.JobStateAborted,
 			UserActionCause: &cdd.UserActionCause{ActionCode: cdd.UserActionCauseCanceled},
 		},
 	}
 
+	ch := make(chan bool)
 	for _, job := range jobs {
-		err := gcp.Control(job.GCPJobID, cancelState)
-		if err != nil {
-			fmt.Printf("Failed to cancel GCP job %s \"%s\": %s\n", job.GCPJobID, job.Title, err)
-		} else {
-			fmt.Printf("Canceled GCP job %s \"%s\"\n", job.GCPJobID, job.Title)
-		}
+		go func(gcpJobID string) {
+			err := gcp.Control(gcpJobID, cancelState)
+			if err != nil {
+				fmt.Printf("Failed to cancel GCP job %s: %s\n", gcpJobID, err)
+			} else {
+				fmt.Printf("Cancelled GCP job %s\n", gcpJobID)
+			}
+			ch <- true
+		}(job.GCPJobID)
+	}
+
+	for _ = range jobs {
+		<-ch
 	}
 }
 
 // showGCPPrinterStatus shows the current status of a GCP printer and it's jobs
 func showGCPPrinterStatus() {
-	config, err := lib.ConfigFromFile()
-	if err != nil {
-		panic(err)
-	}
-
-	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
-		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
-		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		0, nil)
-	if err != nil {
-		glog.Fatal(err)
-	}
+	config := getConfig()
+	gcp := getGCP(config)
 
 	printer, _, err := gcp.Printer(*printerIdFlag)
 	if err != nil {
@@ -447,10 +421,10 @@ func showGCPPrinterStatus() {
 	// Only init common states. Unusual states like DRAFT will only be shown
 	// if there are jobs in that state.
 	jobStateCounts := map[string]int{
-		"DONE": 0,
-		"ABORTED": 0,
-		"QUEUED": 0,
-		"STOPPED": 0,
+		"DONE":        0,
+		"ABORTED":     0,
+		"QUEUED":      0,
+		"STOPPED":     0,
 		"IN_PROGRESS": 0,
 	}
 

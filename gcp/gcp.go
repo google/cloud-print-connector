@@ -71,10 +71,10 @@ func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName
 	}
 
 	gcp := &GoogleCloudPrint{
-		baseURL:                 baseURL,
-		robotClient:             robotClient,
-		userClient:              userClient,
-		proxyName:               proxyName,
+		baseURL:           baseURL,
+		robotClient:       robotClient,
+		userClient:        userClient,
+		proxyName:         proxyName,
 		jobs:              jobs,
 		downloadSemaphore: lib.NewSemaphore(maxConcurrentDownload),
 	}
@@ -127,7 +127,7 @@ func (gcp *GoogleCloudPrint) Delete(gcpID string) error {
 }
 
 // DeleteJob calls google.com/cloudprint/deletejob to delete a print job.
-func (gcp *GoogleCloudPrint) DeleteJob(gcpJobID string) (error) {
+func (gcp *GoogleCloudPrint) DeleteJob(gcpJobID string) error {
 	form := url.Values{}
 	form.Set("jobid", gcpJobID)
 
@@ -137,6 +137,7 @@ func (gcp *GoogleCloudPrint) DeleteJob(gcpJobID string) (error) {
 
 	return nil
 }
+
 // Fetch calls google.com/cloudprint/fetch to get the outstanding print jobs for
 // a GCP printer.
 func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]Job, error) {
@@ -179,7 +180,6 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]Job, error) {
 	return jobs, nil
 }
 
-
 // Jobs calls google.com/cloudprint/jobs to get print jobs for a GCP printer.
 func (gcp *GoogleCloudPrint) Jobs(gcpID string) ([]Job, error) {
 	form := url.Values{}
@@ -192,9 +192,9 @@ func (gcp *GoogleCloudPrint) Jobs(gcpID string) ([]Job, error) {
 
 	var jobsData struct {
 		Jobs []struct {
-			ID      string
-			Title   string
-			OwnerID string
+			ID            string
+			Title         string
+			OwnerID       string
 			SemanticState *cdd.PrintJobState
 		}
 	}
