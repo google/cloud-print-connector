@@ -253,8 +253,13 @@ func updateConfigFile() {
 	}
 	if _, exists := configMap["cloud_printing_enable"]; !exists {
 		dirty = true
+		_, robot_token_exists := configMap["robot_refresh_token"]
 		fmt.Println("Added cloud_printing_enable")
-		config.CloudPrintingEnable = lib.DefaultConfig.CloudPrintingEnable
+		if robot_token_exists {
+			config.CloudPrintingEnable = true
+		} else {
+			config.CloudPrintingEnable = lib.DefaultConfig.CloudPrintingEnable
+		}
 	}
 
 	if dirty {
