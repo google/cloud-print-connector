@@ -14,7 +14,6 @@ import (
 	"io"
 	"reflect"
 	"sort"
-	"strings"
 )
 
 // DeepHash writes an object's values to h.
@@ -47,7 +46,7 @@ func (sv sortableValues) Less(i, j int) bool {
 	case reflect.Float32, reflect.Float64:
 		return sv[i].Float() < sv[i].Float()
 	case reflect.String:
-		return strings.Compare(sv[i].String(), sv[j].String()) < 0
+		return sv[i].String() < sv[j].String()
 	case reflect.Ptr:
 		return sv[i].Pointer() < sv[i].Pointer()
 	default:
