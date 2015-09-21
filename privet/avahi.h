@@ -11,7 +11,6 @@
 #include <avahi-common/strlst.h>
 #include <avahi-common/thread-watch.h>
 
-#include <stdio.h>  // asprintf
 #include <stdlib.h> // free
 
 const char *startAvahiClient(AvahiThreadedPoll **threaded_poll, AvahiClient **client);
