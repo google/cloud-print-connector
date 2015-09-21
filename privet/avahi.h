@@ -7,20 +7,17 @@
 // +build !darwin
 
 #include <avahi-client/publish.h>
-#include <avahi-common/thread-watch.h>
 #include <avahi-common/error.h>
+#include <avahi-common/strlst.h>
+#include <avahi-common/thread-watch.h>
 
 #include <stdio.h>  // asprintf
 #include <stdlib.h> // free
 
-void startAvahiClient(AvahiThreadedPoll **threaded_poll, AvahiClient **client,
-    char **err);
-void addAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiClient *client,
-    AvahiEntryGroup **group, const char *serviceName, unsigned short port,
-		const char *ty, const char *url, const char *id, const char *cs, char **err);
-void updateAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *group,
-    const char *serviceName, const char *ty, const char *url, const char *id,
-		const char *cs, char **err);
-void removeAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *group,
-    char **err);
+const char *startAvahiClient(AvahiThreadedPoll **threaded_poll, AvahiClient **client);
+const char *addAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiClient *client,
+    AvahiEntryGroup **group, const char *serviceName, unsigned short port, AvahiStringList *txt);
+const char *updateAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *group,
+    const char *serviceName, AvahiStringList *txt);
+const char *removeAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *group);
 void stopAvahiClient(AvahiThreadedPoll *threaded_poll, AvahiClient *client);

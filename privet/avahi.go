@@ -8,7 +8,6 @@
 
 package privet
 
-// #cgo CFLAGS: -D_GNU_SOURCE
 // #cgo LDFLAGS: -lavahi-client -lavahi-common
 // #include "avahi.h"
 import "C"
@@ -19,6 +18,19 @@ import (
 	"unsafe"
 
 	"github.com/golang/glog"
+)
+
+var (
+	txtversKey     = C.CString("txtvers")
+	txtversValue   = C.CString("1")
+	tyKey          = C.CString("ty")
+	urlKey         = C.CString("url")
+	typeKey        = C.CString("type")
+	typeValue      = C.CString("printer")
+	idKey          = C.CString("id")
+	csKey          = C.CString("cs")
+	csValueOnline  = C.CString("online")
+	csValueOffline = C.CString("offline")
 )
 
 type record struct {
@@ -57,17 +69,40 @@ func newZeroconf() (*zeroconf, error) {
 	}
 	instance = &z
 
-	var errstr *C.char
-	C.startAvahiClient(&z.threadedPoll, &z.client, &errstr)
-	if errstr != nil {
+	if errstr := C.startAvahiClient(&z.threadedPoll, &z.client); errstr != nil {
 		err := errors.New(C.GoString(errstr))
-		C.free(unsafe.Pointer(errstr))
 		return nil, err
 	}
 
 	go z.restartAndQuit()
 
 	return &z, nil
+}
+
+func prepareTXT(ty, url, id string, online bool) *C.AvahiStringList {
+	var txt *C.AvahiStringList
+	txt = C.avahi_string_list_add_pair(txt, txtversKey, txtversValue)
+	txt = C.avahi_string_list_add_pair(txt, typeKey, typeValue)
+
+	tyValue := C.CString(ty)
+	defer C.free(unsafe.Pointer(tyValue))
+	txt = C.avahi_string_list_add_pair(txt, tyKey, tyValue)
+
+	urlValue := C.CString(url)
+	defer C.free(unsafe.Pointer(urlValue))
+	txt = C.avahi_string_list_add_pair(txt, urlKey, urlValue)
+
+	idValue := C.CString(id)
+	defer C.free(unsafe.Pointer(idValue))
+	txt = C.avahi_string_list_add_pair(txt, idKey, idValue)
+
+	if online {
+		txt = C.avahi_string_list_add_pair(txt, csKey, csValueOnline)
+	} else {
+		txt = C.avahi_string_list_add_pair(txt, csKey, csValueOffline)
+	}
+
+	return txt
 }
 
 func (z *zeroconf) addPrinter(name string, port uint16, ty, url, id string, online bool) error {
@@ -87,29 +122,14 @@ func (z *zeroconf) addPrinter(name string, port uint16, ty, url, id string, onli
 		return fmt.Errorf("printer %s was already added to Avahi publishing", name)
 	}
 	if z.state == C.AVAHI_CLIENT_S_RUNNING {
-		tyC := C.CString(ty)
-		defer C.free(unsafe.Pointer(tyC))
-		urlC := C.CString(url)
-		defer C.free(unsafe.Pointer(urlC))
-		idC := C.CString(id)
-		defer C.free(unsafe.Pointer(idC))
-		var onlineC *C.char
-		if online {
-			onlineC = C.CString("online")
-		} else {
-			onlineC = C.CString("offline")
-		}
-		defer C.free(unsafe.Pointer(onlineC))
+		txt := prepareTXT(ty, url, id, online)
+		defer C.avahi_string_list_free(txt)
 
 		C.avahi_threaded_poll_lock(z.threadedPoll)
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
-		var errstr *C.char
-		C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(port),
-			tyC, urlC, idC, onlineC, &errstr)
-		if errstr != nil {
+		if errstr := C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(r.port), txt); errstr != nil {
 			err := errors.New(C.GoString(errstr))
-			C.free(unsafe.Pointer(errstr))
 			return err
 		}
 	}
@@ -133,28 +153,14 @@ func (z *zeroconf) updatePrinterTXT(name, ty, url, id string, online bool) error
 	r.online = online
 
 	if z.state == C.AVAHI_CLIENT_S_RUNNING && r.group != nil {
-		tyC := C.CString(ty)
-		defer C.free(unsafe.Pointer(tyC))
-		urlC := C.CString(url)
-		defer C.free(unsafe.Pointer(urlC))
-		idC := C.CString(id)
-		defer C.free(unsafe.Pointer(idC))
-		var onlineC *C.char
-		if online {
-			onlineC = C.CString("online")
-		} else {
-			onlineC = C.CString("offline")
-		}
-		defer C.free(unsafe.Pointer(onlineC))
+		txt := prepareTXT(ty, url, id, online)
+		defer C.avahi_string_list_free(txt)
 
 		C.avahi_threaded_poll_lock(z.threadedPoll)
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
-		var errstr *C.char
-		C.updateAvahiGroup(z.threadedPoll, r.group, r.name, tyC, urlC, idC, onlineC, &errstr)
-		if errstr != nil {
+		if errstr := C.updateAvahiGroup(z.threadedPoll, r.group, r.name, txt); errstr != nil {
 			err := errors.New(C.GoString(errstr))
-			C.free(unsafe.Pointer(errstr))
 			return err
 		}
 	}
@@ -176,11 +182,8 @@ func (z *zeroconf) removePrinter(name string) error {
 		C.avahi_threaded_poll_lock(z.threadedPoll)
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
-		var errstr *C.char
-		C.removeAvahiGroup(z.threadedPoll, r.group, &errstr)
-		if errstr != nil {
+		if errstr := C.removeAvahiGroup(z.threadedPoll, r.group); errstr != nil {
 			err := errors.New(C.GoString(errstr))
-			C.free(unsafe.Pointer(errstr))
 			return err
 		}
 	}
@@ -204,11 +207,8 @@ func (z *zeroconf) restartAndQuit() {
 
 			C.stopAvahiClient(z.threadedPoll, z.client)
 
-			var errstr *C.char
-			C.startAvahiClient(&z.threadedPoll, &z.client, &errstr)
-			if errstr != nil {
+			if errstr := C.startAvahiClient(&z.threadedPoll, &z.client); errstr != nil {
 				err := errors.New(C.GoString(errstr))
-				C.free(unsafe.Pointer(errstr))
 				glog.Errorf("Failed to restart Avahi client: %s", err)
 			}
 
@@ -231,21 +231,24 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 	z.spMutex.Lock()
 	defer z.spMutex.Unlock()
 
+	// Name conflict.
+	if newState == C.AVAHI_CLIENT_S_COLLISION {
+		glog.Warning("Avahi reports a host name collision.")
+	}
+
 	// Transition from not connecting to connecting. Warn in logs.
-	if z.state != C.AVAHI_CLIENT_CONNECTING && newState == C.AVAHI_CLIENT_CONNECTING {
-		glog.Warning("Avahi client is looking for avahi-daemon. Is it running?")
+	if newState == C.AVAHI_CLIENT_CONNECTING {
+		glog.Warning("Cannot find Avahi daemon. Is it running?")
 	}
 
 	// Transition from running to not running. Free all groups.
-	if z.state == C.AVAHI_CLIENT_S_RUNNING && newState != C.AVAHI_CLIENT_S_RUNNING {
-		glog.Info("Avahi client stopped running.")
+	if newState != C.AVAHI_CLIENT_S_RUNNING {
+		glog.Info("Local printing disabled (Avahi client is not running).")
 		for name, r := range z.printers {
 			if r.group != nil {
-				var errstr *C.char
-				C.removeAvahiGroup(z.threadedPoll, r.group, &errstr)
-				if errstr != nil {
-					fmt.Println(C.GoString(errstr))
-					C.free(unsafe.Pointer(errstr))
+				if errstr := C.removeAvahiGroup(z.threadedPoll, r.group); errstr != nil {
+					err := errors.New(C.GoString(errstr))
+					glog.Error(err)
 				}
 				r.group = nil
 				z.printers[name] = r
@@ -254,29 +257,14 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 	}
 
 	// Transition from not running to running. Recreate all groups.
-	if z.state != C.AVAHI_CLIENT_S_RUNNING && newState == C.AVAHI_CLIENT_S_RUNNING {
-		glog.Info("Avahi client running.")
+	if newState == C.AVAHI_CLIENT_S_RUNNING {
+		glog.Info("Local printing enabled (Avahi client is running).")
 		for name, r := range z.printers {
-			tyC := C.CString(r.ty)
-			defer C.free(unsafe.Pointer(tyC))
-			urlC := C.CString(r.url)
-			defer C.free(unsafe.Pointer(urlC))
-			idC := C.CString(r.id)
-			defer C.free(unsafe.Pointer(idC))
-			var onlineC *C.char
-			if r.online {
-				onlineC = C.CString("online")
-			} else {
-				onlineC = C.CString("offline")
-			}
-			defer C.free(unsafe.Pointer(onlineC))
+			txt := prepareTXT(r.ty, r.url, r.id, r.online)
+			defer C.avahi_string_list_free(txt)
 
-			var errstr *C.char
-			C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(r.port),
-				tyC, urlC, idC, onlineC, &errstr)
-			if errstr != nil {
+			if errstr := C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(r.port), txt); errstr != nil {
 				err := errors.New(C.GoString(errstr))
-				C.free(unsafe.Pointer(errstr))
 				glog.Error(err)
 			}
 
@@ -285,7 +273,7 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 	}
 
 	// Transition from not failure to failure. Recreate thread poll and client.
-	if z.state != C.AVAHI_CLIENT_FAILURE && newState == C.AVAHI_CLIENT_FAILURE {
+	if newState == C.AVAHI_CLIENT_FAILURE {
 		z.restart <- struct{}{}
 	}
 
@@ -296,7 +284,7 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 func handleGroupStateChange(group *C.AvahiEntryGroup, state C.AvahiEntryGroupState, name unsafe.Pointer) {
 	switch state {
 	case C.AVAHI_ENTRY_GROUP_COLLISION:
-		glog.Warningf("Avahil failed to register %s due to a naming collision", C.GoString((*C.char)(name)))
+		glog.Warningf("Avahi failed to register %s due to a naming collision", C.GoString((*C.char)(name)))
 	case C.AVAHI_ENTRY_GROUP_FAILURE:
 		glog.Warningf("Avahi failed to register %s, don't know why", C.GoString((*C.char)(name)))
 	}
