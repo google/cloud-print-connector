@@ -132,7 +132,7 @@ func main() {
 	}
 	defer pm.Quit()
 
-	m, err := monitor.NewMonitor(c, g, pm, config.MonitorSocketFilename)
+	m, err := monitor.NewMonitor(c, g, priv, pm, config.MonitorSocketFilename)
 	if err != nil {
 		glog.Fatal(err)
 	}

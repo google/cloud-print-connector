@@ -15,6 +15,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/google/cups-connector/lib"
 )
 
@@ -26,9 +27,16 @@ func main() {
 	flag.Parse()
 	fmt.Println(lib.FullName)
 
-	config, err := lib.ConfigFromFile()
-	if err != nil {
-		panic(err)
+	var config *lib.Config
+	if lib.ConfigFileExists() {
+		var err error
+		config, err = lib.ConfigFromFile()
+		if err != nil {
+			glog.Fatal(err)
+		}
+	} else {
+		config = &lib.DefaultConfig
+		glog.Info("No config file was found, so using defaults")
 	}
 
 	if _, err := os.Stat(config.MonitorSocketFilename); err != nil {

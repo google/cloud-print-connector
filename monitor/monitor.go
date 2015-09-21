@@ -15,6 +15,7 @@ import (
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
 	"github.com/google/cups-connector/manager"
+	"github.com/google/cups-connector/privet"
 
 	"github.com/golang/glog"
 )
@@ -22,6 +23,7 @@ import (
 const monitorFormat = `cups-printers=%d
 cups-raw-printers=%d
 gcp-printers=%d
+local-printers=%d
 cups-conn-qty=%d
 cups-conn-max-qty=%d
 jobs-done=%d
@@ -32,12 +34,13 @@ jobs-in-progress=%d
 type Monitor struct {
 	cups         *cups.CUPS
 	gcp          *gcp.GoogleCloudPrint
+	p            *privet.Privet
 	pm           *manager.PrinterManager
 	listenerQuit chan bool
 }
 
-func NewMonitor(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, pm *manager.PrinterManager, socketFilename string) (*Monitor, error) {
-	m := Monitor{cups, gcp, pm, make(chan bool)}
+func NewMonitor(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, p *privet.Privet, pm *manager.PrinterManager, socketFilename string) (*Monitor, error) {
+	m := Monitor{cups, gcp, p, pm, make(chan bool)}
 
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{socketFilename, "unix"})
 	if err != nil {
@@ -99,7 +102,7 @@ func (m *Monitor) Quit() {
 }
 
 func (m *Monitor) getStats() (string, error) {
-	var cupsPrinterQuantity, rawPrinterQuantity, gcpPrinterQuantity int
+	var cupsPrinterQuantity, rawPrinterQuantity, gcpPrinterQuantity, privetPrinterQuantity int
 
 	if cupsPrinters, err := m.cups.GetPrinters(); err != nil {
 		return "", err
@@ -120,6 +123,10 @@ func (m *Monitor) getStats() (string, error) {
 		}
 	}
 
+	if m.p != nil {
+		privetPrinterQuantity = m.p.Size()
+	}
+
 	jobsDone, jobsError, jobsProcessing, err := m.pm.GetJobStats()
 	if err != nil {
 		return "", err
@@ -127,7 +134,7 @@ func (m *Monitor) getStats() (string, error) {
 
 	stats := fmt.Sprintf(
 		monitorFormat,
-		cupsPrinterQuantity, rawPrinterQuantity, gcpPrinterQuantity,
+		cupsPrinterQuantity, rawPrinterQuantity, gcpPrinterQuantity, privetPrinterQuantity,
 		cupsConnOpen, cupsConnMax,
 		jobsDone, jobsError, jobsProcessing)
 

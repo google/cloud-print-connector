@@ -124,3 +124,10 @@ func (p *Privet) Quit() {
 		delete(p.apis, cupsPrinterName)
 	}
 }
+
+func (p *Privet) Size() int {
+	p.apisMutex.RLock()
+	defer p.apisMutex.RUnlock()
+
+	return len(p.apis)
+}
