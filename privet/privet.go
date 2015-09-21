@@ -53,7 +53,6 @@ func NewPrivet(jobs chan<- *lib.Job, gcpBaseURL string, getProximityToken func(s
 	return &p, nil
 }
 
-// TODO move getPrinter to NewPrivet.
 // AddPrinter makes a printer available locally.
 func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func(string) (lib.Printer, bool)) error {
 	online := false
@@ -86,8 +85,6 @@ func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func(string) (lib.Pr
 
 // UpdatePrinter updates a printer's TXT mDNS record.
 func (p *Privet) UpdatePrinter(diff *lib.PrinterDiff) error {
-	// API never needs to be updated
-
 	online := false
 	if diff.Printer.GCPID != "" {
 		online = true
