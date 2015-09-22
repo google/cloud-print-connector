@@ -19,14 +19,11 @@ import (
 	"github.com/google/cups-connector/lib"
 )
 
-var timeoutFlag = flag.Duration(
-	"timeout", time.Second*10,
-	"wait for a response for this long")
+var monitorTimeoutFlag = flag.Duration(
+	"monitor-timeout", time.Second*10,
+	"wait for a monitor response for this long")
 
-func main() {
-	flag.Parse()
-	fmt.Println(lib.FullName)
-
+func monitorConnector() {
 	var config *lib.Config
 	if lib.ConfigFileExists() {
 		var err error
@@ -48,8 +45,8 @@ func main() {
 			config.MonitorSocketFilename))
 	}
 
-	timer := time.AfterFunc(*timeoutFlag, func() {
-		panic(fmt.Sprintf("timeout after %s", timeoutFlag.String()))
+	timer := time.AfterFunc(*monitorTimeoutFlag, func() {
+		panic(fmt.Sprintf("timeout after %s", monitorTimeoutFlag.String()))
 	})
 
 	conn, err := net.DialTimeout("unix", config.MonitorSocketFilename, time.Second)
