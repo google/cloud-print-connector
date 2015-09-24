@@ -19,21 +19,23 @@ import (
 
 const (
 	ppdBoolean                 = "Boolean"
+	ppdCMAndResolution         = "CMAndResolution"
 	ppdCloseGroup              = "CloseGroup"
 	ppdCloseSubGroup           = "CloseSubGroup"
 	ppdCloseUI                 = "CloseUI"
-	ppdCMAndResolution         = "CMAndResolution"
 	ppdColorModel              = "ColorModel"
 	ppdDefault                 = "Default"
 	ppdDuplex                  = "Duplex"
 	ppdDuplexNoTumble          = "DuplexNoTumble"
 	ppdDuplexTumble            = "DuplexTumble"
 	ppdEnd                     = "End"
+	ppdFalse                   = "False"
 	ppdHWMargins               = "HWMargins"
 	ppdInstallableOptions      = "InstallableOptions"
 	ppdJCLCloseUI              = "JCLCloseUI"
 	ppdJCLOpenUI               = "JCLOpenUI"
 	ppdJobType                 = "JobType"
+	ppdKMDuplex                = "KMDuplex"
 	ppdLockedPrint             = "LockedPrint"
 	ppdLockedPrintPassword     = "LockedPrintPassword"
 	ppdManufacturer            = "Manufacturer"
@@ -50,6 +52,7 @@ const (
 	ppdPrintQualityTranslation = "Print Quality"
 	ppdResolution              = "Resolution"
 	ppdThroughput              = "Throughput"
+	ppdTrue                    = "True"
 	ppdUIConstraints           = "UIConstraints"
 
 	// These characters are not allowed in PPD main keywords or option keywords,
@@ -132,6 +135,8 @@ func translatePPD(ppd string) (*cdd.PrinterDescriptionSection, string, string) {
 	}
 	if e, exists := entriesByMainKeyword[ppdDuplex]; exists {
 		pds.Duplex = convertDuplex(e)
+	} else if e, exists := entriesByMainKeyword[ppdKMDuplex]; exists {
+		pds.Duplex = convertKMDuplex(e)
 	}
 	if e, exists := entriesByMainKeyword[ppdResolution]; exists {
 		pds.DPI = convertDPI(e)
@@ -507,30 +512,66 @@ func convertColorPPD(e entry) *cdd.Color {
 		c.Option = append(c.Option, co)
 	}
 
-	foundDefault := false
+	if len(c.Option) == 0 {
+		return nil
+	}
+
 	defaultValue := fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, e.defaultValue)
 	for i := range c.Option {
 		if c.Option[i].VendorID == defaultValue {
-			foundDefault = true
 			c.Option[i].IsDefault = true
-			break
+			return &c
 		}
 	}
 
-	if len(c.Option) > 0 {
-		if !foundDefault {
-			c.Option[0].IsDefault = true
-		}
-		return &c
-	}
-
-	return nil
+	c.Option[0].IsDefault = true
+	return &c
 }
 
 var duplexPPDByCDD = map[cdd.DuplexType]string{
 	cdd.DuplexNoDuplex:  ppdNone,
 	cdd.DuplexLongEdge:  ppdDuplexNoTumble,
 	cdd.DuplexShortEdge: ppdDuplexTumble,
+}
+
+var (
+	ppdKMSingle = "Single"
+	ppdKMDouble = "Double"
+)
+
+func convertKMDuplex(e entry) *cdd.Duplex {
+	// TODO: Test on a real Konica Minolta printer.
+	d := cdd.Duplex{}
+
+	var foundDefault bool
+	for _, o := range e.options {
+		def := o.optionKeyword == e.defaultValue
+		switch o.optionKeyword {
+		case ppdFalse, ppdKMSingle:
+			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def})
+			foundDefault = true
+		case ppdTrue, ppdKMDouble:
+			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def})
+			foundDefault = true
+		default:
+			if strings.HasPrefix(o.optionKeyword, "1") {
+				foundDefault = true
+				d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def})
+			} else if strings.HasPrefix(o.optionKeyword, "2") {
+				d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def})
+				foundDefault = true
+			}
+		}
+	}
+
+	if len(d.Option) == 0 {
+		return nil
+	}
+
+	if !foundDefault {
+		d.Option[0].IsDefault = true
+	}
+	return &d
 }
 
 func convertDuplex(e entry) *cdd.Duplex {
@@ -566,14 +607,14 @@ func convertDuplex(e entry) *cdd.Duplex {
 		d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexShortEdge, def})
 	}
 
-	if len(d.Option) > 0 {
-		if !foundDefault {
-			d.Option[0].IsDefault = true
-		}
-		return &d
+	if len(d.Option) == 0 {
+		return nil
 	}
 
-	return nil
+	if !foundDefault {
+		d.Option[0].IsDefault = true
+	}
+	return &d
 }
 
 func convertDPI(e entry) *cdd.DPI {
@@ -600,23 +641,19 @@ func convertDPI(e entry) *cdd.DPI {
 		d.Option = append(d.Option, do)
 	}
 
-	foundDefault := false
+	if len(d.Option) == 0 {
+		return nil
+	}
+
 	for i := range d.Option {
 		if d.Option[i].VendorID == e.defaultValue {
-			foundDefault = true
 			d.Option[i].IsDefault = true
-			break
+			return &d
 		}
 	}
 
-	if len(d.Option) > 0 {
-		if !foundDefault {
-			d.Option[0].IsDefault = true
-		}
-		return &d
-	}
-
-	return nil
+	d.Option[0].IsDefault = true
+	return &d
 }
 
 // Convert 2 entries, JobType and LockedPrintPassword, to one CDD VendorCapability.
@@ -709,14 +746,14 @@ func convertMediaSize(e entry) *cdd.MediaSize {
 		ms.Option = append(ms.Option, o)
 	}
 
-	if len(ms.Option) > 0 {
-		if !foundDefault {
-			ms.Option[0].IsDefault = true
-		}
-		return &ms
+	if len(ms.Option) == 0 {
+		return nil
 	}
 
-	return nil
+	if !foundDefault {
+		ms.Option[0].IsDefault = true
+	}
+	return &ms
 }
 
 func getCustomMediaSizeOption(optionKeyword, translation string) *cdd.MediaSizeOption {

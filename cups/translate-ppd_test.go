@@ -142,6 +142,51 @@ func TestTrDuplex(t *testing.T) {
 	translationTest(t, ppd, expected)
 }
 
+func TestTrKMDuplex(t *testing.T) {
+	ppd := `*PPD-Adobe: "4.3"
+*OpenUI  *KMDuplex/Print Type: PickOne
+*OrderDependency: 5 AnySetup *KMDuplex
+*DefaultKMDuplex: Double
+*KMDuplex Single/1-Sided:  "<< /Duplex false >> setpagedevice
+ << /Layout 0 >> /KMOptions /ProcSet findresource /setKMoptions get exec"
+*End
+*KMDuplex Double/2-Sided:  "<< /Duplex true >> setpagedevice
+ << /Layout 0 >> /KMOptions /ProcSet findresource /setKMoptions get exec"
+*End
+*KMDuplex Booklet/Booklet:  "<< /Duplex true >> setpagedevice
+ << /Layout 1 >> /KMOptions /ProcSet findresource /setKMoptions get exec"
+*End
+*CloseUI: *KMDuplex
+`
+	expected := &cdd.PrinterDescriptionSection{
+		Duplex: &cdd.Duplex{
+			Option: []cdd.DuplexOption{
+				cdd.DuplexOption{cdd.DuplexNoDuplex, false},
+				cdd.DuplexOption{cdd.DuplexLongEdge, true},
+			},
+		},
+	}
+	translationTest(t, ppd, expected)
+
+	ppd = `*PPD-Adobe: "4.3"
+*OpenUI  *KMDuplex/Duplex: Boolean
+*OrderDependency: 15 AnySetup *KMDuplex
+*DefaultKMDuplex: False
+*KMDuplex False/Off:  "<< /Duplex false >> setpagedevice"
+*KMDuplex True/On:  "<< /Duplex true >> setpagedevice"
+*CloseUI: *KMDuplex
+`
+	expected = &cdd.PrinterDescriptionSection{
+		Duplex: &cdd.Duplex{
+			Option: []cdd.DuplexOption{
+				cdd.DuplexOption{cdd.DuplexNoDuplex, true},
+				cdd.DuplexOption{cdd.DuplexLongEdge, false},
+			},
+		},
+	}
+	translationTest(t, ppd, expected)
+}
+
 func TestTrDPI(t *testing.T) {
 	ppd := `*PPD-Adobe: "4.3"
 *OpenUI *Resolution/Resolution: PickOne
