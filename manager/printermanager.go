@@ -313,13 +313,10 @@ func (pm *PrinterManager) listenNotifications(jobs <-chan *lib.Job, xmppMessages
 				go pm.printJob(job.CUPSPrinterName, job.Filename, job.Title, job.User, job.JobID, job.Ticket, job.UpdateJob)
 
 			case notification := <-xmppMessages:
-				switch notification.Type {
-				case xmpp.PrinterNewJobs:
+				if notification.Type == xmpp.PrinterNewJobs {
 					if p, exists := pm.printers.GetByGCPID(notification.GCPID); exists {
 						go pm.gcp.HandleJobs(&p, func() { pm.incrementJobsProcessed(false) })
 					}
-				case xmpp.PrinterDelete:
-					glog.Errorf("Received XMPP request to delete %s but deleting printers is not supported yet", notification.GCPID)
 				}
 			}
 		}

@@ -70,7 +70,7 @@ var (
 		`)\s*$`)
 	rPageSize   = regexp.MustCompile(`([\d.]+)(?:mm|in)?x([\d.]+)(mm|in)?`)
 	rColor      = regexp.MustCompile(`(?i)^(?:cmy|rgb|color)`)
-	rGray       = regexp.MustCompile(`(?i)^(?:gray|black)`)
+	rGray       = regexp.MustCompile(`(?i)^(?:gray|black|mono)`)
 	rResolution = regexp.MustCompile(`^(\d+)(?:x(\d+))?dpi$`)
 	rHWMargins  = regexp.MustCompile(`^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$`)
 )
