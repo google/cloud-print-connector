@@ -175,6 +175,48 @@ func TestTrPrintQuality(t *testing.T) {
 	translationTest(t, ppd, expected)
 }
 
+func TestRicohLockedPrint(t *testing.T) {
+	ppd := `*PPD-Adobe: "4.3"
+*OpenUI *JobType/JobType: PickOne
+*FoomaticRIPOption JobType: enum CmdLine B
+*OrderDependency: 255 AnySetup *JobType
+*DefaultJobType: Normal
+*JobType Normal/Normal: "%% FoomaticRIPOptionSetting: JobType=Normal"
+*JobType SamplePrint/Sample Print: "%% FoomaticRIPOptionSetting: JobType=SamplePrint"
+*JobType LockedPrint/Locked Print: ""
+*JobType DocServer/Document Server: ""
+*CloseUI: *JobType
+
+*OpenUI *LockedPrintPassword/Locked Print Password (4-8 digits): PickOne
+*FoomaticRIPOption LockedPrintPassword: password CmdLine C
+*FoomaticRIPOptionMaxLength LockedPrintPassword:8
+*FoomaticRIPOptionAllowedChars LockedPrintPassword: "0-9"
+*OrderDependency: 255 AnySetup *LockedPrintPassword
+*DefaultLockedPrintPassword: None
+*LockedPrintPassword None/None: ""
+*LockedPrintPassword 4001/4001: "%% FoomaticRIPOptionSetting: LockedPrintPassword=4001"
+*LockedPrintPassword 4002/4002: "%% FoomaticRIPOptionSetting: LockedPrintPassword=4002"
+*LockedPrintPassword 4003/4003: "%% FoomaticRIPOptionSetting: LockedPrintPassword=4003"
+*CloseUI: *LockedPrintPassword
+
+*CustomLockedPrintPassword True/Custom Password: ""
+*ParamCustomLockedPrintPassword Password: 1 passcode 4 8
+`
+	expected := &cdd.PrinterDescriptionSection{
+		VendorCapability: &[]cdd.VendorCapability{
+			cdd.VendorCapability{
+				ID:                   "JobType:LockedPrint/LockedPrintPassword",
+				Type:                 cdd.VendorCapabilityTypedValue,
+				DisplayNameLocalized: cdd.NewLocalizedString("Locked Print Password (4-8 digits)"),
+				TypedValueCap: &cdd.TypedValueCapability{
+					ValueType: cdd.TypedValueCapabilityTypeString,
+				},
+			},
+		},
+	}
+	translationTest(t, ppd, expected)
+}
+
 func easyModelTest(t *testing.T, input, expected string) {
 	got := cleanupModel(input)
 	if expected != got {

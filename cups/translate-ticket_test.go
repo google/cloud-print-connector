@@ -36,6 +36,8 @@ func TestTranslateTicket(t *testing.T) {
 	ticket.Print = cdd.PrintTicketSection{
 		VendorTicketItem: []cdd.VendorTicketItem{
 			cdd.VendorTicketItem{"number-up", "a"},
+			cdd.VendorTicketItem{"a:b/c:d/e", "f"},
+			cdd.VendorTicketItem{"number-up", "a"},
 		},
 		Color:           &cdd.ColorTicketItem{VendorID: "ColorModelzebra-stripes", Type: cdd.ColorTypeCustomMonochrome},
 		Duplex:          &cdd.DuplexTicketItem{Type: cdd.DuplexNoDuplex},
@@ -50,6 +52,9 @@ func TestTranslateTicket(t *testing.T) {
 	}
 	expected = map[string]string{
 		"number-up":           "a",
+		"a":                   "b",
+		"c":                   "d",
+		"e":                   "f",
 		"ColorModel":          "zebra-stripes",
 		"Duplex":              "None",
 		"copies":              "2",

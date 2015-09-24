@@ -8,6 +8,7 @@ https://developers.google.com/open-source/licenses/bsd
 package cups
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -31,6 +32,9 @@ const (
 	ppdInstallableOptions      = "InstallableOptions"
 	ppdJCLCloseUI              = "JCLCloseUI"
 	ppdJCLOpenUI               = "JCLOpenUI"
+	ppdJobType                 = "JobType"
+	ppdLockedPrint             = "LockedPrint"
+	ppdLockedPrintPassword     = "LockedPrintPassword"
 	ppdManufacturer            = "Manufacturer"
 	ppdMediaType               = "MediaType"
 	ppdNickName                = "NickName"
@@ -46,6 +50,12 @@ const (
 	ppdResolution              = "Resolution"
 	ppdThroughput              = "Throughput"
 	ppdUIConstraints           = "UIConstraints"
+
+	// These characters are not allowed in PPD main keywords or option keywords,
+	// so they are safe to use as separators in CDD strings.
+	// A:B/C is interpreted as 2 CUPS/IPP options: A=B and C=[VendorTicketItem.Value].
+	internalKeySeparator   = ":"
+	internalValueSeparator = "/"
 )
 
 var (
@@ -105,29 +115,36 @@ func translatePPD(ppd string) (*cdd.PrinterDescriptionSection, string, string) {
 	statements := ppdToStatements(ppd)
 	openUIStatements, installables, uiConstraints, standAlones := groupStatements(statements)
 	openUIStatements = filterConstraints(openUIStatements, installables, uiConstraints)
-	openUIEntries := openUIStatementsToEntries(openUIStatements)
+	entriesByMainKeyword, entriesByTranslation := openUIStatementsToEntries(openUIStatements)
 
 	pds := cdd.PrinterDescriptionSection{
 		VendorCapability: &[]cdd.VendorCapability{},
 	}
-	for _, e := range openUIEntries {
-		switch e.mainKeyword {
-		case ppdPageSize:
-			pds.MediaSize = convertMediaSize(e)
-		case ppdColorModel:
-			pds.Color = convertColorPPD(e)
-		case ppdDuplex:
-			pds.Duplex = convertDuplex(e)
-		case ppdResolution:
-			pds.DPI = convertDPI(e)
-		case ppdOutputBin:
-			*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
-		default:
-			switch e.translation {
-			case ppdPrintQualityTranslation:
-				*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
+	if e, exists := entriesByMainKeyword[ppdPageSize]; exists {
+		pds.MediaSize = convertMediaSize(e)
+	}
+	if e, exists := entriesByMainKeyword[ppdColorModel]; exists {
+		pds.Color = convertColorPPD(e)
+	}
+	if e, exists := entriesByMainKeyword[ppdDuplex]; exists {
+		pds.Duplex = convertDuplex(e)
+	}
+	if e, exists := entriesByMainKeyword[ppdResolution]; exists {
+		pds.DPI = convertDPI(e)
+	}
+	if e, exists := entriesByMainKeyword[ppdOutputBin]; exists {
+		*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
+	}
+	if jobType, exists := entriesByMainKeyword[ppdJobType]; exists {
+		if lockedPrintPassword, exists := entriesByMainKeyword[ppdLockedPrintPassword]; exists {
+			vc := convertRicohLockedPrintPassword(jobType, lockedPrintPassword)
+			if vc != nil {
+				*pds.VendorCapability = append(*pds.VendorCapability, *vc)
 			}
 		}
+	}
+	if e, exists := entriesByTranslation[ppdPrintQualityTranslation]; exists {
+		*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
 	}
 	if len(*pds.VendorCapability) == 0 {
 		// Don't generate invalid CDD JSON.
@@ -278,8 +295,9 @@ func filterConstraints(openUIs, installables [][]statement, uiConstraints []stat
 	return newOpenUIs
 }
 
-func openUIStatementsToEntries(statements [][]statement) []entry {
-	entries := make([]entry, 0, len(statements))
+func openUIStatementsToEntries(statements [][]statement) (map[string]entry, map[string]entry) {
+	byMainKeyword, byTranslation := make(map[string]entry), make(map[string]entry)
+
 	for _, openUI := range statements {
 		var e entry
 		e.mainKeyword = strings.TrimPrefix(openUI[0].optionKeyword, "*")
@@ -315,10 +333,11 @@ func openUIStatementsToEntries(statements [][]statement) []entry {
 			e.defaultValue = e.options[0].value
 		}
 
-		entries = append(entries, e)
+		byMainKeyword[e.mainKeyword] = e
+		byTranslation[e.translation] = e
 	}
 
-	return entries
+	return byMainKeyword, byTranslation
 }
 
 func cleanupModel(model string) string {
@@ -571,6 +590,32 @@ func convertDPI(e entry) *cdd.DPI {
 	}
 
 	return nil
+}
+
+// Convert 2 entries, JobType and LockedPrintPassword, to one CDD VendorCapability.
+// http://www.linuxfoundation.org/collaborate/workgroups/openprinting/databasericohfaq#What_is_JobType_.22Locked_Print.22.3F_How_do_I_use_it.3F
+func convertRicohLockedPrintPassword(jobType, lockedPrintPassword entry) *cdd.VendorCapability {
+	var foundLockedPrint bool
+	for _, s := range jobType.options {
+		if s.optionKeyword == ppdLockedPrint {
+			foundLockedPrint = true
+			break
+		}
+	}
+	if !foundLockedPrint {
+		return nil
+	}
+
+	id := fmt.Sprintf("%s%s%s%s%s",
+		ppdJobType, internalKeySeparator, ppdLockedPrint, internalValueSeparator, ppdLockedPrintPassword)
+	return &cdd.VendorCapability{
+		ID:   id,
+		Type: cdd.VendorCapabilityTypedValue,
+		TypedValueCap: &cdd.TypedValueCapability{
+			ValueType: cdd.TypedValueCapabilityTypeString,
+		},
+		DisplayNameLocalized: cdd.NewLocalizedString(lockedPrintPassword.translation),
+	}
 }
 
 func convertVendorCapability(e entry) *cdd.VendorCapability {

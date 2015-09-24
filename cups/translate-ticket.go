@@ -9,11 +9,15 @@ package cups
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/google/cups-connector/cdd"
 )
+
+var rVendorIDKeyValue = regexp.MustCompile(
+	`^([^\` + internalKeySeparator + `]+)(?:` + internalKeySeparator + `(.+))?$`)
 
 // translateTicket converts a CloudJobTicket to a map of options, suitable for a new CUPS print job.
 func translateTicket(ticket *cdd.CloudJobTicket) map[string]string {
@@ -23,7 +27,16 @@ func translateTicket(ticket *cdd.CloudJobTicket) map[string]string {
 	}
 
 	for _, vti := range ticket.Print.VendorTicketItem {
-		m[vti.ID] = vti.Value
+		for _, option := range strings.Split(vti.ID, internalValueSeparator) {
+			var key, value string
+			parts := rVendorIDKeyValue.FindStringSubmatch(option)
+			if parts == nil || parts[2] == "" {
+				key, value = option, vti.Value
+			} else {
+				key, value = parts[1], parts[2]
+			}
+			m[key] = value
+		}
 	}
 	if ticket.Print.Color != nil {
 		// TODO: Lookup VendorID by Color.Type in CDD when ticket Color.VendorID is empty?
