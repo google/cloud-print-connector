@@ -74,8 +74,50 @@ func TestTrColor(t *testing.T) {
 	expected := &cdd.PrinterDescriptionSection{
 		Color: &cdd.Color{
 			Option: []cdd.ColorOption{
-				cdd.ColorOption{"ColorModelCMYK", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
-				cdd.ColorOption{"ColorModelGray", cdd.ColorTypeStandardMonochrome, "", true, cdd.NewLocalizedString("Black and White")},
+				cdd.ColorOption{"ColorModel:CMYK", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
+				cdd.ColorOption{"ColorModel:Gray", cdd.ColorTypeStandardMonochrome, "", true, cdd.NewLocalizedString("Black and White")},
+			},
+		},
+	}
+	translationTest(t, ppd, expected)
+
+	ppd = `*PPD-Adobe: "4.3"
+*OpenUI *CMAndResolution/Print Color as Gray: PickOne
+*OrderDependency: 20 AnySetup *CMAndResolution
+*DefaultCMAndResolution: CMYKImageRET3600
+*CMAndResolution CMYKImageRET3600/Off: "
+  <</ProcessColorModel /DeviceCMYK /HWResolution [600 600] /PreRenderingEnhance false >> setpagedevice"
+*End
+*CMAndResolution Gray600x600dpi/On: "
+  <</ProcessColorModel /DeviceGray /HWResolution [600 600] >> setpagedevice"
+*End
+*CloseUI: *CMAndResolution
+`
+	expected = &cdd.PrinterDescriptionSection{
+		Color: &cdd.Color{
+			Option: []cdd.ColorOption{
+				cdd.ColorOption{"CMAndResolution:CMYKImageRET3600", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color")},
+				cdd.ColorOption{"CMAndResolution:Gray600x600dpi", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Gray")},
+			},
+		},
+	}
+	translationTest(t, ppd, expected)
+
+	ppd = `*PPD-Adobe: "4.3"
+*OpenUI *CMAndResolution/Print Color as Gray: PickOne
+*OrderDependency: 20 AnySetup *CMAndResolution
+*DefaultCMAndResolution: CMYKImageRET2400
+*CMAndResolution CMYKImageRET2400/Off - ImageRET 2400: "<< /ProcessColorModel /DeviceCMYK /HWResolution [600 600]  >> setpagedevice"
+*CMAndResolution Gray1200x1200dpi/On - ProRes 1200: "<</ProcessColorModel /DeviceGray /HWResolution [1200 1200] /PreRenderingEnhance false>> setpagedevice"
+*CMAndResolution Gray600x600dpi/On - 600 dpi: "<</ProcessColorModel /DeviceGray /HWResolution [600 600] /PreRenderingEnhance false>> setpagedevice"
+*CloseUI: *CMAndResolution
+`
+	expected = &cdd.PrinterDescriptionSection{
+		Color: &cdd.Color{
+			Option: []cdd.ColorOption{
+				cdd.ColorOption{"CMAndResolution:CMYKImageRET2400", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color, ImageRET 2400")},
+				cdd.ColorOption{"CMAndResolution:Gray1200x1200dpi", cdd.ColorTypeCustomMonochrome, "", false, cdd.NewLocalizedString("Gray, ProRes 1200")},
+				cdd.ColorOption{"CMAndResolution:Gray600x600dpi", cdd.ColorTypeCustomMonochrome, "", false, cdd.NewLocalizedString("Gray, 600 dpi")},
 			},
 		},
 	}

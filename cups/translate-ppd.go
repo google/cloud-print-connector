@@ -22,6 +22,7 @@ const (
 	ppdCloseGroup              = "CloseGroup"
 	ppdCloseSubGroup           = "CloseSubGroup"
 	ppdCloseUI                 = "CloseUI"
+	ppdCMAndResolution         = "CMAndResolution"
 	ppdColorModel              = "ColorModel"
 	ppdDefault                 = "Default"
 	ppdDuplex                  = "Duplex"
@@ -78,11 +79,12 @@ var (
 		`Foomatic/\S+|Epson Inkjet Printer Driver \(ESC/P-R\) for \S+|` +
 		`(hpcups|hpijs|HPLIP),?\s+\d+(\.\d+)*|requires proprietary plugin` +
 		`)\s*$`)
-	rPageSize   = regexp.MustCompile(`([\d.]+)(?:mm|in)?x([\d.]+)(mm|in)?`)
-	rColor      = regexp.MustCompile(`(?i)^(?:cmy|rgb|color)`)
-	rGray       = regexp.MustCompile(`(?i)^(?:gray|black|mono)`)
-	rResolution = regexp.MustCompile(`^(\d+)(?:x(\d+))?dpi$`)
-	rHWMargins  = regexp.MustCompile(`^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$`)
+	rPageSize              = regexp.MustCompile(`([\d.]+)(?:mm|in)?x([\d.]+)(mm|in)?`)
+	rColor                 = regexp.MustCompile(`(?i)^(?:cmy|rgb|color)`)
+	rGray                  = regexp.MustCompile(`(?i)^(?:gray|black|mono)`)
+	rCMAndResolutionPrefix = regexp.MustCompile(`(?i)^(?:on|off)\s*-?\s*`)
+	rResolution            = regexp.MustCompile(`^(\d+)(?:x(\d+))?dpi$`)
+	rHWMargins             = regexp.MustCompile(`^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$`)
 )
 
 // statement represents a PPD statement.
@@ -124,6 +126,8 @@ func translatePPD(ppd string) (*cdd.PrinterDescriptionSection, string, string) {
 		pds.MediaSize = convertMediaSize(e)
 	}
 	if e, exists := entriesByMainKeyword[ppdColorModel]; exists {
+		pds.Color = convertColorPPD(e)
+	} else if e, exists := entriesByMainKeyword[ppdCMAndResolution]; exists {
 		pds.Color = convertColorPPD(e)
 	}
 	if e, exists := entriesByMainKeyword[ppdDuplex]; exists {
@@ -416,6 +420,29 @@ func convertPrintingSpeed(throughput string, color *cdd.Color) *cdd.PrintingSpee
 	}
 }
 
+func cleanupColorName(colorValue, colorName string) string {
+	newColorName := rCMAndResolutionPrefix.ReplaceAllString(colorName, "")
+	if colorName == newColorName {
+		return colorName
+	}
+
+	if rGray.MatchString(colorValue) || rGray.MatchString(newColorName) {
+		if len(newColorName) > 0 {
+			return "Gray, " + newColorName
+		} else {
+			return "Gray"
+		}
+	}
+	if rColor.MatchString(colorValue) || rColor.MatchString(newColorName) {
+		if len(newColorName) > 0 {
+			return "Color, " + newColorName
+		} else {
+			return "Color"
+		}
+	}
+	return newColorName
+}
+
 func convertColorPPD(e entry) *cdd.Color {
 	var colorOptions, grayOptions, otherOptions []statement
 
@@ -431,63 +458,63 @@ func convertColorPPD(e entry) *cdd.Color {
 
 	c := cdd.Color{}
 	if len(colorOptions) == 1 {
+		colorName := cleanupColorName(colorOptions[0].optionKeyword, colorOptions[0].translation)
 		co := cdd.ColorOption{
-			VendorID: colorOptions[0].optionKeyword,
+			VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, colorOptions[0].optionKeyword),
 			Type:     cdd.ColorTypeStandardColor,
-			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorOptions[0].translation),
+			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 		}
 		c.Option = append(c.Option, co)
 	} else {
 		for _, o := range colorOptions {
+			colorName := cleanupColorName(o.optionKeyword, o.translation)
 			co := cdd.ColorOption{
-				VendorID: o.optionKeyword,
+				VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, o.optionKeyword),
 				Type:     cdd.ColorTypeCustomColor,
-				CustomDisplayNameLocalized: cdd.NewLocalizedString(o.translation),
+				CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 			}
 			c.Option = append(c.Option, co)
 		}
 	}
 
 	if len(grayOptions) == 1 {
+		colorName := cleanupColorName(grayOptions[0].optionKeyword, grayOptions[0].translation)
 		co := cdd.ColorOption{
-			VendorID: grayOptions[0].optionKeyword,
+			VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, grayOptions[0].optionKeyword),
 			Type:     cdd.ColorTypeStandardMonochrome,
-			CustomDisplayNameLocalized: cdd.NewLocalizedString(grayOptions[0].translation),
+			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 		}
 		c.Option = append(c.Option, co)
 	} else {
 		for _, o := range grayOptions {
+			colorName := cleanupColorName(o.optionKeyword, o.translation)
 			co := cdd.ColorOption{
-				VendorID: o.optionKeyword,
+				VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, o.optionKeyword),
 				Type:     cdd.ColorTypeCustomMonochrome,
-				CustomDisplayNameLocalized: cdd.NewLocalizedString(o.translation),
+				CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 			}
 			c.Option = append(c.Option, co)
 		}
 	}
 
 	for _, o := range otherOptions {
+		colorName := cleanupColorName(o.optionKeyword, o.translation)
 		co := cdd.ColorOption{
-			VendorID: o.optionKeyword,
+			VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, o.optionKeyword),
 			Type:     cdd.ColorTypeCustomMonochrome,
-			CustomDisplayNameLocalized: cdd.NewLocalizedString(o.translation),
+			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 		}
 		c.Option = append(c.Option, co)
 	}
 
 	foundDefault := false
+	defaultValue := fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, e.defaultValue)
 	for i := range c.Option {
-		if c.Option[i].VendorID == e.defaultValue {
+		if c.Option[i].VendorID == defaultValue {
 			foundDefault = true
 			c.Option[i].IsDefault = true
 			break
 		}
-	}
-
-	for i := range c.Option {
-		// Color can be specified by either attribute or PPD.
-		// Therefore, prepend "ColorModel" to these ColorOptions.
-		c.Option[i].VendorID = ppdColorModel + c.Option[i].VendorID
 	}
 
 	if len(c.Option) > 0 {
