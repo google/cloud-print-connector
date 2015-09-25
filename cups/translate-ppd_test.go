@@ -74,8 +74,50 @@ func TestTrColor(t *testing.T) {
 	expected := &cdd.PrinterDescriptionSection{
 		Color: &cdd.Color{
 			Option: []cdd.ColorOption{
-				cdd.ColorOption{"ColorModelCMYK", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
-				cdd.ColorOption{"ColorModelGray", cdd.ColorTypeStandardMonochrome, "", true, cdd.NewLocalizedString("Black and White")},
+				cdd.ColorOption{"ColorModel:CMYK", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
+				cdd.ColorOption{"ColorModel:Gray", cdd.ColorTypeStandardMonochrome, "", true, cdd.NewLocalizedString("Black and White")},
+			},
+		},
+	}
+	translationTest(t, ppd, expected)
+
+	ppd = `*PPD-Adobe: "4.3"
+*OpenUI *CMAndResolution/Print Color as Gray: PickOne
+*OrderDependency: 20 AnySetup *CMAndResolution
+*DefaultCMAndResolution: CMYKImageRET3600
+*CMAndResolution CMYKImageRET3600/Off: "
+  <</ProcessColorModel /DeviceCMYK /HWResolution [600 600] /PreRenderingEnhance false >> setpagedevice"
+*End
+*CMAndResolution Gray600x600dpi/On: "
+  <</ProcessColorModel /DeviceGray /HWResolution [600 600] >> setpagedevice"
+*End
+*CloseUI: *CMAndResolution
+`
+	expected = &cdd.PrinterDescriptionSection{
+		Color: &cdd.Color{
+			Option: []cdd.ColorOption{
+				cdd.ColorOption{"CMAndResolution:CMYKImageRET3600", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color")},
+				cdd.ColorOption{"CMAndResolution:Gray600x600dpi", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Gray")},
+			},
+		},
+	}
+	translationTest(t, ppd, expected)
+
+	ppd = `*PPD-Adobe: "4.3"
+*OpenUI *CMAndResolution/Print Color as Gray: PickOne
+*OrderDependency: 20 AnySetup *CMAndResolution
+*DefaultCMAndResolution: CMYKImageRET2400
+*CMAndResolution CMYKImageRET2400/Off - ImageRET 2400: "<< /ProcessColorModel /DeviceCMYK /HWResolution [600 600]  >> setpagedevice"
+*CMAndResolution Gray1200x1200dpi/On - ProRes 1200: "<</ProcessColorModel /DeviceGray /HWResolution [1200 1200] /PreRenderingEnhance false>> setpagedevice"
+*CMAndResolution Gray600x600dpi/On - 600 dpi: "<</ProcessColorModel /DeviceGray /HWResolution [600 600] /PreRenderingEnhance false>> setpagedevice"
+*CloseUI: *CMAndResolution
+`
+	expected = &cdd.PrinterDescriptionSection{
+		Color: &cdd.Color{
+			Option: []cdd.ColorOption{
+				cdd.ColorOption{"CMAndResolution:CMYKImageRET2400", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color, ImageRET 2400")},
+				cdd.ColorOption{"CMAndResolution:Gray1200x1200dpi", cdd.ColorTypeCustomMonochrome, "", false, cdd.NewLocalizedString("Gray, ProRes 1200")},
+				cdd.ColorOption{"CMAndResolution:Gray600x600dpi", cdd.ColorTypeCustomMonochrome, "", false, cdd.NewLocalizedString("Gray, 600 dpi")},
 			},
 		},
 	}
@@ -90,6 +132,51 @@ func TestTrDuplex(t *testing.T) {
 *Duplex DuplexNoTumble/Long Edge: ""
 *CloseUI: *Duplex`
 	expected := &cdd.PrinterDescriptionSection{
+		Duplex: &cdd.Duplex{
+			Option: []cdd.DuplexOption{
+				cdd.DuplexOption{cdd.DuplexNoDuplex, true},
+				cdd.DuplexOption{cdd.DuplexLongEdge, false},
+			},
+		},
+	}
+	translationTest(t, ppd, expected)
+}
+
+func TestTrKMDuplex(t *testing.T) {
+	ppd := `*PPD-Adobe: "4.3"
+*OpenUI  *KMDuplex/Print Type: PickOne
+*OrderDependency: 5 AnySetup *KMDuplex
+*DefaultKMDuplex: Double
+*KMDuplex Single/1-Sided:  "<< /Duplex false >> setpagedevice
+ << /Layout 0 >> /KMOptions /ProcSet findresource /setKMoptions get exec"
+*End
+*KMDuplex Double/2-Sided:  "<< /Duplex true >> setpagedevice
+ << /Layout 0 >> /KMOptions /ProcSet findresource /setKMoptions get exec"
+*End
+*KMDuplex Booklet/Booklet:  "<< /Duplex true >> setpagedevice
+ << /Layout 1 >> /KMOptions /ProcSet findresource /setKMoptions get exec"
+*End
+*CloseUI: *KMDuplex
+`
+	expected := &cdd.PrinterDescriptionSection{
+		Duplex: &cdd.Duplex{
+			Option: []cdd.DuplexOption{
+				cdd.DuplexOption{cdd.DuplexNoDuplex, false},
+				cdd.DuplexOption{cdd.DuplexLongEdge, true},
+			},
+		},
+	}
+	translationTest(t, ppd, expected)
+
+	ppd = `*PPD-Adobe: "4.3"
+*OpenUI  *KMDuplex/Duplex: Boolean
+*OrderDependency: 15 AnySetup *KMDuplex
+*DefaultKMDuplex: False
+*KMDuplex False/Off:  "<< /Duplex false >> setpagedevice"
+*KMDuplex True/On:  "<< /Duplex true >> setpagedevice"
+*CloseUI: *KMDuplex
+`
+	expected = &cdd.PrinterDescriptionSection{
 		Duplex: &cdd.Duplex{
 			Option: []cdd.DuplexOption{
 				cdd.DuplexOption{cdd.DuplexNoDuplex, true},
@@ -168,6 +255,48 @@ func TestTrPrintQuality(t *testing.T) {
 						cdd.SelectCapabilityOption{"600dpi", "", false, cdd.NewLocalizedString("600 dpi")},
 						cdd.SelectCapabilityOption{"ProRes1200", "", false, cdd.NewLocalizedString("ProRes 1200")},
 					},
+				},
+			},
+		},
+	}
+	translationTest(t, ppd, expected)
+}
+
+func TestRicohLockedPrint(t *testing.T) {
+	ppd := `*PPD-Adobe: "4.3"
+*OpenUI *JobType/JobType: PickOne
+*FoomaticRIPOption JobType: enum CmdLine B
+*OrderDependency: 255 AnySetup *JobType
+*DefaultJobType: Normal
+*JobType Normal/Normal: "%% FoomaticRIPOptionSetting: JobType=Normal"
+*JobType SamplePrint/Sample Print: "%% FoomaticRIPOptionSetting: JobType=SamplePrint"
+*JobType LockedPrint/Locked Print: ""
+*JobType DocServer/Document Server: ""
+*CloseUI: *JobType
+
+*OpenUI *LockedPrintPassword/Locked Print Password (4-8 digits): PickOne
+*FoomaticRIPOption LockedPrintPassword: password CmdLine C
+*FoomaticRIPOptionMaxLength LockedPrintPassword:8
+*FoomaticRIPOptionAllowedChars LockedPrintPassword: "0-9"
+*OrderDependency: 255 AnySetup *LockedPrintPassword
+*DefaultLockedPrintPassword: None
+*LockedPrintPassword None/None: ""
+*LockedPrintPassword 4001/4001: "%% FoomaticRIPOptionSetting: LockedPrintPassword=4001"
+*LockedPrintPassword 4002/4002: "%% FoomaticRIPOptionSetting: LockedPrintPassword=4002"
+*LockedPrintPassword 4003/4003: "%% FoomaticRIPOptionSetting: LockedPrintPassword=4003"
+*CloseUI: *LockedPrintPassword
+
+*CustomLockedPrintPassword True/Custom Password: ""
+*ParamCustomLockedPrintPassword Password: 1 passcode 4 8
+`
+	expected := &cdd.PrinterDescriptionSection{
+		VendorCapability: &[]cdd.VendorCapability{
+			cdd.VendorCapability{
+				ID:                   "JobType:LockedPrint/LockedPrintPassword",
+				Type:                 cdd.VendorCapabilityTypedValue,
+				DisplayNameLocalized: cdd.NewLocalizedString("Locked Print Password (4-8 digits)"),
+				TypedValueCap: &cdd.TypedValueCapability{
+					ValueType: cdd.TypedValueCapabilityTypeString,
 				},
 			},
 		},

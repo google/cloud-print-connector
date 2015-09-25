@@ -8,6 +8,7 @@ https://developers.google.com/open-source/licenses/bsd
 package cups
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ import (
 
 const (
 	ppdBoolean                 = "Boolean"
+	ppdCMAndResolution         = "CMAndResolution"
 	ppdCloseGroup              = "CloseGroup"
 	ppdCloseSubGroup           = "CloseSubGroup"
 	ppdCloseUI                 = "CloseUI"
@@ -27,10 +29,15 @@ const (
 	ppdDuplexNoTumble          = "DuplexNoTumble"
 	ppdDuplexTumble            = "DuplexTumble"
 	ppdEnd                     = "End"
+	ppdFalse                   = "False"
 	ppdHWMargins               = "HWMargins"
 	ppdInstallableOptions      = "InstallableOptions"
 	ppdJCLCloseUI              = "JCLCloseUI"
 	ppdJCLOpenUI               = "JCLOpenUI"
+	ppdJobType                 = "JobType"
+	ppdKMDuplex                = "KMDuplex"
+	ppdLockedPrint             = "LockedPrint"
+	ppdLockedPrintPassword     = "LockedPrintPassword"
 	ppdManufacturer            = "Manufacturer"
 	ppdMediaType               = "MediaType"
 	ppdNickName                = "NickName"
@@ -45,7 +52,14 @@ const (
 	ppdPrintQualityTranslation = "Print Quality"
 	ppdResolution              = "Resolution"
 	ppdThroughput              = "Throughput"
+	ppdTrue                    = "True"
 	ppdUIConstraints           = "UIConstraints"
+
+	// These characters are not allowed in PPD main keywords or option keywords,
+	// so they are safe to use as separators in CDD strings.
+	// A:B/C is interpreted as 2 CUPS/IPP options: A=B and C=[VendorTicketItem.Value].
+	internalKeySeparator   = ":"
+	internalValueSeparator = "/"
 )
 
 var (
@@ -68,11 +82,12 @@ var (
 		`Foomatic/\S+|Epson Inkjet Printer Driver \(ESC/P-R\) for \S+|` +
 		`(hpcups|hpijs|HPLIP),?\s+\d+(\.\d+)*|requires proprietary plugin` +
 		`)\s*$`)
-	rPageSize   = regexp.MustCompile(`([\d.]+)(?:mm|in)?x([\d.]+)(mm|in)?`)
-	rColor      = regexp.MustCompile(`(?i)^(?:cmy|rgb|color)`)
-	rGray       = regexp.MustCompile(`(?i)^(?:gray|black|mono)`)
-	rResolution = regexp.MustCompile(`^(\d+)(?:x(\d+))?dpi$`)
-	rHWMargins  = regexp.MustCompile(`^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$`)
+	rPageSize              = regexp.MustCompile(`([\d.]+)(?:mm|in)?x([\d.]+)(mm|in)?`)
+	rColor                 = regexp.MustCompile(`(?i)^(?:cmy|rgb|color)`)
+	rGray                  = regexp.MustCompile(`(?i)^(?:gray|black|mono)`)
+	rCMAndResolutionPrefix = regexp.MustCompile(`(?i)^(?:on|off)\s*-?\s*`)
+	rResolution            = regexp.MustCompile(`^(\d+)(?:x(\d+))?dpi$`)
+	rHWMargins             = regexp.MustCompile(`^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$`)
 )
 
 // statement represents a PPD statement.
@@ -105,29 +120,40 @@ func translatePPD(ppd string) (*cdd.PrinterDescriptionSection, string, string) {
 	statements := ppdToStatements(ppd)
 	openUIStatements, installables, uiConstraints, standAlones := groupStatements(statements)
 	openUIStatements = filterConstraints(openUIStatements, installables, uiConstraints)
-	openUIEntries := openUIStatementsToEntries(openUIStatements)
+	entriesByMainKeyword, entriesByTranslation := openUIStatementsToEntries(openUIStatements)
 
 	pds := cdd.PrinterDescriptionSection{
 		VendorCapability: &[]cdd.VendorCapability{},
 	}
-	for _, e := range openUIEntries {
-		switch e.mainKeyword {
-		case ppdPageSize:
-			pds.MediaSize = convertMediaSize(e)
-		case ppdColorModel:
-			pds.Color = convertColorPPD(e)
-		case ppdDuplex:
-			pds.Duplex = convertDuplex(e)
-		case ppdResolution:
-			pds.DPI = convertDPI(e)
-		case ppdOutputBin:
-			*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
-		default:
-			switch e.translation {
-			case ppdPrintQualityTranslation:
-				*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
+	if e, exists := entriesByMainKeyword[ppdPageSize]; exists {
+		pds.MediaSize = convertMediaSize(e)
+	}
+	if e, exists := entriesByMainKeyword[ppdColorModel]; exists {
+		pds.Color = convertColorPPD(e)
+	} else if e, exists := entriesByMainKeyword[ppdCMAndResolution]; exists {
+		pds.Color = convertColorPPD(e)
+	}
+	if e, exists := entriesByMainKeyword[ppdDuplex]; exists {
+		pds.Duplex = convertDuplex(e)
+	} else if e, exists := entriesByMainKeyword[ppdKMDuplex]; exists {
+		pds.Duplex = convertKMDuplex(e)
+	}
+	if e, exists := entriesByMainKeyword[ppdResolution]; exists {
+		pds.DPI = convertDPI(e)
+	}
+	if e, exists := entriesByMainKeyword[ppdOutputBin]; exists {
+		*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
+	}
+	if jobType, exists := entriesByMainKeyword[ppdJobType]; exists {
+		if lockedPrintPassword, exists := entriesByMainKeyword[ppdLockedPrintPassword]; exists {
+			vc := convertRicohLockedPrintPassword(jobType, lockedPrintPassword)
+			if vc != nil {
+				*pds.VendorCapability = append(*pds.VendorCapability, *vc)
 			}
 		}
+	}
+	if e, exists := entriesByTranslation[ppdPrintQualityTranslation]; exists {
+		*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
 	}
 	if len(*pds.VendorCapability) == 0 {
 		// Don't generate invalid CDD JSON.
@@ -278,8 +304,9 @@ func filterConstraints(openUIs, installables [][]statement, uiConstraints []stat
 	return newOpenUIs
 }
 
-func openUIStatementsToEntries(statements [][]statement) []entry {
-	entries := make([]entry, 0, len(statements))
+func openUIStatementsToEntries(statements [][]statement) (map[string]entry, map[string]entry) {
+	byMainKeyword, byTranslation := make(map[string]entry), make(map[string]entry)
+
 	for _, openUI := range statements {
 		var e entry
 		e.mainKeyword = strings.TrimPrefix(openUI[0].optionKeyword, "*")
@@ -315,10 +342,11 @@ func openUIStatementsToEntries(statements [][]statement) []entry {
 			e.defaultValue = e.options[0].value
 		}
 
-		entries = append(entries, e)
+		byMainKeyword[e.mainKeyword] = e
+		byTranslation[e.translation] = e
 	}
 
-	return entries
+	return byMainKeyword, byTranslation
 }
 
 func cleanupModel(model string) string {
@@ -397,6 +425,29 @@ func convertPrintingSpeed(throughput string, color *cdd.Color) *cdd.PrintingSpee
 	}
 }
 
+func cleanupColorName(colorValue, colorName string) string {
+	newColorName := rCMAndResolutionPrefix.ReplaceAllString(colorName, "")
+	if colorName == newColorName {
+		return colorName
+	}
+
+	if rGray.MatchString(colorValue) || rGray.MatchString(newColorName) {
+		if len(newColorName) > 0 {
+			return "Gray, " + newColorName
+		} else {
+			return "Gray"
+		}
+	}
+	if rColor.MatchString(colorValue) || rColor.MatchString(newColorName) {
+		if len(newColorName) > 0 {
+			return "Color, " + newColorName
+		} else {
+			return "Color"
+		}
+	}
+	return newColorName
+}
+
 func convertColorPPD(e entry) *cdd.Color {
 	var colorOptions, grayOptions, otherOptions []statement
 
@@ -412,79 +463,115 @@ func convertColorPPD(e entry) *cdd.Color {
 
 	c := cdd.Color{}
 	if len(colorOptions) == 1 {
+		colorName := cleanupColorName(colorOptions[0].optionKeyword, colorOptions[0].translation)
 		co := cdd.ColorOption{
-			VendorID: colorOptions[0].optionKeyword,
+			VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, colorOptions[0].optionKeyword),
 			Type:     cdd.ColorTypeStandardColor,
-			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorOptions[0].translation),
+			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 		}
 		c.Option = append(c.Option, co)
 	} else {
 		for _, o := range colorOptions {
+			colorName := cleanupColorName(o.optionKeyword, o.translation)
 			co := cdd.ColorOption{
-				VendorID: o.optionKeyword,
+				VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, o.optionKeyword),
 				Type:     cdd.ColorTypeCustomColor,
-				CustomDisplayNameLocalized: cdd.NewLocalizedString(o.translation),
+				CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 			}
 			c.Option = append(c.Option, co)
 		}
 	}
 
 	if len(grayOptions) == 1 {
+		colorName := cleanupColorName(grayOptions[0].optionKeyword, grayOptions[0].translation)
 		co := cdd.ColorOption{
-			VendorID: grayOptions[0].optionKeyword,
+			VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, grayOptions[0].optionKeyword),
 			Type:     cdd.ColorTypeStandardMonochrome,
-			CustomDisplayNameLocalized: cdd.NewLocalizedString(grayOptions[0].translation),
+			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 		}
 		c.Option = append(c.Option, co)
 	} else {
 		for _, o := range grayOptions {
+			colorName := cleanupColorName(o.optionKeyword, o.translation)
 			co := cdd.ColorOption{
-				VendorID: o.optionKeyword,
+				VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, o.optionKeyword),
 				Type:     cdd.ColorTypeCustomMonochrome,
-				CustomDisplayNameLocalized: cdd.NewLocalizedString(o.translation),
+				CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 			}
 			c.Option = append(c.Option, co)
 		}
 	}
 
 	for _, o := range otherOptions {
+		colorName := cleanupColorName(o.optionKeyword, o.translation)
 		co := cdd.ColorOption{
-			VendorID: o.optionKeyword,
+			VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, o.optionKeyword),
 			Type:     cdd.ColorTypeCustomMonochrome,
-			CustomDisplayNameLocalized: cdd.NewLocalizedString(o.translation),
+			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 		}
 		c.Option = append(c.Option, co)
 	}
 
-	foundDefault := false
+	if len(c.Option) == 0 {
+		return nil
+	}
+
+	defaultValue := fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, e.defaultValue)
 	for i := range c.Option {
-		if c.Option[i].VendorID == e.defaultValue {
-			foundDefault = true
+		if c.Option[i].VendorID == defaultValue {
 			c.Option[i].IsDefault = true
-			break
+			return &c
 		}
 	}
 
-	for i := range c.Option {
-		// Color can be specified by either attribute or PPD.
-		// Therefore, prepend "ColorModel" to these ColorOptions.
-		c.Option[i].VendorID = ppdColorModel + c.Option[i].VendorID
-	}
-
-	if len(c.Option) > 0 {
-		if !foundDefault {
-			c.Option[0].IsDefault = true
-		}
-		return &c
-	}
-
-	return nil
+	c.Option[0].IsDefault = true
+	return &c
 }
 
 var duplexPPDByCDD = map[cdd.DuplexType]string{
 	cdd.DuplexNoDuplex:  ppdNone,
 	cdd.DuplexLongEdge:  ppdDuplexNoTumble,
 	cdd.DuplexShortEdge: ppdDuplexTumble,
+}
+
+var (
+	ppdKMSingle = "Single"
+	ppdKMDouble = "Double"
+)
+
+func convertKMDuplex(e entry) *cdd.Duplex {
+	// TODO: Test on a real Konica Minolta printer.
+	d := cdd.Duplex{}
+
+	var foundDefault bool
+	for _, o := range e.options {
+		def := o.optionKeyword == e.defaultValue
+		switch o.optionKeyword {
+		case ppdFalse, ppdKMSingle:
+			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def})
+			foundDefault = true
+		case ppdTrue, ppdKMDouble:
+			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def})
+			foundDefault = true
+		default:
+			if strings.HasPrefix(o.optionKeyword, "1") {
+				foundDefault = true
+				d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def})
+			} else if strings.HasPrefix(o.optionKeyword, "2") {
+				d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def})
+				foundDefault = true
+			}
+		}
+	}
+
+	if len(d.Option) == 0 {
+		return nil
+	}
+
+	if !foundDefault {
+		d.Option[0].IsDefault = true
+	}
+	return &d
 }
 
 func convertDuplex(e entry) *cdd.Duplex {
@@ -520,14 +607,14 @@ func convertDuplex(e entry) *cdd.Duplex {
 		d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexShortEdge, def})
 	}
 
-	if len(d.Option) > 0 {
-		if !foundDefault {
-			d.Option[0].IsDefault = true
-		}
-		return &d
+	if len(d.Option) == 0 {
+		return nil
 	}
 
-	return nil
+	if !foundDefault {
+		d.Option[0].IsDefault = true
+	}
+	return &d
 }
 
 func convertDPI(e entry) *cdd.DPI {
@@ -554,23 +641,45 @@ func convertDPI(e entry) *cdd.DPI {
 		d.Option = append(d.Option, do)
 	}
 
-	foundDefault := false
+	if len(d.Option) == 0 {
+		return nil
+	}
+
 	for i := range d.Option {
 		if d.Option[i].VendorID == e.defaultValue {
-			foundDefault = true
 			d.Option[i].IsDefault = true
+			return &d
+		}
+	}
+
+	d.Option[0].IsDefault = true
+	return &d
+}
+
+// Convert 2 entries, JobType and LockedPrintPassword, to one CDD VendorCapability.
+// http://www.linuxfoundation.org/collaborate/workgroups/openprinting/databasericohfaq#What_is_JobType_.22Locked_Print.22.3F_How_do_I_use_it.3F
+func convertRicohLockedPrintPassword(jobType, lockedPrintPassword entry) *cdd.VendorCapability {
+	var foundLockedPrint bool
+	for _, s := range jobType.options {
+		if s.optionKeyword == ppdLockedPrint {
+			foundLockedPrint = true
 			break
 		}
 	}
-
-	if len(d.Option) > 0 {
-		if !foundDefault {
-			d.Option[0].IsDefault = true
-		}
-		return &d
+	if !foundLockedPrint {
+		return nil
 	}
 
-	return nil
+	id := fmt.Sprintf("%s%s%s%s%s",
+		ppdJobType, internalKeySeparator, ppdLockedPrint, internalValueSeparator, ppdLockedPrintPassword)
+	return &cdd.VendorCapability{
+		ID:   id,
+		Type: cdd.VendorCapabilityTypedValue,
+		TypedValueCap: &cdd.TypedValueCapability{
+			ValueType: cdd.TypedValueCapabilityTypeString,
+		},
+		DisplayNameLocalized: cdd.NewLocalizedString(lockedPrintPassword.translation),
+	}
 }
 
 func convertVendorCapability(e entry) *cdd.VendorCapability {
@@ -637,14 +746,14 @@ func convertMediaSize(e entry) *cdd.MediaSize {
 		ms.Option = append(ms.Option, o)
 	}
 
-	if len(ms.Option) > 0 {
-		if !foundDefault {
-			ms.Option[0].IsDefault = true
-		}
-		return &ms
+	if len(ms.Option) == 0 {
+		return nil
 	}
 
-	return nil
+	if !foundDefault {
+		ms.Option[0].IsDefault = true
+	}
+	return &ms
 }
 
 func getCustomMediaSizeOption(optionKeyword, translation string) *cdd.MediaSizeOption {

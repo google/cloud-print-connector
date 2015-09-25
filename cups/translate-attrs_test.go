@@ -526,3 +526,36 @@ func TestConvertCopies(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestConvertColorAttrs(t *testing.T) {
+	c := convertColorAttrs(nil)
+	if c != nil {
+		t.Logf("expected nil")
+		t.Fail()
+	}
+
+	pt := map[string][]string{}
+	c = convertColorAttrs(pt)
+	if c != nil {
+		t.Logf("expected nil")
+		t.Fail()
+	}
+
+	pt = map[string][]string{
+		"print-color-mode-default":   []string{"auto"},
+		"print-color-mode-supported": []string{"color", "monochrome", "auto", "zebra"},
+	}
+	expected := &cdd.Color{
+		Option: []cdd.ColorOption{
+			cdd.ColorOption{"print-color-mode:color", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
+			cdd.ColorOption{"print-color-mode:monochrome", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Monochrome")},
+			cdd.ColorOption{"print-color-mode:auto", cdd.ColorTypeAuto, "", true, cdd.NewLocalizedString("Auto")},
+			cdd.ColorOption{"print-color-mode:zebra", cdd.ColorTypeCustomColor, "", false, cdd.NewLocalizedString("zebra")},
+		},
+	}
+	c = convertColorAttrs(pt)
+	if !reflect.DeepEqual(expected, c) {
+		t.Logf("expected %+v, got %+v", expected, c)
+		t.Fail()
+	}
+}

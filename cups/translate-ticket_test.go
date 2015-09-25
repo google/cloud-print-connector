@@ -36,8 +36,9 @@ func TestTranslateTicket(t *testing.T) {
 	ticket.Print = cdd.PrintTicketSection{
 		VendorTicketItem: []cdd.VendorTicketItem{
 			cdd.VendorTicketItem{"number-up", "a"},
+			cdd.VendorTicketItem{"a:b/c:d/e", "f"},
 		},
-		Color:           &cdd.ColorTicketItem{VendorID: "ColorModelzebra-stripes", Type: cdd.ColorTypeCustomMonochrome},
+		Color:           &cdd.ColorTicketItem{VendorID: "ColorModel:zebra-stripes", Type: cdd.ColorTypeCustomMonochrome},
 		Duplex:          &cdd.DuplexTicketItem{Type: cdd.DuplexNoDuplex},
 		PageOrientation: &cdd.PageOrientationTicketItem{Type: cdd.PageOrientationAuto},
 		Copies:          &cdd.CopiesTicketItem{Copies: 2},
@@ -50,6 +51,9 @@ func TestTranslateTicket(t *testing.T) {
 	}
 	expected = map[string]string{
 		"number-up":           "a",
+		"a":                   "b",
+		"c":                   "d",
+		"e":                   "f",
 		"ColorModel":          "zebra-stripes",
 		"Duplex":              "None",
 		"copies":              "2",
@@ -80,7 +84,7 @@ func TestTranslateTicket(t *testing.T) {
 	}
 
 	ticket.Print = cdd.PrintTicketSection{
-		Color:           &cdd.ColorTicketItem{VendorID: "print-color-modecolor", Type: cdd.ColorTypeStandardColor},
+		Color:           &cdd.ColorTicketItem{VendorID: "print-color-mode:color", Type: cdd.ColorTypeStandardColor},
 		PageOrientation: &cdd.PageOrientationTicketItem{Type: cdd.PageOrientationLandscape},
 		DPI:             &cdd.DPITicketItem{100, 100, ""},
 		MediaSize:       &cdd.MediaSizeTicketItem{100000, 100000, false, ""},
@@ -90,6 +94,18 @@ func TestTranslateTicket(t *testing.T) {
 		"orientation-requested": "4",
 		"Resolution":            "100x100dpi",
 		"PageSize":              "Custom.283x283",
+	}
+	o = translateTicket(&ticket)
+	if !reflect.DeepEqual(o, expected) {
+		t.Logf("expected\n %+v\ngot\n %+v", expected, o)
+		t.Fail()
+	}
+
+	ticket.Print = cdd.PrintTicketSection{
+		Color: &cdd.ColorTicketItem{VendorID: "CMAndResolution:Gray600x600dpi", Type: cdd.ColorTypeStandardColor},
+	}
+	expected = map[string]string{
+		"CMAndResolution": "Gray600x600dpi",
 	}
 	o = translateTicket(&ticket)
 	if !reflect.DeepEqual(o, expected) {
