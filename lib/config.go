@@ -10,29 +10,35 @@ package lib
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"runtime"
+
+	"launchpad.net/go-xdg/v0"
 )
 
 const (
 	// A website with user-friendly information.
-	ConnectorHomeURL string = "https://github.com/google/cups-connector"
+	ConnectorHomeURL = "https://github.com/google/cups-connector"
 
-	GCPAPIVersion string = "2.0"
+	GCPAPIVersion = "2.0"
+
+	defaultConfigFilename = "gcp-cups-connector.config.json"
 )
 
 var (
 	// To be populated by something like:
 	// go install -ldflags "-X github.com/google/cups-connector/lib.BuildDate=`date +%Y.%m.%d`"
-	BuildDate string = "DEV"
+	BuildDate = "DEV"
 
-	ShortName string = "CUPS Connector " + BuildDate + "-" + runtime.GOOS
+	ShortName = "CUPS Connector " + BuildDate + "-" + runtime.GOOS
 
-	FullName string = "Google Cloud Print CUPS Connector version " + BuildDate + "-" + runtime.GOOS
+	FullName = "Google Cloud Print CUPS Connector version " + BuildDate + "-" + runtime.GOOS
 
-	ConfigFilename = flag.String(
-		"config-filename", "cups-connector.config.json", "Name of config file")
+	configFilename = flag.String(
+		"config-filename", "", fmt.Sprintf("Connector config filename (default \"%s\")", defaultConfigFilename))
 )
 
 type Config struct {
@@ -179,51 +185,78 @@ var DefaultConfig = Config{
 	CloudPrintingEnable:          false,
 }
 
-func ConfigFileExists() bool {
+// getConfigFilename gets the absolute filename of the config file specified by
+// the ConfigFilename flag, and whether it exists.
+//
+// If the (relative or absolute) ConfigFilename exists, then it is returned.
+// If the ConfigFilename exists in a valid XDG path, then it is returned.
+// If neither of those exist, the (relative or absolute) ConfigFilename is returned.
+func getConfigFilename() (string, bool) {
 	if !flag.Parsed() {
 		flag.Parse()
 	}
 
-	if fi, err := os.Stat(*ConfigFilename); err == nil && !fi.IsDir() {
-		return true
+	cf := *configFilename
+	if *configFilename == "" {
+		cf = defaultConfigFilename
 	}
-	return false
+
+	if filepath.IsAbs(cf) {
+		// Absolute path specified; user knows what they want.
+		_, err := os.Stat(cf)
+		return cf, err == nil
+	}
+
+	absCF, err := filepath.Abs(cf)
+	if err != nil {
+		// syscall failure; treat as if file doesn't exist.
+		return cf, false
+	}
+	if _, err := os.Stat(absCF); err == nil {
+		// File exists on relative path.
+		return absCF, true
+	}
+
+	if xdgCF, err := xdg.Config.Find(cf); err == nil {
+		// File exists in an XDG directory.
+		return xdgCF, true
+	}
+
+	// Default to relative path. This is probably what the user expects if
+	// it wasn't found anywhere else.
+	return absCF, false
 }
 
-// ConfigFromFile reads a Config object from the config file indicated by
-// the config filename flag.
-func ConfigFromFile() (*Config, error) {
-	if !flag.Parsed() {
-		flag.Parse()
+// GetConfig reads a Config object from the config file indicated by the config
+// filename flag. If no such file exists, then DefaultConfig is returned.
+func GetConfig() (*Config, string, error) {
+	cf, exists := getConfigFilename()
+	if !exists {
+		return &DefaultConfig, "", nil
 	}
 
-	b, err := ioutil.ReadFile(*ConfigFilename)
+	b, err := ioutil.ReadFile(cf)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	var config Config
 	if err = json.Unmarshal(b, &config); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-
-	return &config, nil
+	return &config, cf, nil
 }
 
 // ToFile writes this Config object to the config file indicated by ConfigFile.
-func (c *Config) ToFile() error {
-	if !flag.Parsed() {
-		flag.Parse()
-	}
-
+func (c *Config) ToFile() (string, error) {
 	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	if err = ioutil.WriteFile(*ConfigFilename, b, 0600); err != nil {
-		return err
+	cf, _ := getConfigFilename()
+	if err = ioutil.WriteFile(cf, b, 0600); err != nil {
+		return "", err
 	}
-
-	return nil
+	return cf, nil
 }
