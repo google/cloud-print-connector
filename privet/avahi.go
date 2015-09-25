@@ -70,7 +70,7 @@ func newZeroconf() (*zeroconf, error) {
 	instance = &z
 
 	if errstr := C.startAvahiClient(&z.threadedPoll, &z.client); errstr != nil {
-		err := errors.New(C.GoString(errstr))
+		err := fmt.Errorf("Failed to start Avahi client: %s", C.GoString(errstr))
 		return nil, err
 	}
 
@@ -129,7 +129,7 @@ func (z *zeroconf) addPrinter(name string, port uint16, ty, url, id string, onli
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
 		if errstr := C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(r.port), txt); errstr != nil {
-			err := errors.New(C.GoString(errstr))
+			err := fmt.Errorf("Failed to add Avahi group: %s", C.GoString(errstr))
 			return err
 		}
 	}
@@ -160,7 +160,7 @@ func (z *zeroconf) updatePrinterTXT(name, ty, url, id string, online bool) error
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
 		if errstr := C.updateAvahiGroup(z.threadedPoll, r.group, r.name, txt); errstr != nil {
-			err := errors.New(C.GoString(errstr))
+			err := fmt.Errorf("Failed to update Avahi group: %s", C.GoString(errstr))
 			return err
 		}
 	}
@@ -183,7 +183,7 @@ func (z *zeroconf) removePrinter(name string) error {
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
 		if errstr := C.removeAvahiGroup(z.threadedPoll, r.group); errstr != nil {
-			err := errors.New(C.GoString(errstr))
+			err := fmt.Errorf("Failed to remove Avahi group: %s", C.GoString(errstr))
 			return err
 		}
 	}
@@ -248,7 +248,7 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 			if r.group != nil {
 				if errstr := C.removeAvahiGroup(z.threadedPoll, r.group); errstr != nil {
 					err := errors.New(C.GoString(errstr))
-					glog.Error(err)
+					glog.Errorf("Failed to remove Avahi group: %s", err)
 				}
 				r.group = nil
 				z.printers[name] = r
@@ -265,7 +265,7 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 
 			if errstr := C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(r.port), txt); errstr != nil {
 				err := errors.New(C.GoString(errstr))
-				glog.Error(err)
+				glog.Errorf("Failed to add Avahi group: %s", err)
 			}
 
 			z.printers[name] = r
