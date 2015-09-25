@@ -40,11 +40,9 @@ func translateTicket(ticket *cdd.CloudJobTicket) map[string]string {
 	}
 	if ticket.Print.Color != nil {
 		// TODO: Lookup VendorID by Color.Type in CDD when ticket Color.VendorID is empty?
-		v := ticket.Print.Color.VendorID
-		if strings.HasPrefix(v, ppdColorModel) {
-			m[ppdColorModel] = strings.TrimPrefix(v, ppdColorModel)
-		} else if strings.HasPrefix(v, attrPrintColorMode) {
-			m[attrPrintColorMode] = strings.TrimPrefix(v, attrPrintColorMode)
+		parts := rVendorIDKeyValue.FindStringSubmatch(ticket.Print.Color.VendorID)
+		if parts != nil && parts[2] != "" {
+			m[parts[1]] = parts[2]
 		}
 	}
 	if ticket.Print.Duplex != nil {
