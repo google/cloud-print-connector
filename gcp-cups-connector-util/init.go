@@ -401,10 +401,7 @@ func stringToBool(val string) (bool, bool) {
 	return false, false
 }
 
-func main() {
-	flag.Parse()
-	fmt.Println(lib.FullName)
-
+func initConfigFile() {
 	var localEnable bool
 	if len(*localPrintingEnableFlag) < 1 {
 		fmt.Println("\"Local printing\" means that clients print directly to the connector via local subnet,")
@@ -459,9 +456,8 @@ func main() {
 		xmppJID, robotRefreshToken = createRobotAccount(userClient)
 
 		fmt.Println("Acquired OAuth credentials for robot account")
+		fmt.Println("")
 	}
-
-	fmt.Println("")
 
 	createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName, localEnable, cloudEnable)
 	fmt.Printf("The config file %s is ready to rock.\n", *lib.ConfigFilename)

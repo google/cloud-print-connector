@@ -21,6 +21,12 @@ import (
 )
 
 var (
+	initFlag = flag.Bool(
+		"init", false,
+		"Initialize a config file")
+	monitorFlag = flag.Bool(
+		"monitor", false,
+		"Read stats from a running connector")
 	deleteAllGCPPrintersFlag = flag.Bool(
 		"delete-all-gcp-printers", false,
 		"Delete all printers associated with this connector")
@@ -51,7 +57,11 @@ func main() {
 	flag.Parse()
 	fmt.Println(lib.FullName)
 
-	if *deleteAllGCPPrintersFlag {
+	if *initFlag {
+		initConfigFile()
+	} else if *monitorFlag {
+		monitorConnector()
+	} else if *deleteAllGCPPrintersFlag {
 		deleteAllGCPPrinters()
 	} else if *updateConfigFileFlag {
 		updateConfigFile()
