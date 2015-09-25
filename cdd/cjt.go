@@ -14,18 +14,18 @@ type CloudJobTicket struct {
 }
 
 type PrintTicketSection struct {
-	VendorTicketItem []VendorTicketItem         `json:"vendor_ticket_item"`
-	Color            *ColorTicketItem           `json:"color"`
-	Duplex           *DuplexTicketItem          `json:"duplex"`
-	PageOrientation  *PageOrientationTicketItem `json:"page_orientation"`
-	Copies           *CopiesTicketItem          `json:"copies"`
-	Margins          *MarginsTicketItem         `json:"margins"`
-	DPI              *DPITicketItem             `json:"dpi"`
-	FitToPage        *FitToPageTicketItem       `json:"fit_to_page"`
-	PageRange        *PageRangeTicketItem       `json:"page_range"`
-	MediaSize        *MediaSizeTicketItem       `json:"media_size"`
-	Collate          *CollateTicketItem         `json:"collate"`
-	ReverseOrder     *ReverseOrderTicketItem    `json:"reverse_order"`
+	VendorTicketItem []VendorTicketItem         `json:"vendor_ticket_item,omitempty"`
+	Color            *ColorTicketItem           `json:"color,omitempty"`
+	Duplex           *DuplexTicketItem          `json:"duplex,omitempty"`
+	PageOrientation  *PageOrientationTicketItem `json:"page_orientation,omitempty"`
+	Copies           *CopiesTicketItem          `json:"copies,omitempty"`
+	Margins          *MarginsTicketItem         `json:"margins,omitempty"`
+	DPI              *DPITicketItem             `json:"dpi,omitempty"`
+	FitToPage        *FitToPageTicketItem       `json:"fit_to_page,omitempty"`
+	PageRange        *PageRangeTicketItem       `json:"page_range,omitempty"`
+	MediaSize        *MediaSizeTicketItem       `json:"media_size,omitempty"`
+	Collate          *CollateTicketItem         `json:"collate,omitempty"`
+	ReverseOrder     *ReverseOrderTicketItem    `json:"reverse_order,omitempty"`
 }
 
 type VendorTicketItem struct {
