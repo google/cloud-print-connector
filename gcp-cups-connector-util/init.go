@@ -320,7 +320,7 @@ func createRobotAccount(userClient *http.Client) (string, string) {
 	return xmppJID, token
 }
 
-func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxy string, localEnable, cloudEnable bool) {
+func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxy string, localEnable, cloudEnable bool) string {
 	config := lib.Config{
 		xmppJID,
 		robotRefreshToken,
@@ -353,8 +353,11 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		cloudEnable,
 	}
 
-	if err := config.ToFile(); err != nil {
+	if configFilename, err := config.ToFile(); err != nil {
 		log.Fatal(err)
+		panic("unreachable")
+	} else {
+		return configFilename
 	}
 }
 
@@ -460,8 +463,9 @@ func initConfigFile() {
 		fmt.Println("")
 	}
 
-	createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName, localEnable, cloudEnable)
-	fmt.Printf("The config file %s is ready to rock.\n", *lib.ConfigFilename)
+	configFilename := createConfigFile(
+		xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName, localEnable, cloudEnable)
+	fmt.Printf("The config file %s is ready to rock.\n", configFilename)
 	if cloudEnable {
 		fmt.Println("Keep it somewhere safe, as it contains an OAuth refresh token.")
 	}

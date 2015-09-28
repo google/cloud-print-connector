@@ -95,7 +95,7 @@ func main() {
 
 // getConfig returns a config object
 func getConfig() *lib.Config {
-	config, err := lib.ConfigFromFile()
+	config, _, err := lib.GetConfig()
 	if err != nil {
 		panic(err)
 	}
@@ -117,10 +117,13 @@ func getGCP(config *lib.Config) *gcp.GoogleCloudPrint {
 // updateConfigFile opens the config file, adds any missing fields,
 // writes the config file back.
 func updateConfigFile() {
-	config := getConfig()
+	config, configFilename, err := lib.GetConfig()
+	if err != nil {
+		panic(err)
+	}
 
 	// Same config in []byte format.
-	configRaw, err := ioutil.ReadFile(*lib.ConfigFilename)
+	configRaw, err := ioutil.ReadFile(configFilename)
 	if err != nil {
 		panic(err)
 	}
@@ -275,7 +278,7 @@ func updateConfigFile() {
 
 	if dirty {
 		config.ToFile()
-		fmt.Printf("Wrote %s\n", *lib.ConfigFilename)
+		fmt.Printf("Wrote %s\n", configFilename)
 	} else {
 		fmt.Println("Nothing to update")
 	}

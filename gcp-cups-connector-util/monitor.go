@@ -16,7 +16,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/google/cups-connector/lib"
 )
 
@@ -25,16 +24,12 @@ var monitorTimeoutFlag = flag.Duration(
 	"wait for a monitor response for this long")
 
 func monitorConnector() {
-	var config *lib.Config
-	if lib.ConfigFileExists() {
-		var err error
-		config, err = lib.ConfigFromFile()
-		if err != nil {
-			glog.Fatal(err)
-		}
-	} else {
-		config = &lib.DefaultConfig
-		glog.Info("No config file was found, so using defaults")
+	config, filename, err := lib.GetConfig()
+	if err != nil {
+		panic(fmt.Sprintf("Failed to read config file: %s", err))
+	}
+	if filename == "" {
+		fmt.Fprintln(os.Stderr, "No config file was found, so using defaults")
 	}
 
 	if _, err := os.Stat(config.MonitorSocketFilename); err != nil {

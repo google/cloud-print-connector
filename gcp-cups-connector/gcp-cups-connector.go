@@ -34,15 +34,11 @@ func main() {
 	glog.Error(lib.FullName)
 	fmt.Println(lib.FullName)
 
-	var config *lib.Config
-	if lib.ConfigFileExists() {
-		var err error
-		config, err = lib.ConfigFromFile()
-		if err != nil {
-			glog.Fatal(err)
-		}
-	} else {
-		config = &lib.DefaultConfig
+	config, configFilename, err := lib.GetConfig()
+	if err != nil {
+		glog.Fatal(err)
+	}
+	if configFilename == "" {
 		glog.Info("No config file was found, so using defaults")
 	}
 
