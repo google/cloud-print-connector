@@ -118,6 +118,16 @@ var (
 	gcpAPITimeoutFlag = flag.Duration(
 		"gcp-api-timeout", 5*time.Second,
 		"GCP API timeout, for debugging")
+	gcpOAuthDeviceCodeURL = flag.String(
+		"gcp-oauth-device-code-url", "https://accounts.google.com/o/oauth2/device/code",
+		"GCP OAuth device code URL")
+	gcpOAuthTokenPollURL = flag.String(
+		"gcp-oauth-token-poll-url", "https://www.googleapis.com/oauth2/v3/token",
+		"GCP OAuth token poll URL")
+)
+
+const (
+	gcpOAuthGrantTypeDevice = "http://oauth.net/grant_type/device/1.0"
 )
 
 // flagToUint returns the value of a flag, or its default, as a uint.
@@ -208,9 +218,35 @@ func flagToDurationString(flag *string, defaultValue string) string {
 	return *flag
 }
 
-// getUserClientFromUser steps the user through the process of acquiring an OAuth refresh token.
-func getUserClientFromUser(retainUserOAuthToken bool) (*http.Client, string) {
-	config := &oauth2.Config{
+// getUserClientFromUser follows the token acquisition steps outlined here:
+// https://developers.google.com/identity/protocols/OAuth2ForDevices
+func getUserClientFromUser() (*http.Client, string) {
+	form := url.Values{
+		"client_id": {flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID)},
+		"scope":     {gcp.ScopeCloudPrint},
+	}
+	response, err := http.PostForm(*gcpOAuthDeviceCodeURL, form)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var r struct {
+		DeviceCode      string `json:"device_code"`
+		UserCode        string `json:"user_code"`
+		VerificationURL string `json:"verification_url"`
+		ExpiresIn       int    `json:"expires_in"`
+		Interval        int    `json:"interval"`
+	}
+	json.NewDecoder(response.Body).Decode(&r)
+
+	fmt.Printf("Visit %s, and enter this code. I'll wait for you.\n%s\n",
+		r.VerificationURL, r.UserCode)
+
+	return pollOAuthConfirmation(r.DeviceCode, r.Interval)
+}
+
+func pollOAuthConfirmation(deviceCode string, interval int) (*http.Client, string) {
+	config := oauth2.Config{
 		ClientID:     flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID),
 		ClientSecret: flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
 		Endpoint: oauth2.Endpoint{
@@ -221,28 +257,43 @@ func getUserClientFromUser(retainUserOAuthToken bool) (*http.Client, string) {
 		Scopes:      []string{gcp.ScopeCloudPrint},
 	}
 
-	fmt.Println("Login to Google as the user that will own the printers, then visit this URL:")
-	fmt.Println("")
-	fmt.Println(config.AuthCodeURL("state", oauth2.AccessTypeOffline))
-	fmt.Println("")
+	for {
+		time.Sleep(time.Duration(interval) * time.Second)
 
-	authCode := scanNonEmptyString("After authenticating, paste the provided code here:")
-	token, err := config.Exchange(oauth2.NoContext, authCode)
-	if err != nil {
-		log.Fatal(err)
+		form := url.Values{
+			"client_id":     {flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID)},
+			"client_secret": {flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret)},
+			"code":          {deviceCode},
+			"grant_type":    {gcpOAuthGrantTypeDevice},
+		}
+		response, err := http.PostForm(*gcpOAuthTokenPollURL, form)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		var r struct {
+			Error        string `json:"error"`
+			AccessToken  string `json:"access_token"`
+			ExpiresIn    int    `json:"expires_in"`
+			RefreshToken string `json:"refresh_token"`
+		}
+		json.NewDecoder(response.Body).Decode(&r)
+
+		switch r.Error {
+		case "":
+			token := &oauth2.Token{RefreshToken: r.RefreshToken}
+			client := config.Client(oauth2.NoContext, token)
+			client.Timeout = *gcpAPITimeoutFlag
+			return client, r.RefreshToken
+		case "authorization_pending":
+		case "slow_down":
+			interval *= 2
+		default:
+			log.Fatal(r)
+		}
 	}
 
-	fmt.Println("Acquired OAuth credentials for user account")
-
-	var userRefreshToken string
-	if retainUserOAuthToken {
-		userRefreshToken = token.RefreshToken
-	}
-
-	client := config.Client(oauth2.NoContext, token)
-	client.Timeout = *gcpAPITimeoutFlag
-
-	return client, userRefreshToken
+	panic("unreachable")
 }
 
 // getUserClientFromToken creates a user client with just a refresh token.
@@ -428,6 +479,10 @@ func initConfigFile() {
 		cloudEnable = flagToBool(cloudPrintingEnableFlag, false)
 	}
 
+	if !localEnable && !cloudEnable {
+		log.Fatal("Try again. Either local or cloud (or both) must be enabled for the connector to do something.")
+	}
+
 	var xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string
 	if cloudEnable {
 		var parsed bool
@@ -454,11 +509,15 @@ func initConfigFile() {
 		}
 
 		var userClient *http.Client
-		userRefreshToken = flagToString(gcpUserOAuthRefreshTokenFlag, "")
-		if userRefreshToken == "" {
-			userClient, userRefreshToken = getUserClientFromUser(retainUserOAuthToken)
+		urt := flagToString(gcpUserOAuthRefreshTokenFlag, "")
+		if urt == "" {
+			userClient, urt = getUserClientFromUser()
 		} else {
-			userClient = getUserClientFromToken(userRefreshToken)
+			userClient = getUserClientFromToken(urt)
+		}
+
+		if retainUserOAuthToken {
+			userRefreshToken = urt
 		}
 
 		xmppJID, robotRefreshToken = createRobotAccount(userClient)

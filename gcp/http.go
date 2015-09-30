@@ -39,10 +39,9 @@ https://github.com/golang/go/issues/6336
 */
 var lock *lib.Semaphore = lib.NewSemaphore(100)
 
-// newClient creates an instance of http.Client, wrapped with OAuth
-// credentials.
+// newClient creates an instance of http.Client, wrapped with OAuth credentials.
 func newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, refreshToken string, scopes ...string) (*http.Client, error) {
-	config := &oauth2.Config{
+	config := oauth2.Config{
 		ClientID:     oauthClientID,
 		ClientSecret: oauthClientSecret,
 		Endpoint: oauth2.Endpoint{
@@ -53,8 +52,8 @@ func newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, re
 		Scopes:      scopes,
 	}
 
-	token := &oauth2.Token{RefreshToken: refreshToken}
-	client := config.Client(oauth2.NoContext, token)
+	token := oauth2.Token{RefreshToken: refreshToken}
+	client := config.Client(oauth2.NoContext, &token)
 
 	return client, nil
 }
