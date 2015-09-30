@@ -63,6 +63,9 @@ var (
 	copyPrinterInfoToDisplayNameFlag = flag.String(
 		"copy-printer-info-to-display-name", "",
 		"Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName")
+	displayNamePrefixFlag = flag.String(
+		"display-name-prefix", "",
+		"Prefix to add to GCP printer's defaultDisplayName")
 	monitorSocketFilenameFlag = flag.String(
 		"socket-filename", "",
 		"Filename of unix socket for connector-check to talk to connector")
@@ -336,6 +339,7 @@ func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, 
 		flagToBool(cupsJobFullUsernameFlag, lib.DefaultConfig.CUPSJobFullUsername),
 		flagToBool(cupsIgnoreRawPrintersFlag, lib.DefaultConfig.CUPSIgnoreRawPrinters),
 		flagToBool(copyPrinterInfoToDisplayNameFlag, lib.DefaultConfig.CopyPrinterInfoToDisplayName),
+		flagToString(displayNamePrefixFlag, lib.DefaultConfig.DisplayNamePrefix),
 		flagToString(monitorSocketFilenameFlag, lib.DefaultConfig.MonitorSocketFilename),
 		flagToString(gcpBaseURLFlag, lib.DefaultConfig.GCPBaseURL),
 		flagToString(gcpXMPPServerFlag, lib.DefaultConfig.XMPPServer),

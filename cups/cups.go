@@ -132,11 +132,12 @@ type CUPS struct {
 	cc                *cupsCore
 	pc                *ppdCache
 	infoToDisplayName bool
+	displayNamePrefix string
 	printerAttributes []string
 	systemTags        map[string]string
 }
 
-func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections uint, connectTimeout time.Duration) (*CUPS, error) {
+func NewCUPS(infoToDisplayName bool, displayNamePrefix string, printerAttributes []string, maxConnections uint, connectTimeout time.Duration) (*CUPS, error) {
 	if err := checkPrinterAttributes(printerAttributes); err != nil {
 		return nil, err
 	}
@@ -156,6 +157,7 @@ func NewCUPS(infoToDisplayName bool, printerAttributes []string, maxConnections 
 		cc:                cc,
 		pc:                pc,
 		infoToDisplayName: infoToDisplayName,
+		displayNamePrefix: displayNamePrefix,
 		printerAttributes: printerAttributes,
 		systemTags:        systemTags,
 	}
@@ -224,6 +226,7 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 		if !c.infoToDisplayName || defaultDisplayName == "" {
 			defaultDisplayName = name
 		}
+		defaultDisplayName = c.displayNamePrefix + defaultDisplayName
 		for k, v := range c.systemTags {
 			tags[k] = v
 		}

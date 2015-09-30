@@ -195,6 +195,11 @@ func updateConfigFile() {
 		fmt.Println("Added copy_printer_info_to_display_name")
 		config.CopyPrinterInfoToDisplayName = lib.DefaultConfig.CopyPrinterInfoToDisplayName
 	}
+	if _, exists := configMap["display_name_prefix"]; !exists {
+		dirty = true
+		fmt.Println("Added display_name_prefix")
+		config.DisplayNamePrefix = lib.DefaultConfig.DisplayNamePrefix
+	}
 	if _, exists := configMap["monitor_socket_filename"]; !exists {
 		dirty = true
 		fmt.Println("Added monitor_socket_filename")

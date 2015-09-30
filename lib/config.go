@@ -85,6 +85,9 @@ type Config struct {
 	// Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName.
 	CopyPrinterInfoToDisplayName bool `json:"copy_printer_info_to_display_name"`
 
+	// Prefix for all GCP printers hosted by this connector.
+	DisplayNamePrefix string `json:"display_name_prefix"`
+
 	// Filename of unix socket for connector-check to talk to connector.
 	MonitorSocketFilename string `json:"monitor_socket_filename"`
 
@@ -169,6 +172,7 @@ var DefaultConfig = Config{
 	CUPSJobFullUsername:          false,
 	CUPSIgnoreRawPrinters:        true,
 	CopyPrinterInfoToDisplayName: true,
+	DisplayNamePrefix:            "",
 	MonitorSocketFilename:        "/tmp/cups-connector-monitor.sock",
 	GCPBaseURL:                   "https://www.google.com/cloudprint/",
 	XMPPServer:                   "talk.google.com",
