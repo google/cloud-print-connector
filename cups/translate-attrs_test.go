@@ -67,6 +67,26 @@ func TestGetUUID(t *testing.T) {
 		t.Logf("expected %s, got %s", expected, u)
 		t.Fail()
 	}
+
+	pt = map[string][]string{
+		attrPrinterUUID: []string{"urn:uuid:123"},
+		attrPrinterName: []string{"my-name"},
+	}
+	u = getUUID(pt)
+	if u != expected {
+		t.Logf("expected %s, got %s", expected, u)
+		t.Fail()
+	}
+
+	pt = map[string][]string{
+		attrPrinterName: []string{"my-name"},
+	}
+	expected = "my-name"
+	u = getUUID(pt)
+	if u != expected {
+		t.Logf("expected %s, got %s", expected, u)
+		t.Fail()
+	}
 }
 
 func TestGetState(t *testing.T) {

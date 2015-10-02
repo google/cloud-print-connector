@@ -59,6 +59,9 @@ func getUUID(printerTags map[string][]string) string {
 		uuid = u[0]
 		uuid = strings.TrimPrefix(uuid, "urn:")
 		uuid = strings.TrimPrefix(uuid, "uuid:")
+	} else if u, ok := printerTags[attrPrinterName]; ok {
+		// CUPS < 1.5 doesn't send a printer-uuid attribute.
+		uuid = u[0]
 	}
 	return uuid
 }
