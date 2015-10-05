@@ -121,6 +121,10 @@ func updateConfigFile() {
 	if err != nil {
 		panic(err)
 	}
+	if configFilename == "" {
+		fmt.Println("Could not find a config file to update")
+		return
+	}
 
 	// Same config in []byte format.
 	configRaw, err := ioutil.ReadFile(configFilename)

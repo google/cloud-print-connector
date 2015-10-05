@@ -630,12 +630,10 @@ func (gcp *GoogleCloudPrint) processJob(job *Job, printer *lib.Printer, reportJo
 		return
 	}
 
-	jobTitle := fmt.Sprintf("gcp:%s %s", job.GCPJobID, job.Title)
-
 	gcp.jobs <- &lib.Job{
 		CUPSPrinterName: printer.Name,
 		Filename:        filename,
-		Title:           jobTitle,
+		Title:           job.Title,
 		User:            job.OwnerID,
 		JobID:           job.GCPJobID,
 		Ticket:          ticket,
