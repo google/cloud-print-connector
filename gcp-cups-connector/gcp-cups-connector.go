@@ -91,8 +91,9 @@ func main() {
 		defer x.Quit()
 	}
 
-	c, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.DisplayNamePrefix,
-		config.CUPSPrinterAttributes, config.CUPSMaxConnections, cupsConnectTimeout)
+	c, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.PrefixJobIDToJobTitle,
+		config.DisplayNamePrefix, config.CUPSPrinterAttributes, config.CUPSMaxConnections,
+		cupsConnectTimeout)
 	if err != nil {
 		glog.Fatal(err)
 	}

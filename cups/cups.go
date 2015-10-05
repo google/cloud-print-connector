@@ -129,15 +129,16 @@ var (
 
 // Interface between Go and the CUPS API.
 type CUPS struct {
-	cc                *cupsCore
-	pc                *ppdCache
-	infoToDisplayName bool
-	displayNamePrefix string
-	printerAttributes []string
-	systemTags        map[string]string
+	cc                    *cupsCore
+	pc                    *ppdCache
+	infoToDisplayName     bool
+	prefixJobIDToJobTitle bool
+	displayNamePrefix     string
+	printerAttributes     []string
+	systemTags            map[string]string
 }
 
-func NewCUPS(infoToDisplayName bool, displayNamePrefix string, printerAttributes []string, maxConnections uint, connectTimeout time.Duration) (*CUPS, error) {
+func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix string, printerAttributes []string, maxConnections uint, connectTimeout time.Duration) (*CUPS, error) {
 	if err := checkPrinterAttributes(printerAttributes); err != nil {
 		return nil, err
 	}
@@ -406,12 +407,16 @@ func convertJobState(cupsState int32) cdd.PrintJobStateDiff {
 
 // Print sends a new print job to the specified printer. The job ID
 // is returned.
-func (c *CUPS) Print(printername, filename, title, user string, ticket *cdd.CloudJobTicket) (uint32, error) {
+func (c *CUPS) Print(printername, filename, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (uint32, error) {
 	pn := C.CString(printername)
 	defer C.free(unsafe.Pointer(pn))
 	fn := C.CString(filename)
 	defer C.free(unsafe.Pointer(fn))
 	var t *C.char
+
+	if c.prefixJobIDToJobTitle {
+		title = fmt.Sprintf("gcp:%s %s", gcpJobID, title)
+	}
 	if len(title) > 255 {
 		t = C.CString(title[:255])
 	} else {
@@ -433,12 +438,12 @@ func (c *CUPS) Print(printername, filename, title, user string, ticket *cdd.Clou
 	u := C.CString(user)
 	defer C.free(unsafe.Pointer(u))
 
-	jobID, err := c.cc.printFile(u, pn, fn, t, numOptions, o)
+	cupsJobID, err := c.cc.printFile(u, pn, fn, t, numOptions, o)
 	if err != nil {
 		return 0, err
 	}
 
-	return uint32(jobID), nil
+	return uint32(cupsJobID), nil
 }
 
 // convertIPPDateToTime converts an RFC 2579 date to a time.Time object.

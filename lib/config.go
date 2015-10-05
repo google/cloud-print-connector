@@ -85,6 +85,9 @@ type Config struct {
 	// Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName.
 	CopyPrinterInfoToDisplayName bool `json:"copy_printer_info_to_display_name"`
 
+	// Whether to add the job ID to the beginning of the job title. Useful for debugging.
+	PrefixJobIDToJobTitle bool `json:"prefix_job_id_to_job_title"`
+
 	// Prefix for all GCP printers hosted by this connector.
 	DisplayNamePrefix string `json:"display_name_prefix"`
 
@@ -172,6 +175,7 @@ var DefaultConfig = Config{
 	CUPSJobFullUsername:          false,
 	CUPSIgnoreRawPrinters:        true,
 	CopyPrinterInfoToDisplayName: true,
+	PrefixJobIDToJobTitle:        false,
 	DisplayNamePrefix:            "",
 	MonitorSocketFilename:        "/tmp/cups-connector-monitor.sock",
 	GCPBaseURL:                   "https://www.google.com/cloudprint/",
