@@ -9,8 +9,8 @@ https://developers.google.com/open-source/licenses/bsd
 package manager
 
 import (
-	"crypto/md5"
 	"fmt"
+	"hash/adler32"
 	"os"
 	"reflect"
 	"strings"
@@ -183,11 +183,11 @@ func (pm *PrinterManager) syncPrinters(ignorePrivet bool) error {
 
 	// Set CapsHash on all printers.
 	for i := range cupsPrinters {
-		h := md5.New()
+		h := adler32.New()
 		lib.DeepHash(cupsPrinters[i].Tags, h)
 		cupsPrinters[i].Tags["tagshash"] = fmt.Sprintf("%x", h.Sum(nil))
 
-		h = md5.New()
+		h = adler32.New()
 		lib.DeepHash(cupsPrinters[i].Description, h)
 		cupsPrinters[i].CapsHash = fmt.Sprintf("%x", h.Sum(nil))
 	}
