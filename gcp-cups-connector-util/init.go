@@ -500,7 +500,7 @@ func initConfigFile() {
 			if len(*shareScopeFlag) > 0 {
 				shareScope = *shareScopeFlag
 			} else {
-				shareScope = scanNonEmptyString("User or group email address, or domain name, to share with:")
+				shareScope = scanNonEmptyString("User or group email address to share with:")
 			}
 		} else {
 			fmt.Println(
