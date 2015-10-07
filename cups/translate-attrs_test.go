@@ -227,6 +227,21 @@ func TestConvertMarkers(t *testing.T) {
 	}
 
 	pt = map[string][]string{
+		attrMarkerNames:  []string{"black", "black", "black"},
+		attrMarkerTypes:  []string{"toner", "toner", "ink"},
+		attrMarkerLevels: []string{"10", "11", "12"},
+	}
+	m, ms = convertMarkers(pt)
+	if m != nil {
+		t.Logf("expected nil")
+		t.Fail()
+	}
+	if ms != nil {
+		t.Logf("expected nil")
+		t.Fail()
+	}
+
+	pt = map[string][]string{
 		attrMarkerNames:  []string{"black", "color"},
 		attrMarkerTypes:  []string{"toner", "toner", "ink"},
 		attrMarkerLevels: []string{"10", "11", "12"},
