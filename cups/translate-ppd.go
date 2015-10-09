@@ -89,6 +89,10 @@ var (
 	rCMAndResolutionPrefix = regexp.MustCompile(`(?i)^(?:on|off)\s*-?\s*`)
 	rResolution            = regexp.MustCompile(`^(\d+)(?:x(\d+))?dpi$`)
 	rHWMargins             = regexp.MustCompile(`^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$`)
+
+	ricohPasswordVendorID = fmt.Sprintf("%s%s%s%s%s",
+		ppdJobType, internalKeySeparator, ppdLockedPrint, internalValueSeparator, ppdLockedPrintPassword)
+	rRicohPasswordFormat = regexp.MustCompile(`^\d{4}$`)
 )
 
 // statement represents a PPD statement.
@@ -671,15 +675,13 @@ func convertRicohLockedPrintPassword(jobType, lockedPrintPassword entry) *cdd.Ve
 		return nil
 	}
 
-	id := fmt.Sprintf("%s%s%s%s%s",
-		ppdJobType, internalKeySeparator, ppdLockedPrint, internalValueSeparator, ppdLockedPrintPassword)
 	return &cdd.VendorCapability{
-		ID:   id,
+		ID:   ricohPasswordVendorID,
 		Type: cdd.VendorCapabilityTypedValue,
 		TypedValueCap: &cdd.TypedValueCapability{
 			ValueType: cdd.TypedValueCapabilityTypeString,
 		},
-		DisplayNameLocalized: cdd.NewLocalizedString(lockedPrintPassword.translation),
+		DisplayNameLocalized: cdd.NewLocalizedString("Password (4 numbers)"),
 	}
 }
 

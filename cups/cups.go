@@ -424,7 +424,10 @@ func (c *CUPS) Print(printername, filename, title, user, gcpJobID string, ticket
 	}
 	defer C.free(unsafe.Pointer(t))
 
-	options := translateTicket(ticket)
+	options, err := translateTicket(ticket)
+	if err != nil {
+		return 0, err
+	}
 	numOptions := C.int(0)
 	var o *C.cups_option_t = nil
 	for key, value := range options {
