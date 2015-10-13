@@ -219,6 +219,16 @@ func convertMarkers(printerTags map[string][]string) (*[]cdd.Marker, *cdd.Marker
 		names = newNames
 	}
 
+	{
+		nameSet := make(map[string]struct{}, len(names))
+		for _, name := range names {
+			if _, exists := nameSet[name]; exists {
+				return nil, nil
+			}
+			nameSet[name] = struct{}{}
+		}
+	}
+
 	if len(types) != len(levels) {
 		newTypes := fixMarkers(types)
 		if len(newTypes) != len(levels) {
