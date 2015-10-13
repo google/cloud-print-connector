@@ -295,7 +295,7 @@ func TestRicohLockedPrint(t *testing.T) {
 			cdd.VendorCapability{
 				ID:                   "JobType:LockedPrint/LockedPrintPassword",
 				Type:                 cdd.VendorCapabilityTypedValue,
-				DisplayNameLocalized: cdd.NewLocalizedString("Locked Print Password (4-8 digits)"),
+				DisplayNameLocalized: cdd.NewLocalizedString("Password (4 numbers)"),
 				TypedValueCap: &cdd.TypedValueCapability{
 					ValueType: cdd.TypedValueCapabilityTypeString,
 				},

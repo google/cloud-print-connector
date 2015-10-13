@@ -20,14 +20,22 @@ import (
 
 func TestTranslateTicket(t *testing.T) {
 	expected := map[string]string{}
-	o := translateTicket(nil)
+	o, err := translateTicket(nil)
+	if err != nil {
+		t.Logf("did not expect error %s", err)
+		t.Fail()
+	}
 	if !reflect.DeepEqual(o, expected) {
 		t.Logf("expected %+v, got %+v", expected, o)
 		t.Fail()
 	}
 
 	ticket := cdd.CloudJobTicket{}
-	o = translateTicket(&ticket)
+	o, err = translateTicket(&ticket)
+	if err != nil {
+		t.Logf("did not expect error %s", err)
+		t.Fail()
+	}
 	if !reflect.DeepEqual(o, expected) {
 		t.Logf("expected %+v, got %+v", expected, o)
 		t.Fail()
@@ -67,7 +75,11 @@ func TestTranslateTicket(t *testing.T) {
 		"collate":             "false",
 		"outputorder":         "normal",
 	}
-	o = translateTicket(&ticket)
+	o, err = translateTicket(&ticket)
+	if err != nil {
+		t.Logf("did not expect error %s", err)
+		t.Fail()
+	}
 	if !reflect.DeepEqual(o, expected) {
 		eSorted := make([]string, 0, len(expected))
 		for k := range expected {
@@ -95,7 +107,11 @@ func TestTranslateTicket(t *testing.T) {
 		"Resolution":            "100x100dpi",
 		"PageSize":              "Custom.283x283",
 	}
-	o = translateTicket(&ticket)
+	o, err = translateTicket(&ticket)
+	if err != nil {
+		t.Logf("did not expect error %s", err)
+		t.Fail()
+	}
 	if !reflect.DeepEqual(o, expected) {
 		t.Logf("expected\n %+v\ngot\n %+v", expected, o)
 		t.Fail()
@@ -107,7 +123,94 @@ func TestTranslateTicket(t *testing.T) {
 	expected = map[string]string{
 		"CMAndResolution": "Gray600x600dpi",
 	}
-	o = translateTicket(&ticket)
+	o, err = translateTicket(&ticket)
+	if err != nil {
+		t.Logf("did not expect error %s", err)
+		t.Fail()
+	}
+	if !reflect.DeepEqual(o, expected) {
+		t.Logf("expected\n %+v\ngot\n %+v", expected, o)
+		t.Fail()
+	}
+}
+
+func TestTranslateTicket_RicohLockedPrint(t *testing.T) {
+	ticket := cdd.CloudJobTicket{}
+	ticket.Print = cdd.PrintTicketSection{
+		VendorTicketItem: []cdd.VendorTicketItem{
+			cdd.VendorTicketItem{"JobType:LockedPrint/LockedPrintPassword", "1234"},
+		},
+	}
+	expected := map[string]string{
+		"JobType":             "LockedPrint",
+		"LockedPrintPassword": "1234",
+	}
+	o, err := translateTicket(&ticket)
+	if err != nil {
+		t.Logf("did not expect error %s", err)
+		t.Fail()
+	}
+	if !reflect.DeepEqual(o, expected) {
+		t.Logf("expected\n %+v\ngot\n %+v", expected, o)
+		t.Fail()
+	}
+
+	ticket.Print = cdd.PrintTicketSection{
+		VendorTicketItem: []cdd.VendorTicketItem{
+			cdd.VendorTicketItem{"JobType:LockedPrint/LockedPrintPassword", ""},
+		},
+	}
+	expected = map[string]string{}
+	o, err = translateTicket(&ticket)
+	if err == nil {
+		t.Log("expected error")
+		t.Fail()
+	}
+	if !reflect.DeepEqual(o, expected) {
+		t.Logf("expected\n %+v\ngot\n %+v", expected, o)
+		t.Fail()
+	}
+
+	ticket.Print = cdd.PrintTicketSection{
+		VendorTicketItem: []cdd.VendorTicketItem{
+			cdd.VendorTicketItem{"JobType:LockedPrint/LockedPrintPassword", "123"},
+		},
+	}
+	o, err = translateTicket(&ticket)
+	if err == nil {
+		t.Log("expected error")
+		t.Fail()
+	}
+	if !reflect.DeepEqual(o, expected) {
+		t.Logf("expected\n %+v\ngot\n %+v", expected, o)
+		t.Fail()
+	}
+
+	ticket.Print = cdd.PrintTicketSection{
+		VendorTicketItem: []cdd.VendorTicketItem{
+			cdd.VendorTicketItem{"JobType:LockedPrint/LockedPrintPassword", "12345"},
+		},
+	}
+	o, err = translateTicket(&ticket)
+	if err == nil {
+		t.Log("expected error")
+		t.Fail()
+	}
+	if !reflect.DeepEqual(o, expected) {
+		t.Logf("expected\n %+v\ngot\n %+v", expected, o)
+		t.Fail()
+	}
+
+	ticket.Print = cdd.PrintTicketSection{
+		VendorTicketItem: []cdd.VendorTicketItem{
+			cdd.VendorTicketItem{"JobType:LockedPrint/LockedPrintPassword", "1bc3"},
+		},
+	}
+	o, err = translateTicket(&ticket)
+	if err == nil {
+		t.Log("expected error")
+		t.Fail()
+	}
 	if !reflect.DeepEqual(o, expected) {
 		t.Logf("expected\n %+v\ngot\n %+v", expected, o)
 		t.Fail()

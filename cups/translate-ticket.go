@@ -9,6 +9,7 @@ https://developers.google.com/open-source/licenses/bsd
 package cups
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -21,13 +22,19 @@ var rVendorIDKeyValue = regexp.MustCompile(
 	`^([^\` + internalKeySeparator + `]+)(?:` + internalKeySeparator + `(.+))?$`)
 
 // translateTicket converts a CloudJobTicket to a map of options, suitable for a new CUPS print job.
-func translateTicket(ticket *cdd.CloudJobTicket) map[string]string {
-	m := map[string]string{}
+func translateTicket(ticket *cdd.CloudJobTicket) (map[string]string, error) {
 	if ticket == nil {
-		return m
+		return map[string]string{}, nil
 	}
 
+	m := map[string]string{}
 	for _, vti := range ticket.Print.VendorTicketItem {
+		if vti.ID == ricohPasswordVendorID {
+			if !rRicohPasswordFormat.MatchString(vti.Value) {
+				return map[string]string{}, errors.New("Invalid password format")
+			}
+		}
+
 		for _, option := range strings.Split(vti.ID, internalValueSeparator) {
 			var key, value string
 			parts := rVendorIDKeyValue.FindStringSubmatch(option)
@@ -106,7 +113,7 @@ func translateTicket(ticket *cdd.CloudJobTicket) map[string]string {
 		}
 	}
 
-	return m
+	return m, nil
 }
 
 func micronsToPoints(microns int32) string {
