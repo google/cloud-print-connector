@@ -112,9 +112,9 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *prive
 		for _, printer := range pm.printers.GetAll() {
 			err := privet.AddPrinter(printer, pm.printers.GetByCUPSName)
 			if err != nil {
-				log.Warningf("Failed to register %s locally: %s", printer.Name, err)
+				log.WarningPrinterf(printer.Name, "Failed to register locally: %s", err)
 			} else {
-				log.Infof("Registered %s locally", printer.Name)
+				log.InfoPrinterf(printer.Name, "Registered locally")
 			}
 		}
 	}
@@ -223,16 +223,16 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 	case lib.RegisterPrinter:
 		if pm.gcp != nil {
 			if err := pm.gcp.Register(&diff.Printer); err != nil {
-				log.Errorf("Failed to register printer %s: %s", diff.Printer.Name, err)
+				log.ErrorPrinterf(diff.Printer.Name, "Failed to register: %s", err)
 				break
 			}
-			log.Infof("Registered %s in the cloud", diff.Printer.Name)
+			log.InfoPrinterf(diff.Printer.Name+" "+diff.Printer.GCPID, "Registered in the cloud")
 
 			if pm.gcp.CanShare() {
 				if err := pm.gcp.Share(diff.Printer.GCPID, pm.shareScope); err != nil {
-					log.Errorf("Failed to share printer %s: %s", diff.Printer.Name, err)
+					log.ErrorPrinterf(diff.Printer.Name, "Failed to share: %s", err)
 				} else {
-					log.Infof("Shared %s", diff.Printer.Name)
+					log.InfoPrinterf(diff.Printer.Name, "Shared")
 				}
 			}
 		}
@@ -242,9 +242,9 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		if pm.privet != nil && !ignorePrivet {
 			err := pm.privet.AddPrinter(diff.Printer, pm.printers.GetByCUPSName)
 			if err != nil {
-				log.Warningf("Failed to register %s locally: %s", diff.Printer.Name, err)
+				log.WarningPrinterf(diff.Printer.Name, "Failed to register locally: %s", err)
 			} else {
-				log.Infof("Registered %s locally", diff.Printer.Name)
+				log.InfoPrinterf(diff.Printer.Name, "Registered locally")
 			}
 		}
 
@@ -254,18 +254,18 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 	case lib.UpdatePrinter:
 		if pm.gcp != nil {
 			if err := pm.gcp.Update(diff); err != nil {
-				log.Errorf("Failed to update %s: %s", diff.Printer.Name, err)
+				log.ErrorPrinterf(diff.Printer.Name+" "+diff.Printer.GCPID, "Failed to update: %s", err)
 			} else {
-				log.Infof("Updated %s in the cloud", diff.Printer.Name)
+				log.InfoPrinterf(diff.Printer.Name+" "+diff.Printer.GCPID, "Updated in the cloud")
 			}
 		}
 
 		if pm.privet != nil && !ignorePrivet && diff.DefaultDisplayNameChanged {
 			err := pm.privet.UpdatePrinter(diff)
 			if err != nil {
-				log.Warningf("Failed to update %s locally: %s", diff.Printer.Name, err)
+				log.WarningPrinterf(diff.Printer.Name, "Failed to update locally: %s", err)
 			} else {
-				log.Infof("Updated %s locally", diff.Printer.Name)
+				log.InfoPrinterf(diff.Printer.Name, "Updated locally")
 			}
 		}
 
@@ -277,18 +277,18 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 
 		if pm.gcp != nil {
 			if err := pm.gcp.Delete(diff.Printer.GCPID); err != nil {
-				log.Errorf("Failed to delete a printer %s: %s", diff.Printer.GCPID, err)
+				log.ErrorPrinterf(diff.Printer.Name+" "+diff.Printer.GCPID, "Failed to delete from the cloud: %s", err)
 				break
 			}
-			log.Infof("Deleted %s in the cloud", diff.Printer.Name)
+			log.InfoPrinterf(diff.Printer.Name+" "+diff.Printer.GCPID, "Deleted from the cloud")
 		}
 
 		if pm.privet != nil && !ignorePrivet {
 			err := pm.privet.DeletePrinter(diff.Printer.Name)
 			if err != nil {
-				log.Warningf("Failed to delete %s locally: %s", diff.Printer.Name, err)
+				log.WarningPrinterf(diff.Printer.Name, "Failed to delete: %s", err)
 			} else {
-				log.Infof("Deleted %s locally", diff.Printer.Name)
+				log.InfoPrinterf(diff.Printer.Name, "Deleted locally")
 			}
 		}
 

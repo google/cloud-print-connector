@@ -18,8 +18,9 @@ import (
 )
 
 const (
-	logFormat    = "%c [%s] %s\n"
-	logJobFormat = "%c [%s] [Job %s] %s\n"
+	logFormat        = "%c [%s] %s\n"
+	logJobFormat     = "%c [%s] [Job %s] %s\n"
+	logPrinterFormat = "%c [%s] [Printer %s] %s\n"
 
 	dateTimeFormat = "02/Jan/2006:15:04:05 -0700"
 )
@@ -82,7 +83,7 @@ func SetLevel(l LogLevel) {
 	logger.level = l
 }
 
-func log(level LogLevel, jobID, format string, args ...interface{}) {
+func log(level LogLevel, printerID, jobID, format string, args ...interface{}) {
 	if level > logger.level {
 		return
 	}
@@ -96,34 +97,56 @@ func log(level LogLevel, jobID, format string, args ...interface{}) {
 		message = fmt.Sprintf(format, args...)
 	}
 
-	if jobID == "" {
-		fmt.Fprintf(logger.writer, logFormat, levelInitial, dateTime, message)
-	} else {
+	if printerID != "" {
+		fmt.Fprintf(logger.writer, logPrinterFormat, levelInitial, dateTime, printerID, message)
+	} else if jobID != "" {
 		fmt.Fprintf(logger.writer, logJobFormat, levelInitial, dateTime, jobID, message)
+	} else {
+		fmt.Fprintf(logger.writer, logFormat, levelInitial, dateTime, message)
 	}
 }
 
-func Fatal(args ...interface{})                           { log(FATAL, "", "", args...) }
-func Fatalf(format string, args ...interface{})           { log(FATAL, "", format, args...) }
-func FatalJob(jobID string, args ...interface{})          { log(FATAL, jobID, "", args...) }
-func FatalJobf(jobID, format string, args ...interface{}) { log(FATAL, jobID, format, args...) }
+func Fatal(args ...interface{})                           { log(FATAL, "", "", "", args...) }
+func Fatalf(format string, args ...interface{})           { log(FATAL, "", "", format, args...) }
+func FatalJob(jobID string, args ...interface{})          { log(FATAL, "", jobID, "", args...) }
+func FatalJobf(jobID, format string, args ...interface{}) { log(FATAL, "", jobID, format, args...) }
+func FatalPrinter(printerID string, args ...interface{})  { log(FATAL, printerID, "", "", args...) }
+func FatalPrinterf(printerID, format string, args ...interface{}) {
+	log(FATAL, printerID, "", format, args...)
+}
 
-func Error(args ...interface{})                           { log(ERROR, "", "", args...) }
-func Errorf(format string, args ...interface{})           { log(ERROR, "", format, args...) }
-func ErrorJob(jobID string, args ...interface{})          { log(ERROR, jobID, "", args...) }
-func ErrorJobf(jobID, format string, args ...interface{}) { log(ERROR, jobID, format, args...) }
+func Error(args ...interface{})                           { log(ERROR, "", "", "", args...) }
+func Errorf(format string, args ...interface{})           { log(ERROR, "", "", format, args...) }
+func ErrorJob(jobID string, args ...interface{})          { log(ERROR, "", jobID, "", args...) }
+func ErrorJobf(jobID, format string, args ...interface{}) { log(ERROR, "", jobID, format, args...) }
+func ErrorPrinter(printerID string, args ...interface{})  { log(ERROR, printerID, "", "", args...) }
+func ErrorPrinterf(printerID, format string, args ...interface{}) {
+	log(ERROR, printerID, "", format, args...)
+}
 
-func Warning(args ...interface{})                           { log(WARNING, "", "", args...) }
-func Warningf(format string, args ...interface{})           { log(WARNING, "", format, args...) }
-func WarningJob(jobID string, args ...interface{})          { log(WARNING, jobID, "", args...) }
-func WarningJobf(jobID, format string, args ...interface{}) { log(WARNING, jobID, format, args...) }
+func Warning(args ...interface{})                           { log(WARNING, "", "", "", args...) }
+func Warningf(format string, args ...interface{})           { log(WARNING, "", "", format, args...) }
+func WarningJob(jobID string, args ...interface{})          { log(WARNING, "", jobID, "", args...) }
+func WarningJobf(jobID, format string, args ...interface{}) { log(WARNING, "", jobID, format, args...) }
+func WarningPrinter(printerID string, args ...interface{})  { log(WARNING, printerID, "", "", args...) }
+func WarningPrinterf(printerID, format string, args ...interface{}) {
+	log(WARNING, printerID, "", format, args...)
+}
 
-func Info(args ...interface{})                           { log(INFO, "", "", args...) }
-func Infof(format string, args ...interface{})           { log(INFO, "", format, args...) }
-func InfoJob(jobID string, args ...interface{})          { log(INFO, jobID, "", args...) }
-func InfoJobf(jobID, format string, args ...interface{}) { log(INFO, jobID, format, args...) }
+func Info(args ...interface{})                           { log(INFO, "", "", "", args...) }
+func Infof(format string, args ...interface{})           { log(INFO, "", "", format, args...) }
+func InfoJob(jobID string, args ...interface{})          { log(INFO, "", jobID, "", args...) }
+func InfoJobf(jobID, format string, args ...interface{}) { log(INFO, "", jobID, format, args...) }
+func InfoPrinter(printerID string, args ...interface{})  { log(INFO, printerID, "", "", args...) }
+func InfoPrinterf(printerID, format string, args ...interface{}) {
+	log(INFO, printerID, "", format, args...)
+}
 
-func Debug(args ...interface{})                           { log(DEBUG, "", "", args...) }
-func Debugf(format string, args ...interface{})           { log(DEBUG, "", format, args...) }
-func DebugJob(jobID string, args ...interface{})          { log(DEBUG, jobID, "", args...) }
-func DebugJobf(jobID, format string, args ...interface{}) { log(DEBUG, jobID, format, args...) }
+func Debug(args ...interface{})                           { log(DEBUG, "", "", "", args...) }
+func Debugf(format string, args ...interface{})           { log(DEBUG, "", "", format, args...) }
+func DebugJob(jobID string, args ...interface{})          { log(DEBUG, "", jobID, "", args...) }
+func DebugJobf(jobID, format string, args ...interface{}) { log(DEBUG, "", jobID, format, args...) }
+func DebugPrinter(printerID string, args ...interface{})  { log(DEBUG, printerID, "", "", args...) }
+func DebugPrinterf(printerID, format string, args ...interface{}) {
+	log(DEBUG, printerID, "", format, args...)
+}
