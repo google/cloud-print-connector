@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/glog"
+	"github.com/google/cups-connector/log"
 )
 
 type PrinterNotificationType uint8
@@ -79,7 +79,7 @@ func (x *XMPP) Quit() {
 			// Wait for XMPP to die.
 		case <-time.After(3 * time.Second):
 			// But not too long.
-			glog.Error("XMPP taking a while to close, so giving up")
+			log.Error("XMPP taking a while to close, so giving up")
 		}
 	}
 }
@@ -111,14 +111,14 @@ func (x *XMPP) keepXMPPAlive() {
 	for {
 		select {
 		case <-x.dead:
-			glog.Error("XMPP conversation died; restarting")
+			log.Error("XMPP conversation died; restarting")
 			if err := x.startXMPP(); err != nil {
 				for err != nil {
-					glog.Errorf("XMPP restart failed, will try again in 10s: %s", err)
+					log.Errorf("XMPP restart failed, will try again in 10s: %s", err)
 					time.Sleep(10 * time.Second)
 					err = x.startXMPP()
 				}
-				glog.Error("XMPP conversation restarted successfully")
+				log.Error("XMPP conversation restarted successfully")
 			}
 
 		case <-x.quit:
@@ -133,5 +133,5 @@ func (x *XMPP) keepXMPPAlive() {
 // printers' ping intervals.
 func (x *XMPP) SetPingInterval(interval time.Duration) {
 	x.pingIntervalUpdates <- interval
-	glog.Infof("Connector XMPP ping interval changed to %s", interval.String())
+	log.Infof("Connector XMPP ping interval changed to %s", interval.String())
 }

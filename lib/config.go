@@ -137,6 +137,18 @@ type Config struct {
 
 	// Enable cloud discovery and printing.
 	CloudPrintingEnable bool `json:"cloud_printing_enable"`
+
+	// Where to place log file.
+	LogFileName string `json:"log_file_name"`
+
+	// Maximum log file size.
+	LogFileMaxMegabytes uint64 `json:"log_file_max_megabytes"`
+
+	// Maximum log file quantity.
+	LogMaxFiles uint16 `json:"log_max_files"`
+
+	// Least severity to log.
+	LogLevel string `json:"log_level"`
 }
 
 // DefaultConfig represents reasonable default values for Config fields.
@@ -193,6 +205,10 @@ var DefaultConfig = Config{
 	SNMPMaxConnections:           100,
 	LocalPrintingEnable:          true,
 	CloudPrintingEnable:          false,
+	LogFileName:                  "/tmp/cups-connector",
+	LogFileMaxMegabytes:          1,
+	LogMaxFiles:                  3,
+	LogLevel:                     "INFO",
 }
 
 // getConfigFilename gets the absolute filename of the config file specified by

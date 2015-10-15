@@ -25,9 +25,9 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/golang/glog"
 	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/lib"
+	"github.com/google/cups-connector/log"
 )
 
 const (
@@ -601,7 +601,7 @@ func (gcp *GoogleCloudPrint) ListPrinters() ([]lib.Printer, map[string]uint, err
 func (gcp *GoogleCloudPrint) HandleJobs(printer *lib.Printer, reportJobFailed func()) {
 	jobs, err := gcp.Fetch(printer.GCPID)
 	if err != nil {
-		glog.Errorf("Failed to fetch jobs for GCP printer %s: %s", printer.GCPID, err)
+		log.Errorf("Failed to fetch jobs for GCP printer %s: %s", printer.GCPID, err)
 	} else {
 		for i := range jobs {
 			go gcp.processJob(&jobs[i], printer, reportJobFailed)
@@ -618,14 +618,14 @@ func (gcp *GoogleCloudPrint) HandleJobs(printer *lib.Printer, reportJobFailed fu
 //
 // Nothing is returned; intended for use as goroutine.
 func (gcp *GoogleCloudPrint) processJob(job *Job, printer *lib.Printer, reportJobFailed func()) {
-	glog.Infof("Received GCP job %s", job.GCPJobID)
+	log.InfoJobf(job.GCPJobID, "Received from cloud")
 
 	ticket, filename, message, state := gcp.assembleJob(job)
 	if message != "" {
 		reportJobFailed()
-		glog.Error(message)
+		log.ErrorJob(job.GCPJobID, message)
 		if err := gcp.Control(job.GCPJobID, state); err != nil {
-			glog.Error(err)
+			log.ErrorJob(job.GCPJobID, err)
 		}
 		return
 	}
@@ -646,12 +646,12 @@ func (gcp *GoogleCloudPrint) processJob(job *Job, printer *lib.Printer, reportJo
 // The caller is responsible to remove the returned file.
 //
 // Errors are returned as a string (last return value), for reporting
-// to GCP and local logging.
+// to GCP and local log.
 func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string, string, cdd.PrintJobStateDiff) {
 	ticket, err := gcp.Ticket(job.GCPJobID)
 	if err != nil {
 		return nil, "",
-			fmt.Sprintf("Failed to get a ticket for job %s: %s", job.GCPJobID, err),
+			fmt.Sprintf("Failed to get a ticket: %s", err),
 			cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
 					Type:              cdd.JobStateAborted,
@@ -663,7 +663,7 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 	file, err := ioutil.TempFile("", "cups-connector-gcp-")
 	if err != nil {
 		return nil, "",
-			fmt.Sprintf("Failed to create a temporary file for job %s: %s", job.GCPJobID, err),
+			fmt.Sprintf("Failed to create a temporary file: %s", err),
 			cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
 					Type:              cdd.JobStateAborted,
@@ -682,7 +682,7 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 		// Clean up this temporary file so the caller doesn't need extra logic.
 		os.Remove(file.Name())
 		return nil, "",
-			fmt.Sprintf("Failed to download data for job %s: %s", job.GCPJobID, err),
+			fmt.Sprintf("Failed to download data: %s", err),
 			cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
 					Type:              cdd.JobStateAborted,
@@ -691,7 +691,7 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 			}
 	}
 
-	glog.Infof("Downloaded job %s in %s", job.GCPJobID, dt.String())
+	log.InfoJobf(job.GCPJobID, "Downloaded in %s", dt.String())
 	defer file.Close()
 
 	return ticket, file.Name(), "", cdd.PrintJobStateDiff{}

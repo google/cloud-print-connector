@@ -13,12 +13,11 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"os"
 
 	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
-
-	"github.com/golang/glog"
 )
 
 var (
@@ -284,6 +283,26 @@ func updateConfigFile() {
 			config.CloudPrintingEnable = lib.DefaultConfig.CloudPrintingEnable
 		}
 	}
+	if _, exists := configMap["log_file_name"]; !exists {
+		dirty = true
+		fmt.Println("Added log_file_name")
+		config.LogFileName = lib.DefaultConfig.LogFileName
+	}
+	if _, exists := configMap["log_file_max_megabytes"]; !exists {
+		dirty = true
+		fmt.Println("Added log_file_max_megabytes")
+		config.LogFileMaxMegabytes = lib.DefaultConfig.LogFileMaxMegabytes
+	}
+	if _, exists := configMap["log_max_files"]; !exists {
+		dirty = true
+		fmt.Println("Added log_max_files")
+		config.LogMaxFiles = lib.DefaultConfig.LogMaxFiles
+	}
+	if _, exists := configMap["log_level"]; !exists {
+		dirty = true
+		fmt.Println("Added log_level")
+		config.LogLevel = lib.DefaultConfig.LogLevel
+	}
 
 	if dirty {
 		config.ToFile()
@@ -301,7 +320,8 @@ func deleteAllGCPPrinters() {
 
 	printers, err := gcp.List()
 	if err != nil {
-		glog.Fatal(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
 	ch := make(chan bool)
@@ -363,7 +383,8 @@ func deleteAllGCPPrinterJobs() {
 
 	jobs, err := gcp.Fetch(*printerIdFlag)
 	if err != nil {
-		glog.Fatal(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
 	if len(jobs) == 0 {
@@ -396,7 +417,8 @@ func cancelAllGCPPrinterJobs() {
 
 	jobs, err := gcp.Fetch(*printerIdFlag)
 	if err != nil {
-		glog.Fatal(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
 	if len(jobs) == 0 {
@@ -435,7 +457,8 @@ func showGCPPrinterStatus() {
 
 	printer, _, err := gcp.Printer(*printerIdFlag)
 	if err != nil {
-		glog.Fatal(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
 	fmt.Println("Name:", printer.DefaultDisplayName)
@@ -443,7 +466,8 @@ func showGCPPrinterStatus() {
 
 	jobs, err := gcp.Jobs(*printerIdFlag)
 	if err != nil {
-		glog.Fatal(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
 	// Only init common states. Unusual states like DRAFT will only be shown

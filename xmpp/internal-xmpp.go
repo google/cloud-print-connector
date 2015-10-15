@@ -24,13 +24,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/glog"
+	"github.com/google/cups-connector/log"
 )
 
 const (
-	// Dump XMPP XMP conversation to stdout.
-	debug = false
-
 	// This is a long-lived, potentially quiet, conversation. Keep it alive!
 	netKeepAlive = time.Second * 60
 
@@ -79,16 +76,9 @@ func newInternalXMPP(jid, accessToken, proxyName, server string, port uint16, pi
 		}
 	}
 
-	var xmlEncoder *xml.Encoder
-	var xmlDecoder *xml.Decoder
-	if debug {
-		t := &tee{conn, conn}
-		xmlEncoder = xml.NewEncoder(t)
-		xmlDecoder = xml.NewDecoder(t)
-	} else {
-		xmlEncoder = xml.NewEncoder(conn)
-		xmlDecoder = xml.NewDecoder(conn)
-	}
+	t := &tee{conn, conn}
+	xmlEncoder := xml.NewEncoder(t)
+	xmlDecoder := xml.NewDecoder(t)
 
 	// SASL
 	if err = saslHandshake(xmlEncoder, xmlDecoder, domain, user, accessToken); err != nil {
@@ -149,7 +139,7 @@ func (x *internalXMPP) pingPeriodically(timeout, interval time.Duration, dying <
 			if success, err := x.ping(timeout); success {
 				t.Reset(interval)
 			} else {
-				glog.Info(err)
+				log.Info(err)
 				x.Quit()
 			}
 		case interval = <-x.pingIntervalUpdates:
@@ -172,7 +162,7 @@ func (x *internalXMPP) dispatchIncoming(dying chan<- struct{}) {
 			if isXMLErrorClosedConnection(err) {
 				break
 			}
-			glog.Errorf("Failed to read the next start element: %s", err)
+			log.Errorf("Failed to read the next start element: %s", err)
 			break
 		}
 
@@ -187,13 +177,13 @@ func (x *internalXMPP) dispatchIncoming(dying chan<- struct{}) {
 				if isXMLErrorClosedConnection(err) {
 					break
 				}
-				glog.Warningf("Error while parsing print jobs notification via XMPP: %s", err)
+				log.Warningf("Error while parsing print jobs notification via XMPP: %s", err)
 				continue
 			}
 
 			messageData, err := base64.StdEncoding.DecodeString(message.Data)
 			if err != nil {
-				glog.Warningf("Failed to convert XMPP message data from base64: %s", err)
+				log.Warningf("Failed to convert XMPP message data from base64: %s", err)
 				continue
 			}
 
@@ -219,19 +209,19 @@ func (x *internalXMPP) dispatchIncoming(dying chan<- struct{}) {
 				if isXMLErrorClosedConnection(err) {
 					break
 				}
-				glog.Warningf("Error while parsing XMPP pong: %s", err)
+				log.Warningf("Error while parsing XMPP pong: %s", err)
 				continue
 			}
 
 			pingID, err := strconv.ParseUint(message.ID, 10, 8)
 			if err != nil {
-				glog.Warningf("Failed to convert XMPP ping ID: %s", err)
+				log.Warningf("Failed to convert XMPP ping ID: %s", err)
 				continue
 			}
 			x.pongs <- uint8(pingID)
 
 		} else {
-			glog.Warningf("Unexpected element while waiting for print message: %+v", startElement)
+			log.Warningf("Unexpected element while waiting for print message: %+v", startElement)
 		}
 	}
 
@@ -579,13 +569,13 @@ func readStartElement(d *xml.Decoder) (*xml.StartElement, error) {
 // Otherwise, returns false.
 func isXMLErrorClosedConnection(err error) bool {
 	if strings.Contains(err.Error(), "use of closed network connection") {
-		glog.Info("XMPP connection was closed")
+		log.Info("XMPP connection was closed")
 		return true
 	} else if strings.Contains(err.Error(), "connection reset by peer") {
-		glog.Info("XMPP connection was forcibly closed by server")
+		log.Info("XMPP connection was forcibly closed by server")
 		return true
 	} else if err == io.EOF {
-		glog.Info("XMPP connection failed")
+		log.Info("XMPP connection failed")
 		return true
 	}
 	return false
@@ -598,12 +588,12 @@ type tee struct {
 
 func (t *tee) Read(p []byte) (int, error) {
 	n, err := t.r.Read(p)
-	glog.Errorf("read %d %s\n", n, p[0:n])
+	log.Debugf("XMPP read %d %s\n", n, p[0:n])
 	return n, err
 }
 
 func (t *tee) Write(p []byte) (int, error) {
 	n, err := t.w.Write(p)
-	glog.Errorf("wrote %d %s\n", n, p[0:n])
+	log.Debugf("XMPP wrote %d %s\n", n, p[0:n])
 	return n, err
 }

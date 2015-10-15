@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/golang/glog"
 	"github.com/google/cups-connector/cdd"
+	"github.com/google/cups-connector/log"
 )
 
 // translateAttrs extracts a PrinterDescriptionSection, PrinterStateSection, name, default diplay name, UUID, and tags from maps of tags (CUPS attributes)
@@ -212,7 +212,7 @@ func convertMarkers(printerTags map[string][]string) (*[]cdd.Marker, *cdd.Marker
 	if len(names) != len(levels) {
 		newNames := fixMarkers(names)
 		if len(newNames) != len(levels) {
-			glog.Warningf("Received badly-formatted marker-names from CUPS: %s, %s, %s",
+			log.Warningf("Received badly-formatted marker-names from CUPS: %s, %s, %s",
 				strings.Join(names, ";"), strings.Join(types, ";"), strings.Join(levels, ";"))
 			return nil, nil
 		}
@@ -232,7 +232,7 @@ func convertMarkers(printerTags map[string][]string) (*[]cdd.Marker, *cdd.Marker
 	if len(types) != len(levels) {
 		newTypes := fixMarkers(types)
 		if len(newTypes) != len(levels) {
-			glog.Warningf("Received badly-formatted marker-types from CUPS: %s, %s, %s",
+			log.Warningf("Received badly-formatted marker-types from CUPS: %s, %s, %s",
 				strings.Join(names, ";"), strings.Join(types, ";"), strings.Join(levels, ";"))
 			return nil, nil
 		}
@@ -291,7 +291,7 @@ func convertMarkers(printerTags map[string][]string) (*[]cdd.Marker, *cdd.Marker
 
 		level, err := strconv.ParseInt(levels[i], 10, 32)
 		if err != nil {
-			glog.Warningf("Failed to parse CUPS marker state %s=%s: %s", names[i], levels[i], err)
+			log.Warningf("Failed to parse CUPS marker state %s=%s: %s", names[i], levels[i], err)
 			return nil, nil
 		}
 		if level > 100 {

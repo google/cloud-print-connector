@@ -15,10 +15,9 @@ import (
 	"github.com/google/cups-connector/cups"
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
+	"github.com/google/cups-connector/log"
 	"github.com/google/cups-connector/manager"
 	"github.com/google/cups-connector/privet"
-
-	"github.com/golang/glog"
 )
 
 const monitorFormat = `cups-printers=%d
@@ -67,7 +66,7 @@ func (m *Monitor) listen(listener net.Listener) {
 					quitAck <- true
 					return
 				}
-				glog.Errorf("Error listening to monitor socket: %s", err)
+				log.Errorf("Error listening to monitor socket: %s", err)
 			} else {
 				ch <- conn
 			}
@@ -77,10 +76,10 @@ func (m *Monitor) listen(listener net.Listener) {
 	for {
 		select {
 		case conn := <-ch:
-			glog.Info("Received monitor request")
+			log.Info("Received monitor request")
 			stats, err := m.getStats()
 			if err != nil {
-				glog.Warningf("Monitor request failed: %s", err)
+				log.Warningf("Monitor request failed: %s", err)
 				conn.Write([]byte("error"))
 			} else {
 				conn.Write([]byte(stats))

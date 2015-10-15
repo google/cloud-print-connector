@@ -28,8 +28,7 @@ import (
 
 	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/lib"
-
-	"github.com/golang/glog"
+	"github.com/google/cups-connector/log"
 )
 
 const (
@@ -275,7 +274,7 @@ func (c *CUPS) addPPDDescriptionToPrinters(printers []lib.Printer) []lib.Printer
 				p.Model = model
 				ch <- p
 			} else {
-				glog.Error(err)
+				log.Error(err)
 			}
 			wg.Done()
 		}(&printers[i])

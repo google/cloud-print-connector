@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/google/cups-connector/cdd"
+	"github.com/google/cups-connector/log"
 )
 
 // Jobs expire after this much time.
@@ -188,7 +188,7 @@ func (jc *jobCache) jobState(jobID string) ([]byte, bool) {
 
 	j, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
-		glog.Errorf("Failed to marshal Privet jobState: %s", err)
+		log.Errorf("Failed to marshal Privet jobState: %s", err)
 		return []byte{}, false
 	}
 

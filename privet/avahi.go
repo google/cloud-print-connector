@@ -17,7 +17,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/golang/glog"
+	"github.com/google/cups-connector/log"
 )
 
 var (
@@ -203,13 +203,13 @@ func (z *zeroconf) restartAndQuit() {
 	for {
 		select {
 		case <-z.restart:
-			glog.Warning("Avahi client failed. Make sure that avahi-daemon is running while I restart the client.")
+			log.Warning("Avahi client failed. Make sure that avahi-daemon is running while I restart the client.")
 
 			C.stopAvahiClient(z.threadedPoll, z.client)
 
 			if errstr := C.startAvahiClient(&z.threadedPoll, &z.client); errstr != nil {
 				err := errors.New(C.GoString(errstr))
-				glog.Errorf("Failed to restart Avahi client: %s", err)
+				log.Errorf("Failed to restart Avahi client: %s", err)
 			}
 
 		case <-z.q:
@@ -233,22 +233,22 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 
 	// Name conflict.
 	if newState == C.AVAHI_CLIENT_S_COLLISION {
-		glog.Warning("Avahi reports a host name collision.")
+		log.Warning("Avahi reports a host name collision.")
 	}
 
 	// Transition from not connecting to connecting. Warn in logs.
 	if newState == C.AVAHI_CLIENT_CONNECTING {
-		glog.Warning("Cannot find Avahi daemon. Is it running?")
+		log.Warning("Cannot find Avahi daemon. Is it running?")
 	}
 
 	// Transition from running to not running. Free all groups.
 	if newState != C.AVAHI_CLIENT_S_RUNNING {
-		glog.Info("Local printing disabled (Avahi client is not running).")
+		log.Info("Local printing disabled (Avahi client is not running).")
 		for name, r := range z.printers {
 			if r.group != nil {
 				if errstr := C.removeAvahiGroup(z.threadedPoll, r.group); errstr != nil {
 					err := errors.New(C.GoString(errstr))
-					glog.Errorf("Failed to remove Avahi group: %s", err)
+					log.Errorf("Failed to remove Avahi group: %s", err)
 				}
 				r.group = nil
 				z.printers[name] = r
@@ -258,14 +258,14 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 
 	// Transition from not running to running. Recreate all groups.
 	if newState == C.AVAHI_CLIENT_S_RUNNING {
-		glog.Info("Local printing enabled (Avahi client is running).")
+		log.Info("Local printing enabled (Avahi client is running).")
 		for name, r := range z.printers {
 			txt := prepareTXT(r.ty, r.url, r.id, r.online)
 			defer C.avahi_string_list_free(txt)
 
 			if errstr := C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(r.port), txt); errstr != nil {
 				err := errors.New(C.GoString(errstr))
-				glog.Errorf("Failed to add Avahi group: %s", err)
+				log.Errorf("Failed to add Avahi group: %s", err)
 			}
 
 			z.printers[name] = r
@@ -284,8 +284,8 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 func handleGroupStateChange(group *C.AvahiEntryGroup, state C.AvahiEntryGroupState, name unsafe.Pointer) {
 	switch state {
 	case C.AVAHI_ENTRY_GROUP_COLLISION:
-		glog.Warningf("Avahi failed to register %s due to a naming collision", C.GoString((*C.char)(name)))
+		log.Warningf("Avahi failed to register %s due to a naming collision", C.GoString((*C.char)(name)))
 	case C.AVAHI_ENTRY_GROUP_FAILURE:
-		glog.Warningf("Avahi failed to register %s, don't know why", C.GoString((*C.char)(name)))
+		log.Warningf("Avahi failed to register %s, don't know why", C.GoString((*C.char)(name)))
 	}
 }

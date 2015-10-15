@@ -22,8 +22,7 @@ import (
 	"unsafe"
 
 	"github.com/google/cups-connector/lib"
-
-	"github.com/golang/glog"
+	"github.com/google/cups-connector/log"
 )
 
 const (
@@ -89,7 +88,7 @@ func newCUPSCore(maxConnections uint, connectTimeout time.Duration) (*cupsCore, 
 	}
 	cc.disconnect(http)
 
-	glog.Infof("connected to CUPS server %s:%d %s\n", C.GoString(host), int(port), e)
+	log.Infof("connected to CUPS server %s:%d %s\n", C.GoString(host), int(port), e)
 
 	return cc, nil
 }

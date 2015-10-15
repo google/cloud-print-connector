@@ -114,6 +114,18 @@ var (
 	cloudPrintingEnableFlag = flag.String(
 		"cloud-printing-enable", "",
 		"Enable cloud discovery and printing")
+	logFileNameFlag = flag.String(
+		"log-file-name", "",
+		"Log file name, including directory")
+	logFileMaxMegabytesFlag = flag.String(
+		"log-file-max-megabytes", "",
+		"Log file max size, in megabytes")
+	logMaxFilesFlag = flag.String(
+		"log-max-files", "",
+		"Maximum log files")
+	logLevelFlag = flag.String(
+		"log-level", "",
+		"Minimum event severity to log: PANIC, ERROR, WARN, INFO, DEBUG, VERBOSE")
 
 	gcpUserOAuthRefreshTokenFlag = flag.String(
 		"gcp-user-refresh-token", "",
@@ -169,6 +181,25 @@ func flagToUint16(flag *string, defaultValue uint16) uint16 {
 	}
 
 	return uint16(value)
+}
+
+// flagToUint64 returns the value of a flag, or its default, as a uint64.
+// Panics if string is not properly formatted as a uint64 value.
+func flagToUint64(flag *string, defaultValue uint64) uint64 {
+	if flag == nil {
+		panic("Flag pointer is nil")
+	}
+
+	if *flag == "" {
+		return defaultValue
+	}
+
+	value, err := strconv.ParseUint(*flag, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+
+	return uint64(value)
 }
 
 // flagToBool returns the value of a flag, or it's default, as a bool.
