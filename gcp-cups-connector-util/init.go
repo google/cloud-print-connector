@@ -119,7 +119,7 @@ var (
 		"gcp-user-refresh-token", "",
 		"GCP user refresh token, useful when managing many connectors")
 	gcpAPITimeoutFlag = flag.Duration(
-		"gcp-api-timeout", 5*time.Second,
+		"gcp-api-timeout", 30*time.Second,
 		"GCP API timeout, for debugging")
 	gcpOAuthDeviceCodeURL = flag.String(
 		"gcp-oauth-device-code-url", "https://accounts.google.com/o/oauth2/device/code",
