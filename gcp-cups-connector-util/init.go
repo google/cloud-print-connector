@@ -10,256 +10,165 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/codegangsta/cli"
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
 
 	"golang.org/x/oauth2"
 )
 
-// All flags are string type. This makes parsing "not set" easier, and
-// allows default values to be separated.
-var (
-	retainUserOAuthTokenFlag = flag.String(
-		"retain-user-oauth-token", "",
-		"Whether to retain the user's OAuth token to enable automatic sharing (true/false)")
-	shareScopeFlag = flag.String(
-		"share-scope", "",
-		"Scope (user, group, domain) to share printers with")
-	proxyNameFlag = flag.String(
-		"proxy-name", "",
-		"User-chosen name of this proxy. Should be unique per Google user account")
-	gcpMaxConcurrentDownloadsFlag = flag.String(
-		"gcp-max-concurrent-downloads", "",
-		"Maximum quantity of PDFs to download concurrently")
-	cupsMaxConnectionsFlag = flag.String(
-		"cups-max-connections", "",
-		"Max connections to CUPS server")
-	cupsConnectTimeoutFlag = flag.String(
-		"cups-connect-timeout", "",
-		"CUPS timeout for opening a new connection")
-	cupsJobQueueSizeFlag = flag.String(
-		"cups-job-queue-size", "",
-		"CUPS job queue size")
-	cupsPrinterPollIntervalFlag = flag.String(
-		"cups-printer-poll-interval", "",
-		"Interval, in seconds, between CUPS printer state polls")
-	cupsJobFullUsernameFlag = flag.String(
-		"cups-job-full-username", "",
-		"Whether to use the full username (joe@example.com) in CUPS jobs")
-	cupsIgnoreRawPrintersFlag = flag.String(
-		"cups-ignore-raw-printers", "",
-		"Whether to ignore raw printers")
-	copyPrinterInfoToDisplayNameFlag = flag.String(
-		"copy-printer-info-to-display-name", "",
-		"Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName")
-	prefixJobIDToJobTitleFlag = flag.String(
-		"prefix-job-id-to-job-title", "",
-		"Whether to add the job ID to the beginning of the job title")
-	displayNamePrefixFlag = flag.String(
-		"display-name-prefix", "",
-		"Prefix to add to GCP printer's defaultDisplayName")
-	monitorSocketFilenameFlag = flag.String(
-		"socket-filename", "",
-		"Filename of unix socket for connector-check to talk to connector")
-	gcpBaseURLFlag = flag.String(
-		"gcp-base-url", "",
-		"GCP API base URL")
-	gcpXMPPServerFlag = flag.String(
-		"gcp-xmpp-server", "",
-		"GCP XMPP server FQDN")
-	gcpXMPPPortFlag = flag.String(
-		"gcp-xmpp-port", "",
-		"GCP XMPP port number")
-	gcpXMPPPingTimeoutFlag = flag.String(
-		"gcp-xmpp-ping-timeout", "",
-		"GCP XMPP ping timeout (give up waiting for ping response after this)")
-	gcpXMPPPingIntervalDefaultFlag = flag.String(
-		"gcp-xmpp-ping-interval-default", "",
-		"GCP XMPP ping interval default (ping every this often)")
-	gcpOAuthClientIDFlag = flag.String(
-		"gcp-oauth-client-id", "",
-		"GCP OAuth client ID")
-	gcpOAuthClientSecretFlag = flag.String(
-		"gcp-oauth-client-secret", "",
-		"GCP OAuth client secret")
-	gcpOAuthAuthURLFlag = flag.String(
-		"gcp-oauth-auth-url", "",
-		"GCP OAuth auth URL")
-	gcpOAuthTokenURLFlag = flag.String(
-		"gcp-oauth-token-url", "",
-		"GCP OAuth token URL")
-	snmpEnableFlag = flag.String(
-		"snmp-enable", "",
-		"SNMP enable")
-	snmpCommunityFlag = flag.String(
-		"snmp-community", "",
-		"SNMP community (usually \"public\")")
-	snmpMaxConnectionsFlag = flag.String(
-		"snmp-max-connections", "",
-		"Max connections to SNMP agents")
-	localPrintingEnableFlag = flag.String(
-		"local-printing-enable", "",
-		"Enable local discovery and printing")
-	cloudPrintingEnableFlag = flag.String(
-		"cloud-printing-enable", "",
-		"Enable cloud discovery and printing")
-	logFileNameFlag = flag.String(
-		"log-file-name", "",
-		"Log file name, including directory")
-	logFileMaxMegabytesFlag = flag.String(
-		"log-file-max-megabytes", "",
-		"Log file max size, in megabytes")
-	logMaxFilesFlag = flag.String(
-		"log-max-files", "",
-		"Maximum log files")
-	logLevelFlag = flag.String(
-		"log-level", "",
-		"Minimum event severity to log: PANIC, ERROR, WARN, INFO, DEBUG, VERBOSE")
-
-	gcpUserOAuthRefreshTokenFlag = flag.String(
-		"gcp-user-refresh-token", "",
-		"GCP user refresh token, useful when managing many connectors")
-	gcpAPITimeoutFlag = flag.Duration(
-		"gcp-api-timeout", 30*time.Second,
-		"GCP API timeout, for debugging")
-	gcpOAuthDeviceCodeURL = flag.String(
-		"gcp-oauth-device-code-url", "https://accounts.google.com/o/oauth2/device/code",
-		"GCP OAuth device code URL")
-	gcpOAuthTokenPollURL = flag.String(
-		"gcp-oauth-token-poll-url", "https://www.googleapis.com/oauth2/v3/token",
-		"GCP OAuth token poll URL")
-)
-
 const (
+	gcpOAuthDeviceCodeURL   = "https://accounts.google.com/o/oauth2/device/code"
+	gcpOAuthTokenPollURL    = "https://www.googleapis.com/oauth2/v3/token"
 	gcpOAuthGrantTypeDevice = "http://oauth.net/grant_type/device/1.0"
 )
 
-// flagToUint returns the value of a flag, or its default, as a uint.
-// Panics if string is not properly formatted as a uint value.
-func flagToUint(flag *string, defaultValue uint) uint {
-	if flag == nil {
-		panic("Flag pointer is nil")
-	}
+var initFlags = []cli.Flag{
+	cli.StringFlag{
+		Name:  "gcp-user-refresh-token",
+		Usage: "GCP user refresh token, useful when managing many connectors",
+	},
+	cli.DurationFlag{
+		Name:  "gcp-api-timeout",
+		Usage: "GCP API timeout, for debugging",
+		Value: 30 * time.Second,
+	},
 
-	if *flag == "" {
-		return defaultValue
-	}
-
-	value, err := strconv.ParseUint(*flag, 10, 0)
-	if err != nil {
-		panic(err)
-	}
-
-	return uint(value)
-}
-
-// flagToUint16 returns the value of a flag, or its default, as a uint16.
-// Panics if string is not properly formatted as a uint16 value.
-func flagToUint16(flag *string, defaultValue uint16) uint16 {
-	if flag == nil {
-		panic("Flag pointer is nil")
-	}
-
-	if *flag == "" {
-		return defaultValue
-	}
-
-	value, err := strconv.ParseUint(*flag, 10, 16)
-	if err != nil {
-		panic(err)
-	}
-
-	return uint16(value)
-}
-
-// flagToUint64 returns the value of a flag, or its default, as a uint64.
-// Panics if string is not properly formatted as a uint64 value.
-func flagToUint64(flag *string, defaultValue uint64) uint64 {
-	if flag == nil {
-		panic("Flag pointer is nil")
-	}
-
-	if *flag == "" {
-		return defaultValue
-	}
-
-	value, err := strconv.ParseUint(*flag, 10, 64)
-	if err != nil {
-		panic(err)
-	}
-
-	return uint64(value)
-}
-
-// flagToBool returns the value of a flag, or it's default, as a bool.
-// Panics if string is not properly formatted as a bool value.
-func flagToBool(flag *string, defaultValue bool) bool {
-	if flag == nil {
-		panic("Flag pointer is nil")
-	}
-
-	if *flag == "" {
-		return defaultValue
-	}
-
-	value, err := strconv.ParseBool(*flag)
-	if err != nil {
-		panic(err)
-	}
-
-	return value
-}
-
-// flagToString returns the value of a flag, or it's default, as a string.
-func flagToString(flag *string, defaultValue string) string {
-	if flag == nil {
-		panic("Flag pointer is nil")
-	}
-
-	if *flag == "" {
-		return defaultValue
-	}
-
-	return *flag
-}
-
-// flagToString returns the value of a flag, or it's default, as a string.
-// Panics if string is not properly formatted as a time.Duration string.
-func flagToDurationString(flag *string, defaultValue string) string {
-	if flag == nil {
-		panic("Flag pointer is nil")
-	}
-
-	if *flag == "" {
-		return defaultValue
-	}
-
-	if _, err := time.ParseDuration(*flag); err != nil {
-		panic(err)
-	}
-
-	return *flag
+	cli.StringFlag{
+		Name:  "share-scope",
+		Usage: "Scope (user or group email address) to automatically share printers with",
+	},
+	cli.StringFlag{
+		Name:  "proxy-name",
+		Usage: "Name for this connector instance. Should be unique per Google user account",
+	},
+	cli.IntFlag{
+		Name:  "xmpp-port",
+		Usage: "Max connections to CUPS server",
+		Value: int(lib.DefaultConfig.XMPPPort),
+	},
+	cli.StringFlag{
+		Name:  "gcp-xmpp-ping-timeout",
+		Usage: "GCP XMPP ping timeout (give up waiting for ping response after this)",
+		Value: lib.DefaultConfig.XMPPPingTimeout,
+	},
+	cli.StringFlag{
+		Name:  "gcp-xmpp-ping-interval-default",
+		Usage: "GCP XMPP ping interval default (ping every this often)",
+		Value: lib.DefaultConfig.XMPPPingInterval,
+	},
+	cli.IntFlag{
+		Name:  "gcp-max-concurrent-downloads",
+		Usage: "Maximum quantity of PDFs to download concurrently from GCP cloud service",
+		Value: int(lib.DefaultConfig.GCPMaxConcurrentDownloads),
+	},
+	cli.IntFlag{
+		Name:  "cups-max-connections",
+		Usage: "Max connections to CUPS server",
+		Value: int(lib.DefaultConfig.CUPSMaxConnections),
+	},
+	cli.StringFlag{
+		Name:  "cups-connect-timeout",
+		Usage: "CUPS timeout for opening a new connection",
+		Value: lib.DefaultConfig.CUPSConnectTimeout,
+	},
+	cli.IntFlag{
+		Name:  "cups-job-queue-size",
+		Usage: "CUPS job queue size",
+		Value: int(lib.DefaultConfig.CUPSJobQueueSize),
+	},
+	cli.StringFlag{
+		Name:  "cups-printer-poll-interval",
+		Usage: "Interval, in seconds, between CUPS printer state polls",
+		Value: lib.DefaultConfig.CUPSPrinterPollInterval,
+	},
+	cli.BoolFlag{
+		Name:  "cups-job-full-username",
+		Usage: "Whether to use the full username (joe@example.com) in CUPS jobs",
+	},
+	cli.BoolTFlag{
+		Name:  "cups-ignore-raw-printers",
+		Usage: "Whether to ignore CUPS raw printers",
+	},
+	cli.BoolTFlag{
+		Name:  "copy-printer-info-to-display-name",
+		Usage: "Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName",
+	},
+	cli.BoolFlag{
+		Name:  "prefix-job-id-to-job-title",
+		Usage: "Whether to add the job ID to the beginning of the job title",
+	},
+	cli.StringFlag{
+		Name:  "display-name-prefix",
+		Usage: "Prefix to add to GCP printer's display name",
+		Value: lib.DefaultConfig.DisplayNamePrefix,
+	},
+	cli.StringFlag{
+		Name:  "monitor-socket-filename",
+		Usage: "Filename of unix socket for connector-check to talk to connector",
+		Value: lib.DefaultConfig.MonitorSocketFilename,
+	},
+	cli.BoolFlag{
+		Name:  "snmp-enable",
+		Usage: "SNMP enable",
+	},
+	cli.StringFlag{
+		Name:  "snmp-community",
+		Usage: "SNMP community (usually \"public\")",
+		Value: lib.DefaultConfig.SNMPCommunity,
+	},
+	cli.IntFlag{
+		Name:  "snmp-max-connections",
+		Usage: "Max connections to SNMP agents",
+		Value: int(lib.DefaultConfig.SNMPMaxConnections),
+	},
+	cli.BoolFlag{
+		Name:  "local-printing-enable",
+		Usage: "Enable local discovery and printing (aka GCP 2.0 or Privet)",
+	},
+	cli.BoolFlag{
+		Name:  "cloud-printing-enable",
+		Usage: "Enable cloud discovery and printing",
+	},
+	cli.StringFlag{
+		Name:  "log-file-name",
+		Usage: "Log file name, full path",
+		Value: lib.DefaultConfig.LogFileName,
+	},
+	cli.IntFlag{
+		Name:  "log-file-max-megabytes",
+		Usage: "Log file max size, in megabytes",
+		Value: int(lib.DefaultConfig.LogFileMaxMegabytes),
+	},
+	cli.IntFlag{
+		Name:  "log-max-files",
+		Usage: "Maximum log file quantity before rollover",
+		Value: int(lib.DefaultConfig.LogMaxFiles),
+	},
+	cli.StringFlag{
+		Name:  "log-level",
+		Usage: "Minimum event severity to log: PANIC, ERROR, WARN, INFO, DEBUG, VERBOSE",
+		Value: lib.DefaultConfig.LogLevel,
+	},
 }
 
 // getUserClientFromUser follows the token acquisition steps outlined here:
 // https://developers.google.com/identity/protocols/OAuth2ForDevices
-func getUserClientFromUser() (*http.Client, string) {
+func getUserClientFromUser(context *cli.Context) (*http.Client, string) {
 	form := url.Values{
-		"client_id": {flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID)},
+		"client_id": {lib.DefaultConfig.GCPOAuthClientID},
 		"scope":     {gcp.ScopeCloudPrint},
 	}
-	response, err := http.PostForm(*gcpOAuthDeviceCodeURL, form)
+	response, err := http.PostForm(gcpOAuthDeviceCodeURL, form)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -276,16 +185,16 @@ func getUserClientFromUser() (*http.Client, string) {
 	fmt.Printf("Visit %s, and enter this code. I'll wait for you.\n%s\n",
 		r.VerificationURL, r.UserCode)
 
-	return pollOAuthConfirmation(r.DeviceCode, r.Interval)
+	return pollOAuthConfirmation(context, r.DeviceCode, r.Interval)
 }
 
-func pollOAuthConfirmation(deviceCode string, interval int) (*http.Client, string) {
+func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int) (*http.Client, string) {
 	config := oauth2.Config{
-		ClientID:     flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID),
-		ClientSecret: flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
+		ClientID:     lib.DefaultConfig.GCPOAuthClientID,
+		ClientSecret: lib.DefaultConfig.GCPOAuthClientSecret,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  flagToString(gcpOAuthAuthURLFlag, lib.DefaultConfig.GCPOAuthAuthURL),
-			TokenURL: flagToString(gcpOAuthTokenURLFlag, lib.DefaultConfig.GCPOAuthTokenURL),
+			AuthURL:  lib.DefaultConfig.GCPOAuthAuthURL,
+			TokenURL: lib.DefaultConfig.GCPOAuthTokenURL,
 		},
 		RedirectURL: gcp.RedirectURL,
 		Scopes:      []string{gcp.ScopeCloudPrint},
@@ -295,12 +204,12 @@ func pollOAuthConfirmation(deviceCode string, interval int) (*http.Client, strin
 		time.Sleep(time.Duration(interval) * time.Second)
 
 		form := url.Values{
-			"client_id":     {flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID)},
-			"client_secret": {flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret)},
+			"client_id":     {lib.DefaultConfig.GCPOAuthClientID},
+			"client_secret": {lib.DefaultConfig.GCPOAuthClientSecret},
 			"code":          {deviceCode},
 			"grant_type":    {gcpOAuthGrantTypeDevice},
 		}
-		response, err := http.PostForm(*gcpOAuthTokenPollURL, form)
+		response, err := http.PostForm(gcpOAuthTokenPollURL, form)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -317,7 +226,7 @@ func pollOAuthConfirmation(deviceCode string, interval int) (*http.Client, strin
 		case "":
 			token := &oauth2.Token{RefreshToken: r.RefreshToken}
 			client := config.Client(oauth2.NoContext, token)
-			client.Timeout = *gcpAPITimeoutFlag
+			client.Timeout = context.Duration("gcp-api-timeout")
 			return client, r.RefreshToken
 		case "authorization_pending":
 		case "slow_down":
@@ -331,31 +240,31 @@ func pollOAuthConfirmation(deviceCode string, interval int) (*http.Client, strin
 }
 
 // getUserClientFromToken creates a user client with just a refresh token.
-func getUserClientFromToken(userRefreshToken string) *http.Client {
+func getUserClientFromToken(context *cli.Context) *http.Client {
 	config := &oauth2.Config{
-		ClientID:     flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID),
-		ClientSecret: flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
+		ClientID:     lib.DefaultConfig.GCPOAuthClientID,
+		ClientSecret: lib.DefaultConfig.GCPOAuthClientSecret,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  flagToString(gcpOAuthAuthURLFlag, lib.DefaultConfig.GCPOAuthAuthURL),
-			TokenURL: flagToString(gcpOAuthTokenURLFlag, lib.DefaultConfig.GCPOAuthTokenURL),
+			AuthURL:  lib.DefaultConfig.GCPOAuthAuthURL,
+			TokenURL: lib.DefaultConfig.GCPOAuthTokenURL,
 		},
 		RedirectURL: gcp.RedirectURL,
 		Scopes:      []string{gcp.ScopeCloudPrint},
 	}
 
-	token := &oauth2.Token{RefreshToken: userRefreshToken}
+	token := &oauth2.Token{RefreshToken: context.String("gcp-user-refresh-token")}
 	client := config.Client(oauth2.NoContext, token)
-	client.Timeout = *gcpAPITimeoutFlag
+	client.Timeout = context.Duration("gcp-api-timeout")
 
 	return client
 }
 
 // initRobotAccount creates a GCP robot account for this connector.
-func initRobotAccount(userClient *http.Client) (string, string) {
+func initRobotAccount(context *cli.Context, userClient *http.Client) (string, string) {
 	params := url.Values{}
-	params.Set("oauth_client_id", flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID))
+	params.Set("oauth_client_id", lib.DefaultConfig.GCPOAuthClientID)
 
-	url := fmt.Sprintf("%s%s?%s", flagToString(gcpBaseURLFlag, lib.DefaultConfig.GCPBaseURL), "createrobot", params.Encode())
+	url := fmt.Sprintf("%s%s?%s", lib.DefaultConfig.GCPBaseURL, "createrobot", params.Encode())
 	response, err := userClient.Get(url)
 	if err != nil {
 		log.Fatal(err)
@@ -383,11 +292,11 @@ func initRobotAccount(userClient *http.Client) (string, string) {
 
 func verifyRobotAccount(authCode string) string {
 	config := &oauth2.Config{
-		ClientID:     flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID),
-		ClientSecret: flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
+		ClientID:     lib.DefaultConfig.GCPOAuthClientID,
+		ClientSecret: lib.DefaultConfig.GCPOAuthClientSecret,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  flagToString(gcpOAuthAuthURLFlag, lib.DefaultConfig.GCPOAuthAuthURL),
-			TokenURL: flagToString(gcpOAuthTokenURLFlag, lib.DefaultConfig.GCPOAuthTokenURL),
+			AuthURL:  lib.DefaultConfig.GCPOAuthAuthURL,
+			TokenURL: lib.DefaultConfig.GCPOAuthTokenURL,
 		},
 		RedirectURL: gcp.RedirectURL,
 		Scopes:      []string{gcp.ScopeCloudPrint, gcp.ScopeGoogleTalk},
@@ -401,75 +310,83 @@ func verifyRobotAccount(authCode string) string {
 	return token.RefreshToken
 }
 
-func createRobotAccount(userClient *http.Client) (string, string) {
-	xmppJID, authCode := initRobotAccount(userClient)
+func createRobotAccount(context *cli.Context, userClient *http.Client) (string, string) {
+	xmppJID, authCode := initRobotAccount(context, userClient)
 	token := verifyRobotAccount(authCode)
 
 	return xmppJID, token
 }
 
 // createCloudConfig creates a config object that supports cloud and (optionally) local mode.
-func createCloudConfig(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string, localEnable bool) *lib.Config {
+func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string, localEnable bool) *lib.Config {
 	return &lib.Config{
 		XMPPJID:                   xmppJID,
 		RobotRefreshToken:         robotRefreshToken,
 		UserRefreshToken:          userRefreshToken,
 		ShareScope:                shareScope,
 		ProxyName:                 proxyName,
-		XMPPServer:                flagToString(gcpXMPPServerFlag, lib.DefaultConfig.XMPPServer),
-		XMPPPort:                  flagToUint16(gcpXMPPPortFlag, lib.DefaultConfig.XMPPPort),
-		XMPPPingTimeout:           flagToDurationString(gcpXMPPPingTimeoutFlag, lib.DefaultConfig.XMPPPingTimeout),
-		XMPPPingIntervalDefault:   flagToDurationString(gcpXMPPPingIntervalDefaultFlag, lib.DefaultConfig.XMPPPingIntervalDefault),
-		GCPBaseURL:                flagToString(gcpBaseURLFlag, lib.DefaultConfig.GCPBaseURL),
-		GCPOAuthClientID:          flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID),
-		GCPOAuthClientSecret:      flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
-		GCPOAuthAuthURL:           flagToString(gcpOAuthAuthURLFlag, lib.DefaultConfig.GCPOAuthAuthURL),
-		GCPOAuthTokenURL:          flagToString(gcpOAuthTokenURLFlag, lib.DefaultConfig.GCPOAuthTokenURL),
-		GCPMaxConcurrentDownloads: flagToUint(gcpMaxConcurrentDownloadsFlag, lib.DefaultConfig.GCPMaxConcurrentDownloads),
+		XMPPServer:                lib.DefaultConfig.XMPPServer,
+		XMPPPort:                  uint16(context.Int("xmpp-port")),
+		XMPPPingTimeout:           context.String("gcp-xmpp-ping-timeout"),
+		XMPPPingInterval:          context.String("gcp-xmpp-ping-interval-default"),
+		GCPBaseURL:                lib.DefaultConfig.GCPBaseURL,
+		GCPOAuthClientID:          lib.DefaultConfig.GCPOAuthClientID,
+		GCPOAuthClientSecret:      lib.DefaultConfig.GCPOAuthClientSecret,
+		GCPOAuthAuthURL:           lib.DefaultConfig.GCPOAuthAuthURL,
+		GCPOAuthTokenURL:          lib.DefaultConfig.GCPOAuthTokenURL,
+		GCPMaxConcurrentDownloads: uint(context.Int("gcp-max-concurrent-downloads")),
 
-		CUPSMaxConnections:           flagToUint(cupsMaxConnectionsFlag, lib.DefaultConfig.CUPSMaxConnections),
-		CUPSConnectTimeout:           flagToDurationString(cupsConnectTimeoutFlag, lib.DefaultConfig.CUPSConnectTimeout),
-		CUPSJobQueueSize:             flagToUint(cupsJobQueueSizeFlag, lib.DefaultConfig.CUPSJobQueueSize),
-		CUPSPrinterPollInterval:      flagToDurationString(cupsPrinterPollIntervalFlag, lib.DefaultConfig.CUPSPrinterPollInterval),
+		CUPSMaxConnections:           uint(context.Int("cups-max-connections")),
+		CUPSConnectTimeout:           context.String("cups-connect-timeout"),
+		CUPSJobQueueSize:             uint(context.Int("cups-job-queue-size")),
+		CUPSPrinterPollInterval:      context.String("cups-printer-poll-interval"),
 		CUPSPrinterAttributes:        lib.DefaultConfig.CUPSPrinterAttributes,
-		CUPSJobFullUsername:          flagToBool(cupsJobFullUsernameFlag, lib.DefaultConfig.CUPSJobFullUsername),
-		CUPSIgnoreRawPrinters:        flagToBool(cupsIgnoreRawPrintersFlag, lib.DefaultConfig.CUPSIgnoreRawPrinters),
-		CopyPrinterInfoToDisplayName: flagToBool(copyPrinterInfoToDisplayNameFlag, lib.DefaultConfig.CopyPrinterInfoToDisplayName),
-		PrefixJobIDToJobTitle:        flagToBool(prefixJobIDToJobTitleFlag, lib.DefaultConfig.PrefixJobIDToJobTitle),
-		DisplayNamePrefix:            flagToString(displayNamePrefixFlag, lib.DefaultConfig.DisplayNamePrefix),
-		MonitorSocketFilename:        flagToString(monitorSocketFilenameFlag, lib.DefaultConfig.MonitorSocketFilename),
-		SNMPEnable:                   flagToBool(snmpEnableFlag, lib.DefaultConfig.SNMPEnable),
-		SNMPCommunity:                flagToString(snmpCommunityFlag, lib.DefaultConfig.SNMPCommunity),
-		SNMPMaxConnections:           flagToUint(snmpMaxConnectionsFlag, lib.DefaultConfig.SNMPMaxConnections),
+		CUPSJobFullUsername:          context.Bool("cups-job-full-username"),
+		CUPSIgnoreRawPrinters:        context.Bool("cups-ignore-raw-printers"),
+		CopyPrinterInfoToDisplayName: context.Bool("copy-printer-info-to-display-name"),
+		PrefixJobIDToJobTitle:        context.Bool("prefix-job-id-to-job-title"),
+		DisplayNamePrefix:            context.String("display-name-prefix"),
+		MonitorSocketFilename:        context.String("monitor-socket-filename"),
+		SNMPEnable:                   context.Bool("snmp-enable"),
+		SNMPCommunity:                context.String("snmp-community"),
+		SNMPMaxConnections:           uint(context.Int("snmp-max-connections")),
 		LocalPrintingEnable:          localEnable,
 		CloudPrintingEnable:          true,
+		LogFileName:                  context.String("log-file-name"),
+		LogFileMaxMegabytes:          uint64(context.Int("log-file-max-megabytes")),
+		LogMaxFiles:                  uint16(context.Int("log-max-files")),
+		LogLevel:                     context.String("log-level"),
 	}
 }
 
 // createLocalConfig creates a config object that supports local mode.
-func createLocalConfig() *lib.Config {
+func createLocalConfig(context *cli.Context) *lib.Config {
 	return &lib.Config{
-		CUPSMaxConnections:           flagToUint(cupsMaxConnectionsFlag, lib.DefaultConfig.CUPSMaxConnections),
-		CUPSConnectTimeout:           flagToDurationString(cupsConnectTimeoutFlag, lib.DefaultConfig.CUPSConnectTimeout),
-		CUPSJobQueueSize:             flagToUint(cupsJobQueueSizeFlag, lib.DefaultConfig.CUPSJobQueueSize),
-		CUPSPrinterPollInterval:      flagToDurationString(cupsPrinterPollIntervalFlag, lib.DefaultConfig.CUPSPrinterPollInterval),
+		CUPSMaxConnections:           uint(context.Int("cups-max-connections")),
+		CUPSConnectTimeout:           context.String("cups-connect-timeout"),
+		CUPSJobQueueSize:             uint(context.Int("cups-job-queue-size")),
+		CUPSPrinterPollInterval:      context.String("cups-printer-poll-interval"),
 		CUPSPrinterAttributes:        lib.DefaultConfig.CUPSPrinterAttributes,
-		CUPSJobFullUsername:          flagToBool(cupsJobFullUsernameFlag, lib.DefaultConfig.CUPSJobFullUsername),
-		CUPSIgnoreRawPrinters:        flagToBool(cupsIgnoreRawPrintersFlag, lib.DefaultConfig.CUPSIgnoreRawPrinters),
-		CopyPrinterInfoToDisplayName: flagToBool(copyPrinterInfoToDisplayNameFlag, lib.DefaultConfig.CopyPrinterInfoToDisplayName),
-		PrefixJobIDToJobTitle:        flagToBool(prefixJobIDToJobTitleFlag, lib.DefaultConfig.PrefixJobIDToJobTitle),
-		DisplayNamePrefix:            flagToString(displayNamePrefixFlag, lib.DefaultConfig.DisplayNamePrefix),
-		MonitorSocketFilename:        flagToString(monitorSocketFilenameFlag, lib.DefaultConfig.MonitorSocketFilename),
-		SNMPEnable:                   flagToBool(snmpEnableFlag, lib.DefaultConfig.SNMPEnable),
-		SNMPCommunity:                flagToString(snmpCommunityFlag, lib.DefaultConfig.SNMPCommunity),
-		SNMPMaxConnections:           flagToUint(snmpMaxConnectionsFlag, lib.DefaultConfig.SNMPMaxConnections),
+		CUPSJobFullUsername:          context.Bool("cups-job-full-username"),
+		CUPSIgnoreRawPrinters:        context.Bool("cups-ignore-raw-printers"),
+		CopyPrinterInfoToDisplayName: context.Bool("copy-printer-info-to-display-name"),
+		PrefixJobIDToJobTitle:        context.Bool("prefix-job-id-to-job-title"),
+		DisplayNamePrefix:            context.String("display-name-prefix"),
+		MonitorSocketFilename:        context.String("monitor-socket-filename"),
+		SNMPEnable:                   context.Bool("snmp-enable"),
+		SNMPCommunity:                context.String("snmp-community"),
+		SNMPMaxConnections:           uint(context.Int("snmp-max-connections")),
 		LocalPrintingEnable:          true,
 		CloudPrintingEnable:          false,
+		LogFileName:                  context.String("log-file-name"),
+		LogFileMaxMegabytes:          uint64(context.Int("log-file-max-megabytes")),
+		LogMaxFiles:                  uint16(context.Int("log-max-files")),
+		LogLevel:                     context.String("log-level"),
 	}
 }
 
-func writeConfigFile(config *lib.Config) string {
-	if configFilename, err := config.ToFile(); err != nil {
+func writeConfigFile(context *cli.Context, config *lib.Config) string {
+	if configFilename, err := config.ToFile(context); err != nil {
 		log.Fatal(err)
 		panic("unreachable")
 	} else {
@@ -521,23 +438,23 @@ func stringToBool(val string) (bool, bool) {
 	return false, false
 }
 
-func initConfigFile() {
+func initConfigFile(context *cli.Context) {
 	var localEnable bool
-	if len(*localPrintingEnableFlag) < 1 {
+	if context.IsSet("local-printing-enable") {
+		localEnable = context.Bool("local-printing-enable")
+	} else {
 		fmt.Println("\"Local printing\" means that clients print directly to the connector via local subnet,")
 		fmt.Println("and that an Internet connection is neither necessary nor used.")
 		localEnable = scanYesOrNo("Enable local printing?")
-	} else {
-		localEnable = flagToBool(localPrintingEnableFlag, false)
 	}
 
 	var cloudEnable bool
-	if len(*cloudPrintingEnableFlag) < 1 {
+	if context.IsSet("cloud-printing-enable") {
+		cloudEnable = context.Bool("cloud-printing-enable")
+	} else {
 		fmt.Println("\"Cloud printing\" means that clients can print from anywhere on the Internet,")
 		fmt.Println("and that printers must be explicitly shared with users.")
 		cloudEnable = scanYesOrNo("Enable cloud printing?")
-	} else {
-		cloudEnable = flagToBool(cloudPrintingEnableFlag, false)
 	}
 
 	if !localEnable && !cloudEnable {
@@ -548,58 +465,46 @@ func initConfigFile() {
 
 	var xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string
 	if cloudEnable {
-		var parsed bool
-		var retainUserOAuthToken bool
-		if parsed, retainUserOAuthToken = stringToBool(*retainUserOAuthTokenFlag); !parsed {
-			retainUserOAuthToken = scanYesOrNo(
-				"Retain the user OAuth token to enable automatic sharing?")
+		if context.IsSet("share-scope") {
+			shareScope = context.String("share-scope")
+		} else if scanYesOrNo("Retain the user OAuth token to enable automatic sharing?") {
+			shareScope = scanNonEmptyString("User or group email address to share with:")
 		}
 
-		if retainUserOAuthToken {
-			if len(*shareScopeFlag) > 0 {
-				shareScope = *shareScopeFlag
-			} else {
-				shareScope = scanNonEmptyString("User or group email address to share with:")
-			}
+		if context.IsSet("proxy-name") {
+			proxyName = context.String("proxy-name")
 		} else {
-			fmt.Println(
-				"The user account OAuth token will be thrown away; printers will not be shared automatically.")
-		}
-
-		proxyName = *proxyNameFlag
-		if len(proxyName) < 1 {
 			proxyName = scanNonEmptyString("Proxy name for this GCP CUPS Connector:")
 		}
 
 		var userClient *http.Client
-		urt := flagToString(gcpUserOAuthRefreshTokenFlag, "")
-		if urt == "" {
-			userClient, urt = getUserClientFromUser()
+		if context.IsSet("gcp-user-refresh-token") {
+			userClient = getUserClientFromToken(context)
 		} else {
-			userClient = getUserClientFromToken(urt)
+			var urt string
+			userClient, urt = getUserClientFromUser(context)
+			if shareScope != "" {
+				userRefreshToken = urt
+			}
 		}
 
-		if retainUserOAuthToken {
-			userRefreshToken = urt
-		}
-
-		xmppJID, robotRefreshToken = createRobotAccount(userClient)
+		xmppJID, robotRefreshToken = createRobotAccount(context, userClient)
 
 		fmt.Println("Acquired OAuth credentials for robot account")
 		fmt.Println("")
-		config = createCloudConfig(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName, localEnable)
+		config = createCloudConfig(context, xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName, localEnable)
 
 	} else {
-		config = createLocalConfig()
+		config = createLocalConfig(context)
 	}
 
-	configFilename := writeConfigFile(config)
+	configFilename := writeConfigFile(context, config)
 	fmt.Printf("The config file %s is ready to rock.\n", configFilename)
 	if cloudEnable {
 		fmt.Println("Keep it somewhere safe, as it contains an OAuth refresh token.")
 	}
 
-	socketDirectory := filepath.Dir(flagToString(monitorSocketFilenameFlag, lib.DefaultConfig.MonitorSocketFilename))
+	socketDirectory := filepath.Dir(context.String("monitor-socket-filename"))
 	if _, err := os.Stat(socketDirectory); os.IsNotExist(err) {
 		fmt.Println("")
 		fmt.Printf("When the connector runs, be sure the socket directory %s exists.\n", socketDirectory)

@@ -9,22 +9,18 @@ https://developers.google.com/open-source/licenses/bsd
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
 	"time"
 
+	"github.com/codegangsta/cli"
 	"github.com/google/cups-connector/lib"
 )
 
-var monitorTimeoutFlag = flag.Duration(
-	"monitor-timeout", time.Second*10,
-	"wait for a monitor response for this long")
-
-func monitorConnector() {
-	config, filename, err := lib.GetConfig()
+func monitorConnector(context *cli.Context) {
+	config, filename, err := lib.GetConfig(context)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to read config file: %s", err))
 	}
@@ -41,8 +37,8 @@ func monitorConnector() {
 			config.MonitorSocketFilename))
 	}
 
-	timer := time.AfterFunc(*monitorTimeoutFlag, func() {
-		panic(fmt.Sprintf("timeout after %s", monitorTimeoutFlag.String()))
+	timer := time.AfterFunc(context.Duration("monitor-timeout"), func() {
+		panic(fmt.Sprintf("timeout after %s", context.Duration("monitor-timeout").String()))
 	})
 
 	conn, err := net.DialTimeout("unix", config.MonitorSocketFilename, time.Second)

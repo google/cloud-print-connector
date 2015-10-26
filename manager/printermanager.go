@@ -55,7 +55,7 @@ type PrinterManager struct {
 	quit chan struct{}
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, snmp *snmp.SNMPManager, printerPollInterval string, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string, jobs <-chan *lib.Job, xmppNotifications <-chan xmpp.PrinterNotification) (*PrinterManager, error) {
+func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, snmp *snmp.SNMPManager, printerPollInterval time.Duration, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string, jobs <-chan *lib.Job, xmppNotifications <-chan xmpp.PrinterNotification) (*PrinterManager, error) {
 	var printers *lib.ConcurrentPrinterMap
 	var queuedJobsCount map[string]uint
 
@@ -119,11 +119,7 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *prive
 		}
 	}
 
-	ppi, err := time.ParseDuration(printerPollInterval)
-	if err != nil {
-		return nil, err
-	}
-	pm.syncPrintersPeriodically(ppi)
+	pm.syncPrintersPeriodically(printerPollInterval)
 	pm.listenNotifications(jobs, xmppNotifications)
 
 	if gcp != nil {

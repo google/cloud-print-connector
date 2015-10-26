@@ -10,12 +10,13 @@ package lib
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/codegangsta/cli"
 
 	"launchpad.net/go-xdg/v0"
 )
@@ -30,6 +31,14 @@ const (
 )
 
 var (
+	ConfigFilenameFlag = cli.StringFlag{
+		Name:  "config-filename",
+		Usage: fmt.Sprintf("Connector config filename (default \"%s\")", defaultConfigFilename),
+		Value: defaultConfigFilename,
+	}
+)
+
+var (
 	// To be populated by something like:
 	// go install -ldflags "-X github.com/google/cups-connector/lib.BuildDate=`date +%Y.%m.%d`"
 	BuildDate = "DEV"
@@ -37,9 +46,6 @@ var (
 	ShortName = "CUPS Connector " + BuildDate + "-" + runtime.GOOS
 
 	FullName = "Google Cloud Print CUPS Connector version " + BuildDate + "-" + runtime.GOOS
-
-	configFilename = flag.String(
-		"config-filename", "", fmt.Sprintf("Connector config filename (default \"%s\")", defaultConfigFilename))
 )
 
 type Config struct {
@@ -70,7 +76,7 @@ type Config struct {
 	// XMPP ping interval (time between ping attempts).
 	// This value is used when a printer is registered, and can
 	// be overridden through the GCP API update method.
-	XMPPPingIntervalDefault string `json:"gcp_xmpp_ping_interval_default,omitempty"`
+	XMPPPingInterval string `json:"gcp_xmpp_ping_interval_default,omitempty"`
 
 	// GCP API URL prefix.
 	GCPBaseURL string `json:"gcp_base_url,omitempty"`
@@ -158,7 +164,7 @@ var DefaultConfig = Config{
 	XMPPServer:                "talk.google.com",
 	XMPPPort:                  443,
 	XMPPPingTimeout:           "5s",
-	XMPPPingIntervalDefault:   "2m",
+	XMPPPingInterval:          "2m",
 	GCPBaseURL:                "https://www.google.com/cloudprint/",
 	GCPOAuthClientID:          "539833558011-35iq8btpgas80nrs3o7mv99hm95d4dv6.apps.googleusercontent.com",
 	GCPOAuthClientSecret:      "V9BfPOvdiYuw12hDx5Y5nR0a",
@@ -217,15 +223,8 @@ var DefaultConfig = Config{
 // If the (relative or absolute) ConfigFilename exists, then it is returned.
 // If the ConfigFilename exists in a valid XDG path, then it is returned.
 // If neither of those exist, the (relative or absolute) ConfigFilename is returned.
-func getConfigFilename() (string, bool) {
-	if !flag.Parsed() {
-		flag.Parse()
-	}
-
-	cf := *configFilename
-	if *configFilename == "" {
-		cf = defaultConfigFilename
-	}
+func getConfigFilename(context *cli.Context) (string, bool) {
+	cf := context.GlobalString("config-filename")
 
 	if filepath.IsAbs(cf) {
 		// Absolute path specified; user knows what they want.
@@ -255,8 +254,8 @@ func getConfigFilename() (string, bool) {
 
 // GetConfig reads a Config object from the config file indicated by the config
 // filename flag. If no such file exists, then DefaultConfig is returned.
-func GetConfig() (*Config, string, error) {
-	cf, exists := getConfigFilename()
+func GetConfig(context *cli.Context) (*Config, string, error) {
+	cf, exists := getConfigFilename(context)
 	if !exists {
 		return &DefaultConfig, "", nil
 	}
@@ -274,13 +273,13 @@ func GetConfig() (*Config, string, error) {
 }
 
 // ToFile writes this Config object to the config file indicated by ConfigFile.
-func (c *Config) ToFile() (string, error) {
+func (c *Config) ToFile(context *cli.Context) (string, error) {
 	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return "", err
 	}
 
-	cf, _ := getConfigFilename()
+	cf, _ := getConfigFilename(context)
 	if err = ioutil.WriteFile(cf, b, 0600); err != nil {
 		return "", err
 	}

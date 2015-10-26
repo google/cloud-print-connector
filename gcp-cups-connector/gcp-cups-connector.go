@@ -9,7 +9,6 @@ https://developers.google.com/open-source/licenses/bsd
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -19,7 +18,7 @@ import (
 
 	"gopkg.in/natefinch/lumberjack.v2"
 
-	"github.com/golang/glog"
+	"github.com/codegangsta/cli"
 	"github.com/google/cups-connector/cups"
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
@@ -31,16 +30,24 @@ import (
 	"github.com/google/cups-connector/xmpp"
 )
 
-var logToConsoleFlag = flag.Bool("log-to-console", false, "Log to STDERR, in addition to file")
-
 func main() {
-	os.Exit(connector())
+	app := cli.NewApp()
+	app.Name = "gcp-cups-connector"
+	app.Usage = "Google Cloud Print CUPS Connector"
+	app.Flags = []cli.Flag{
+		lib.ConfigFilenameFlag,
+		cli.BoolFlag{
+			Name:  "log-to-console",
+			Usage: "Log to STDERR, in addition to log file",
+		},
+	}
+	app.CommandNotFound = func(context *cli.Context, _ string) {
+		os.Exit(connector(context))
+	}
 }
 
-func connector() int {
-	flag.Parse()
-
-	config, configFilename, err := lib.GetConfig()
+func connector(context *cli.Context) int {
+	config, configFilename, err := lib.GetConfig(context)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read config file: %s", err)
 		return 1
@@ -52,7 +59,7 @@ func connector() int {
 		MaxBackups: int(config.LogMaxFiles),
 		LocalTime:  true,
 	}
-	if *logToConsoleFlag {
+	if context.Bool("log-to-console") {
 		logWriter = io.MultiWriter(logWriter, os.Stderr)
 	}
 	logLevel, ok := log.LevelFromString(config.LogLevel)
@@ -86,25 +93,21 @@ func connector() int {
 		return 1
 	}
 
-	cupsConnectTimeout, err := time.ParseDuration(config.CUPSConnectTimeout)
-	if err != nil {
-		log.Errorf("Failed to parse cups connect timeout: %s", err)
-		return 1
-	}
-
 	jobs := make(chan *lib.Job, 10)
 	xmppNotifications := make(chan xmpp.PrinterNotification, 5)
 
 	var g *gcp.GoogleCloudPrint
 	var x *xmpp.XMPP
 	if config.CloudPrintingEnable {
-		gcpXMPPPingTimeout, err := time.ParseDuration(config.XMPPPingTimeout)
+		xmppPingTimeout, err := time.ParseDuration(config.XMPPPingTimeout)
 		if err != nil {
-			glog.Fatalf("Failed to parse xmpp ping timeout: %s", err)
+			log.Fatalf("Failed to parse xmpp ping timeout: %s", err)
+			return 1
 		}
-		gcpXMPPPingIntervalDefault, err := time.ParseDuration(config.XMPPPingIntervalDefault)
+		xmppPingInterval, err := time.ParseDuration(config.XMPPPingInterval)
 		if err != nil {
-			glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
+			log.Fatalf("Failed to parse xmpp ping interval default: %s", err)
+			return 1
 		}
 
 		g, err = gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
@@ -117,7 +120,7 @@ func connector() int {
 		}
 
 		x, err = xmpp.NewXMPP(config.XMPPJID, config.ProxyName, config.XMPPServer, config.XMPPPort,
-			gcpXMPPPingTimeout, gcpXMPPPingIntervalDefault, g.GetRobotAccessToken, xmppNotifications)
+			xmppPingTimeout, xmppPingInterval, g.GetRobotAccessToken, xmppNotifications)
 		if err != nil {
 			log.Error(err)
 			return 1
@@ -125,11 +128,16 @@ func connector() int {
 		defer x.Quit()
 	}
 
+	cupsConnectTimeout, err := time.ParseDuration(config.CUPSConnectTimeout)
+	if err != nil {
+		log.Fatalf("Failed to parse CUPS connect timeout: %s", err)
+		return 1
+	}
 	c, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.PrefixJobIDToJobTitle,
 		config.DisplayNamePrefix, config.CUPSPrinterAttributes, config.CUPSMaxConnections,
 		cupsConnectTimeout)
 	if err != nil {
-		log.Error(err)
+		log.Fatal(err)
 		return 1
 	}
 	defer c.Quit()
@@ -159,7 +167,12 @@ func connector() int {
 		defer priv.Quit()
 	}
 
-	pm, err := manager.NewPrinterManager(c, g, priv, s, config.CUPSPrinterPollInterval,
+	cupsPrinterPollInterval, err := time.ParseDuration(config.CUPSPrinterPollInterval)
+	if err != nil {
+		log.Fatalf("Failed to parse CUPS printer poll interval: %s", err)
+		return 1
+	}
+	pm, err := manager.NewPrinterManager(c, g, priv, s, cupsPrinterPollInterval,
 		config.CUPSJobQueueSize, config.CUPSJobFullUsername, config.CUPSIgnoreRawPrinters,
 		config.ShareScope, jobs, xmppNotifications)
 	if err != nil {
