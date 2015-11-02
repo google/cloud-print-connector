@@ -115,11 +115,27 @@ func main() {
 	app.Run(os.Args)
 }
 
+func dieWithMessage(args ...interface{}) {
+	dieWithMessagef("", args...)
+}
+
+func dieWithMessagef(format string, args ...interface{}) {
+	if len(format) == 0 {
+		fmt.Fprintln(os.Stderr, args)
+	} else {
+		if format[len(format)-1] != '\n' {
+			format = format + "\n"
+		}
+		fmt.Fprintf(os.Stderr, format, args)
+	}
+	os.Exit(1)
+}
+
 // getConfig returns a config object
 func getConfig(context *cli.Context) *lib.Config {
 	config, _, err := lib.GetConfig(context)
 	if err != nil {
-		panic(err)
+		dieWithMessage(err)
 	}
 	return config
 }
@@ -131,7 +147,7 @@ func getGCP(config *lib.Config) *gcp.GoogleCloudPrint {
 		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
 		0, nil)
 	if err != nil {
-		panic(err)
+		dieWithMessage(err)
 	}
 	return gcp
 }
@@ -141,7 +157,7 @@ func getGCP(config *lib.Config) *gcp.GoogleCloudPrint {
 func updateConfigFile(context *cli.Context) {
 	config, configFilename, err := lib.GetConfig(context)
 	if err != nil {
-		panic(err)
+		dieWithMessage(err)
 	}
 	if configFilename == "" {
 		fmt.Println("Could not find a config file to update")
@@ -151,13 +167,13 @@ func updateConfigFile(context *cli.Context) {
 	// Same config in []byte format.
 	configRaw, err := ioutil.ReadFile(configFilename)
 	if err != nil {
-		panic(err)
+		dieWithMessage(err)
 	}
 
 	// Same config in map format so that we can detect missing keys.
 	var configMap map[string]interface{}
 	if err = json.Unmarshal(configRaw, &configMap); err != nil {
-		panic(err)
+		dieWithMessage(err)
 	}
 
 	// No changes detected yet.
@@ -343,8 +359,7 @@ func deleteAllGCPPrinters(context *cli.Context) {
 
 	printers, err := gcp.List()
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		dieWithMessage(err)
 	}
 
 	var wg sync.WaitGroup
@@ -404,8 +419,7 @@ func deleteAllGCPPrinterJobs(context *cli.Context) {
 
 	jobs, err := gcp.Fetch(context.String("printer-id"))
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		dieWithMessage(err)
 	}
 
 	if len(jobs) == 0 {
@@ -438,8 +452,7 @@ func cancelAllGCPPrinterJobs(context *cli.Context) {
 
 	jobs, err := gcp.Fetch(context.String("printer-id"))
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		dieWithMessage(err)
 	}
 
 	if len(jobs) == 0 {
@@ -478,8 +491,7 @@ func showGCPPrinterStatus(context *cli.Context) {
 
 	printer, _, err := gcp.Printer(context.String("printer-id"))
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		dieWithMessage(err)
 	}
 
 	fmt.Println("Name:", printer.DefaultDisplayName)
@@ -487,8 +499,7 @@ func showGCPPrinterStatus(context *cli.Context) {
 
 	jobs, err := gcp.Jobs(context.String("printer-id"))
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		dieWithMessage(err)
 	}
 
 	// Only init common states. Unusual states like DRAFT will only be shown

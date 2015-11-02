@@ -22,36 +22,36 @@ import (
 func monitorConnector(context *cli.Context) {
 	config, filename, err := lib.GetConfig(context)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to read config file: %s", err))
+		dieWithMessagef("Failed to read config file: %s", err)
 	}
 	if filename == "" {
-		fmt.Fprintln(os.Stderr, "No config file was found, so using defaults")
+		fmt.Println("No config file was found, so using defaults")
 	}
 
 	if _, err := os.Stat(config.MonitorSocketFilename); err != nil {
 		if !os.IsNotExist(err) {
-			panic(err)
+			dieWithMessage(err)
 		}
-		panic(fmt.Sprintf(
+		dieWithMessagef(
 			"No connector is running, or the monitoring socket %s is mis-configured",
-			config.MonitorSocketFilename))
+			config.MonitorSocketFilename)
 	}
 
 	timer := time.AfterFunc(context.Duration("monitor-timeout"), func() {
-		panic(fmt.Sprintf("timeout after %s", context.Duration("monitor-timeout").String()))
+		dieWithMessagef("timeout after %s", context.Duration("monitor-timeout").String())
 	})
 
 	conn, err := net.DialTimeout("unix", config.MonitorSocketFilename, time.Second)
 	if err != nil {
-		panic(fmt.Sprintf(
+		dieWithMessagef(
 			"No connector is running, or it is not listening to socket %s",
-			config.MonitorSocketFilename))
+			config.MonitorSocketFilename)
 	}
 	defer conn.Close()
 
 	buf, err := ioutil.ReadAll(conn)
 	if err != nil {
-		panic(err)
+		dieWithMessage(err)
 	}
 
 	timer.Stop()
