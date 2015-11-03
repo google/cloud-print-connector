@@ -79,6 +79,7 @@ func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptio
 			return nil, "", "", err
 		}
 		if err = pce.refresh(pc.cc); err != nil {
+			pce.free()
 			return nil, "", "", err
 		}
 
@@ -96,6 +97,8 @@ func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptio
 
 	} else {
 		if err := pce.refresh(pc.cc); err != nil {
+			delete(pc.cache, printername)
+			pce.free()
 			return nil, "", "", err
 		}
 		description, manufacturer, model := pce.getFields()
