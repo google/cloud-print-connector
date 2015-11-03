@@ -11,6 +11,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -169,7 +170,7 @@ func getUserClientFromUser(context *cli.Context) (*http.Client, string) {
 	}
 	response, err := http.PostForm(gcpOAuthDeviceCodeURL, form)
 	if err != nil {
-		dieWithMessage(err)
+		log.Fatalln(err)
 	}
 
 	var r struct {
@@ -210,7 +211,7 @@ func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int
 		}
 		response, err := http.PostForm(gcpOAuthTokenPollURL, form)
 		if err != nil {
-			dieWithMessage(err)
+			log.Fatalln(err)
 		}
 
 		var r struct {
@@ -231,7 +232,7 @@ func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int
 		case "slow_down":
 			interval *= 2
 		default:
-			dieWithMessage(err)
+			log.Fatalln(err)
 		}
 	}
 
@@ -266,10 +267,10 @@ func initRobotAccount(context *cli.Context, userClient *http.Client) (string, st
 	url := fmt.Sprintf("%s%s?%s", lib.DefaultConfig.GCPBaseURL, "createrobot", params.Encode())
 	response, err := userClient.Get(url)
 	if err != nil {
-		dieWithMessage(err)
+		log.Fatalln(err)
 	}
 	if response.StatusCode != http.StatusOK {
-		dieWithMessage(err)
+		log.Fatalf("Failed to initialize robot account: %s\n", response.Status)
 	}
 
 	var robotInit struct {
@@ -280,10 +281,10 @@ func initRobotAccount(context *cli.Context, userClient *http.Client) (string, st
 	}
 
 	if err = json.NewDecoder(response.Body).Decode(&robotInit); err != nil {
-		dieWithMessage(err)
+		log.Fatalln(err)
 	}
 	if !robotInit.Success {
-		dieWithMessage(err)
+		log.Fatalf("Failed to initialize robot account: %s\n", robotInit.Message)
 	}
 
 	return robotInit.XMPPJID, robotInit.AuthCode
@@ -303,7 +304,7 @@ func verifyRobotAccount(authCode string) string {
 
 	token, err := config.Exchange(oauth2.NoContext, authCode)
 	if err != nil {
-		dieWithMessage(err)
+		log.Fatalln(err)
 	}
 
 	return token.RefreshToken
@@ -386,7 +387,7 @@ func createLocalConfig(context *cli.Context) *lib.Config {
 
 func writeConfigFile(context *cli.Context, config *lib.Config) string {
 	if configFilename, err := config.ToFile(context); err != nil {
-		dieWithMessage(err)
+		log.Fatalln(err)
 	} else {
 		return configFilename
 	}
@@ -398,7 +399,7 @@ func scanNonEmptyString(prompt string) string {
 		var answer string
 		fmt.Println(prompt)
 		if length, err := fmt.Scan(&answer); err != nil {
-			dieWithMessage(err)
+			log.Fatalln(err)
 		} else if length > 0 {
 			fmt.Println("")
 			return answer
@@ -412,7 +413,7 @@ func scanYesOrNo(question string) bool {
 		var answer string
 		fmt.Println(question)
 		if _, err := fmt.Scan(&answer); err != nil {
-			dieWithMessage(err)
+			log.Fatalln(err)
 		} else if parsed, value := stringToBool(answer); parsed {
 			fmt.Println("")
 			return value
@@ -457,7 +458,7 @@ func initConfigFile(context *cli.Context) {
 	}
 
 	if !localEnable && !cloudEnable {
-		dieWithMessagef("Try again. Either local or cloud (or both) must be enabled for the connector to do something.")
+		log.Fatalln("Try again. Either local or cloud (or both) must be enabled for the connector to do something.")
 	}
 
 	var config *lib.Config
