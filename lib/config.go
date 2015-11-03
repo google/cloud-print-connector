@@ -58,8 +58,37 @@ type Config struct {
 	// User-chosen name of this proxy. Should be unique per Google user account.
 	ProxyName string `json:"proxy_name,omitempty"`
 
+	// XMPP server FQDN.
+	XMPPServer string `json:"xmpp_server,omitempty"`
+
+	// XMPP server port number.
+	XMPPPort uint16 `json:"xmpp_port,omitempty"`
+
+	// XMPP ping timeout (give up waiting after this time).
+	XMPPPingTimeout string `json:"gcp_xmpp_ping_timeout,omitempty"`
+
+	// XMPP ping interval (time between ping attempts).
+	// This value is used when a printer is registered, and can
+	// be overridden through the GCP API update method.
+	XMPPPingIntervalDefault string `json:"gcp_xmpp_ping_interval_default,omitempty"`
+
+	// GCP API URL prefix.
+	GCPBaseURL string `json:"gcp_base_url,omitempty"`
+
+	// OAuth2 client ID (not unique per client).
+	GCPOAuthClientID string `json:"gcp_oauth_client_id,omitempty"`
+
+	// OAuth2 client secret (not unique per client).
+	GCPOAuthClientSecret string `json:"gcp_oauth_client_secret,omitempty"`
+
+	// OAuth2 auth URL.
+	GCPOAuthAuthURL string `json:"gcp_oauth_auth_url,omitempty"`
+
+	// OAuth2 token URL.
+	GCPOAuthTokenURL string `json:"gcp_oauth_token_url,omitempty"`
+
 	// Maximum quantity of jobs (data) to download concurrently.
-	GCPMaxConcurrentDownloads uint `json:"gcp_max_concurrent_downloads"`
+	GCPMaxConcurrentDownloads uint `json:"gcp_max_concurrent_downloads,omitempty"`
 
 	// Maximum quantity of open CUPS connections.
 	CUPSMaxConnections uint `json:"cups_max_connections"`
@@ -94,35 +123,6 @@ type Config struct {
 	// Filename of unix socket for connector-check to talk to connector.
 	MonitorSocketFilename string `json:"monitor_socket_filename"`
 
-	// GCP API URL prefix.
-	GCPBaseURL string `json:"gcp_base_url"`
-
-	// XMPP server FQDN.
-	XMPPServer string `json:"xmpp_server"`
-
-	// XMPP server port number.
-	XMPPPort uint16 `json:"xmpp_port"`
-
-	// XMPP ping timeout (give up waiting after this time).
-	XMPPPingTimeout string `json:"gcp_xmpp_ping_timeout"`
-
-	// XMPP ping interval (time between ping attempts).
-	// This value is used when a printer is registered, and can
-	// be overridden through the GCP API update method.
-	XMPPPingIntervalDefault string `json:"gcp_xmpp_ping_interval_default"`
-
-	// OAuth2 client ID (not unique per client).
-	GCPOAuthClientID string `json:"gcp_oauth_client_id"`
-
-	// OAuth2 client secret (not unique per client).
-	GCPOAuthClientSecret string `json:"gcp_oauth_client_secret"`
-
-	// OAuth2 auth URL.
-	GCPOAuthAuthURL string `json:"gcp_oauth_auth_url"`
-
-	// OAuth2 token URL.
-	GCPOAuthTokenURL string `json:"gcp_oauth_token_url"`
-
 	// Enable SNMP to augment CUPS printer information.
 	SNMPEnable bool `json:"snmp_enable"`
 
@@ -143,11 +143,21 @@ type Config struct {
 // Omitted Config fields are omitted on purpose; they are unique per
 // connector instance.
 var DefaultConfig = Config{
+	XMPPServer:                "talk.google.com",
+	XMPPPort:                  443,
+	XMPPPingTimeout:           "5s",
+	XMPPPingIntervalDefault:   "2m",
+	GCPBaseURL:                "https://www.google.com/cloudprint/",
+	GCPOAuthClientID:          "539833558011-35iq8btpgas80nrs3o7mv99hm95d4dv6.apps.googleusercontent.com",
+	GCPOAuthClientSecret:      "V9BfPOvdiYuw12hDx5Y5nR0a",
+	GCPOAuthAuthURL:           "https://accounts.google.com/o/oauth2/auth",
+	GCPOAuthTokenURL:          "https://accounts.google.com/o/oauth2/token",
 	GCPMaxConcurrentDownloads: 5,
-	CUPSMaxConnections:        50,
-	CUPSConnectTimeout:        "5s",
-	CUPSJobQueueSize:          3,
-	CUPSPrinterPollInterval:   "1m",
+
+	CUPSMaxConnections:      50,
+	CUPSConnectTimeout:      "5s",
+	CUPSJobQueueSize:        3,
+	CUPSPrinterPollInterval: "1m",
 	CUPSPrinterAttributes: []string{
 		"cups-version",
 		"device-uri",
@@ -178,15 +188,6 @@ var DefaultConfig = Config{
 	PrefixJobIDToJobTitle:        false,
 	DisplayNamePrefix:            "",
 	MonitorSocketFilename:        "/tmp/cups-connector-monitor.sock",
-	GCPBaseURL:                   "https://www.google.com/cloudprint/",
-	XMPPServer:                   "talk.google.com",
-	XMPPPort:                     443,
-	XMPPPingTimeout:              "5s",
-	XMPPPingIntervalDefault:      "2m",
-	GCPOAuthClientID:             "539833558011-35iq8btpgas80nrs3o7mv99hm95d4dv6.apps.googleusercontent.com",
-	GCPOAuthClientSecret:         "V9BfPOvdiYuw12hDx5Y5nR0a",
-	GCPOAuthAuthURL:              "https://accounts.google.com/o/oauth2/auth",
-	GCPOAuthTokenURL:             "https://accounts.google.com/o/oauth2/token",
 	SNMPEnable:                   false,
 	SNMPCommunity:                "public",
 	SNMPMaxConnections:           100,

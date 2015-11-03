@@ -60,21 +60,21 @@ func main() {
 		glog.Fatalf("Failed to parse cups connect timeout: %s", err)
 	}
 
-	gcpXMPPPingTimeout, err := time.ParseDuration(config.XMPPPingTimeout)
-	if err != nil {
-		glog.Fatalf("Failed to parse xmpp ping timeout: %s", err)
-	}
-	gcpXMPPPingIntervalDefault, err := time.ParseDuration(config.XMPPPingIntervalDefault)
-	if err != nil {
-		glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
-	}
-
 	jobs := make(chan *lib.Job, 10)
 	xmppNotifications := make(chan xmpp.PrinterNotification, 5)
 
 	var g *gcp.GoogleCloudPrint
 	var x *xmpp.XMPP
 	if config.CloudPrintingEnable {
+		gcpXMPPPingTimeout, err := time.ParseDuration(config.XMPPPingTimeout)
+		if err != nil {
+			glog.Fatalf("Failed to parse xmpp ping timeout: %s", err)
+		}
+		gcpXMPPPingIntervalDefault, err := time.ParseDuration(config.XMPPPingIntervalDefault)
+		if err != nil {
+			glog.Fatalf("Failed to parse xmpp ping interval default: %s", err)
+		}
+
 		g, err = gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 			config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 			config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,

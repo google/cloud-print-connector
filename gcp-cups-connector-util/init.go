@@ -377,41 +377,67 @@ func createRobotAccount(userClient *http.Client) (string, string) {
 	return xmppJID, token
 }
 
-func createConfigFile(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxy string, localEnable, cloudEnable bool) string {
-	config := lib.Config{
-		xmppJID,
-		robotRefreshToken,
-		userRefreshToken,
-		shareScope,
-		proxy,
-		flagToUint(gcpMaxConcurrentDownloadsFlag, lib.DefaultConfig.GCPMaxConcurrentDownloads),
-		flagToUint(cupsMaxConnectionsFlag, lib.DefaultConfig.CUPSMaxConnections),
-		flagToDurationString(cupsConnectTimeoutFlag, lib.DefaultConfig.CUPSConnectTimeout),
-		flagToUint(cupsJobQueueSizeFlag, lib.DefaultConfig.CUPSJobQueueSize),
-		flagToDurationString(cupsPrinterPollIntervalFlag, lib.DefaultConfig.CUPSPrinterPollInterval),
-		lib.DefaultConfig.CUPSPrinterAttributes,
-		flagToBool(cupsJobFullUsernameFlag, lib.DefaultConfig.CUPSJobFullUsername),
-		flagToBool(cupsIgnoreRawPrintersFlag, lib.DefaultConfig.CUPSIgnoreRawPrinters),
-		flagToBool(copyPrinterInfoToDisplayNameFlag, lib.DefaultConfig.CopyPrinterInfoToDisplayName),
-		flagToBool(prefixJobIDToJobTitleFlag, lib.DefaultConfig.PrefixJobIDToJobTitle),
-		flagToString(displayNamePrefixFlag, lib.DefaultConfig.DisplayNamePrefix),
-		flagToString(monitorSocketFilenameFlag, lib.DefaultConfig.MonitorSocketFilename),
-		flagToString(gcpBaseURLFlag, lib.DefaultConfig.GCPBaseURL),
-		flagToString(gcpXMPPServerFlag, lib.DefaultConfig.XMPPServer),
-		flagToUint16(gcpXMPPPortFlag, lib.DefaultConfig.XMPPPort),
-		flagToDurationString(gcpXMPPPingTimeoutFlag, lib.DefaultConfig.XMPPPingTimeout),
-		flagToDurationString(gcpXMPPPingIntervalDefaultFlag, lib.DefaultConfig.XMPPPingIntervalDefault),
-		flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID),
-		flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
-		flagToString(gcpOAuthAuthURLFlag, lib.DefaultConfig.GCPOAuthAuthURL),
-		flagToString(gcpOAuthTokenURLFlag, lib.DefaultConfig.GCPOAuthTokenURL),
-		flagToBool(snmpEnableFlag, lib.DefaultConfig.SNMPEnable),
-		flagToString(snmpCommunityFlag, lib.DefaultConfig.SNMPCommunity),
-		flagToUint(snmpMaxConnectionsFlag, lib.DefaultConfig.SNMPMaxConnections),
-		localEnable,
-		cloudEnable,
-	}
+// createCloudConfig creates a config object that supports cloud and (optionally) local mode.
+func createCloudConfig(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string, localEnable bool) *lib.Config {
+	return &lib.Config{
+		XMPPJID:                   xmppJID,
+		RobotRefreshToken:         robotRefreshToken,
+		UserRefreshToken:          userRefreshToken,
+		ShareScope:                shareScope,
+		ProxyName:                 proxyName,
+		XMPPServer:                flagToString(gcpXMPPServerFlag, lib.DefaultConfig.XMPPServer),
+		XMPPPort:                  flagToUint16(gcpXMPPPortFlag, lib.DefaultConfig.XMPPPort),
+		XMPPPingTimeout:           flagToDurationString(gcpXMPPPingTimeoutFlag, lib.DefaultConfig.XMPPPingTimeout),
+		XMPPPingIntervalDefault:   flagToDurationString(gcpXMPPPingIntervalDefaultFlag, lib.DefaultConfig.XMPPPingIntervalDefault),
+		GCPBaseURL:                flagToString(gcpBaseURLFlag, lib.DefaultConfig.GCPBaseURL),
+		GCPOAuthClientID:          flagToString(gcpOAuthClientIDFlag, lib.DefaultConfig.GCPOAuthClientID),
+		GCPOAuthClientSecret:      flagToString(gcpOAuthClientSecretFlag, lib.DefaultConfig.GCPOAuthClientSecret),
+		GCPOAuthAuthURL:           flagToString(gcpOAuthAuthURLFlag, lib.DefaultConfig.GCPOAuthAuthURL),
+		GCPOAuthTokenURL:          flagToString(gcpOAuthTokenURLFlag, lib.DefaultConfig.GCPOAuthTokenURL),
+		GCPMaxConcurrentDownloads: flagToUint(gcpMaxConcurrentDownloadsFlag, lib.DefaultConfig.GCPMaxConcurrentDownloads),
 
+		CUPSMaxConnections:           flagToUint(cupsMaxConnectionsFlag, lib.DefaultConfig.CUPSMaxConnections),
+		CUPSConnectTimeout:           flagToDurationString(cupsConnectTimeoutFlag, lib.DefaultConfig.CUPSConnectTimeout),
+		CUPSJobQueueSize:             flagToUint(cupsJobQueueSizeFlag, lib.DefaultConfig.CUPSJobQueueSize),
+		CUPSPrinterPollInterval:      flagToDurationString(cupsPrinterPollIntervalFlag, lib.DefaultConfig.CUPSPrinterPollInterval),
+		CUPSPrinterAttributes:        lib.DefaultConfig.CUPSPrinterAttributes,
+		CUPSJobFullUsername:          flagToBool(cupsJobFullUsernameFlag, lib.DefaultConfig.CUPSJobFullUsername),
+		CUPSIgnoreRawPrinters:        flagToBool(cupsIgnoreRawPrintersFlag, lib.DefaultConfig.CUPSIgnoreRawPrinters),
+		CopyPrinterInfoToDisplayName: flagToBool(copyPrinterInfoToDisplayNameFlag, lib.DefaultConfig.CopyPrinterInfoToDisplayName),
+		PrefixJobIDToJobTitle:        flagToBool(prefixJobIDToJobTitleFlag, lib.DefaultConfig.PrefixJobIDToJobTitle),
+		DisplayNamePrefix:            flagToString(displayNamePrefixFlag, lib.DefaultConfig.DisplayNamePrefix),
+		MonitorSocketFilename:        flagToString(monitorSocketFilenameFlag, lib.DefaultConfig.MonitorSocketFilename),
+		SNMPEnable:                   flagToBool(snmpEnableFlag, lib.DefaultConfig.SNMPEnable),
+		SNMPCommunity:                flagToString(snmpCommunityFlag, lib.DefaultConfig.SNMPCommunity),
+		SNMPMaxConnections:           flagToUint(snmpMaxConnectionsFlag, lib.DefaultConfig.SNMPMaxConnections),
+		LocalPrintingEnable:          localEnable,
+		CloudPrintingEnable:          true,
+	}
+}
+
+// createLocalConfig creates a config object that supports local mode.
+func createLocalConfig() *lib.Config {
+	return &lib.Config{
+		CUPSMaxConnections:           flagToUint(cupsMaxConnectionsFlag, lib.DefaultConfig.CUPSMaxConnections),
+		CUPSConnectTimeout:           flagToDurationString(cupsConnectTimeoutFlag, lib.DefaultConfig.CUPSConnectTimeout),
+		CUPSJobQueueSize:             flagToUint(cupsJobQueueSizeFlag, lib.DefaultConfig.CUPSJobQueueSize),
+		CUPSPrinterPollInterval:      flagToDurationString(cupsPrinterPollIntervalFlag, lib.DefaultConfig.CUPSPrinterPollInterval),
+		CUPSPrinterAttributes:        lib.DefaultConfig.CUPSPrinterAttributes,
+		CUPSJobFullUsername:          flagToBool(cupsJobFullUsernameFlag, lib.DefaultConfig.CUPSJobFullUsername),
+		CUPSIgnoreRawPrinters:        flagToBool(cupsIgnoreRawPrintersFlag, lib.DefaultConfig.CUPSIgnoreRawPrinters),
+		CopyPrinterInfoToDisplayName: flagToBool(copyPrinterInfoToDisplayNameFlag, lib.DefaultConfig.CopyPrinterInfoToDisplayName),
+		PrefixJobIDToJobTitle:        flagToBool(prefixJobIDToJobTitleFlag, lib.DefaultConfig.PrefixJobIDToJobTitle),
+		DisplayNamePrefix:            flagToString(displayNamePrefixFlag, lib.DefaultConfig.DisplayNamePrefix),
+		MonitorSocketFilename:        flagToString(monitorSocketFilenameFlag, lib.DefaultConfig.MonitorSocketFilename),
+		SNMPEnable:                   flagToBool(snmpEnableFlag, lib.DefaultConfig.SNMPEnable),
+		SNMPCommunity:                flagToString(snmpCommunityFlag, lib.DefaultConfig.SNMPCommunity),
+		SNMPMaxConnections:           flagToUint(snmpMaxConnectionsFlag, lib.DefaultConfig.SNMPMaxConnections),
+		LocalPrintingEnable:          true,
+		CloudPrintingEnable:          false,
+	}
+}
+
+func writeConfigFile(config *lib.Config) string {
 	if configFilename, err := config.ToFile(); err != nil {
 		log.Fatal(err)
 		panic("unreachable")
@@ -487,6 +513,8 @@ func initConfigFile() {
 		log.Fatal("Try again. Either local or cloud (or both) must be enabled for the connector to do something.")
 	}
 
+	var config *lib.Config
+
 	var xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string
 	if cloudEnable {
 		var parsed bool
@@ -528,10 +556,13 @@ func initConfigFile() {
 
 		fmt.Println("Acquired OAuth credentials for robot account")
 		fmt.Println("")
+		config = createCloudConfig(xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName, localEnable)
+
+	} else {
+		config = createLocalConfig()
 	}
 
-	configFilename := createConfigFile(
-		xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName, localEnable, cloudEnable)
+	configFilename := writeConfigFile(config)
 	fmt.Printf("The config file %s is ready to rock.\n", configFilename)
 	if cloudEnable {
 		fmt.Println("Keep it somewhere safe, as it contains an OAuth refresh token.")
