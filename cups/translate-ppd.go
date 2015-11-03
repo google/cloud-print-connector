@@ -14,8 +14,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/golang/glog"
 	"github.com/google/cups-connector/cdd"
+	"github.com/google/cups-connector/log"
 )
 
 const (
@@ -325,7 +325,7 @@ func openUIStatementsToEntries(statements [][]statement) (map[string]entry, map[
 		case ppdBoolean:
 			e.entryType = entryTypeBoolean
 		case ppdPickMany:
-			glog.Warning("This PPD file contains a PickMany OpenUI entry, which is not supported")
+			log.Warning("This PPD file contains a PickMany OpenUI entry, which is not supported")
 			continue
 		default:
 			continue

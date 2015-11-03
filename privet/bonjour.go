@@ -17,7 +17,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/golang/glog"
+	"github.com/google/cups-connector/log"
 )
 
 // TODO: How to add the _printer subtype?
@@ -130,5 +130,5 @@ func (z *zeroconf) quit() {
 
 //export logBonjourError
 func logBonjourError(err *C.char) {
-	glog.Warningf("Bonjour: %s", C.GoString(err))
+	log.Warningf("Bonjour: %s", C.GoString(err))
 }

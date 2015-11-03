@@ -21,9 +21,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/lib"
+	"github.com/google/cups-connector/log"
 )
 
 var (
@@ -63,7 +63,7 @@ func writeError(w http.ResponseWriter, e, description string) {
 func (e privetError) json() []byte {
 	marshalled, err := json.MarshalIndent(e, "", "  ")
 	if err != nil {
-		glog.Errorf("Failed to marshal Privet Error: %s", err)
+		log.Errorf("Failed to marshal Privet Error: %s", err)
 	}
 	return marshalled
 }
@@ -131,7 +131,7 @@ func (api *privetAPI) serve() {
 
 	err := http.Serve(api.listener, sm)
 	if err != nil && err != closed {
-		glog.Errorf("Privet API HTTP server failed: %s", err)
+		log.Errorf("Privet API HTTP server failed: %s", err)
 	}
 }
 
@@ -158,6 +158,7 @@ type infoResponse struct {
 }
 
 func (api *privetAPI) info(w http.ResponseWriter, r *http.Request) {
+	log.Debugf("Received /info request: %+v", r)
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -220,7 +221,7 @@ func (api *privetAPI) info(w http.ResponseWriter, r *http.Request) {
 
 	j, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
-		glog.Errorf("Failed to marshal Privet info: %s", err)
+		log.Errorf("Failed to marshal Privet info: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -247,6 +248,7 @@ func (api *privetAPI) checkRequest(w http.ResponseWriter, r *http.Request, metho
 }
 
 func (api *privetAPI) accesstoken(w http.ResponseWriter, r *http.Request) {
+	log.Debugf("Received /accesstoken request: %+v", r)
 	if ok := api.checkRequest(w, r, "GET"); !ok {
 		return
 	}
@@ -259,11 +261,11 @@ func (api *privetAPI) accesstoken(w http.ResponseWriter, r *http.Request) {
 
 	responseBody, httpStatusCode, err := api.getProximityToken(api.gcpID, user)
 	if err != nil {
-		glog.Errorf("Failed to get proximity token: %s", err)
+		log.Errorf("Failed to get proximity token: %s", err)
 	}
 
 	if responseBody == nil || len(responseBody) == 0 {
-		glog.Warning("Cloud returned empty response body")
+		log.Warning("Cloud returned empty response body")
 		writeError(w, "server_error", "Check connector logs")
 		return
 	}
@@ -275,7 +277,7 @@ func (api *privetAPI) accesstoken(w http.ResponseWriter, r *http.Request) {
 		ProximityToken map[string]interface{} `json:"proximity_token"`
 	}
 	if err = json.Unmarshal(responseBody, &response); err != nil {
-		glog.Errorf("Failed to unmarshal ticket from cloud: %s", err)
+		log.Errorf("Failed to unmarshal ticket from cloud: %s", err)
 		writeError(w, "server_error", "Check connector logs")
 		return
 	}
@@ -283,7 +285,7 @@ func (api *privetAPI) accesstoken(w http.ResponseWriter, r *http.Request) {
 	if response.Success {
 		token, err := json.MarshalIndent(response.ProximityToken, "", "  ")
 		if err != nil {
-			glog.Errorf("Failed to marshal something that was just unmarshalled: %s", err)
+			log.Errorf("Failed to marshal something that was just unmarshalled: %s", err)
 			writeError(w, "server_error", "Check connector logs")
 		} else {
 			w.Write(token)
@@ -307,6 +309,7 @@ func (api *privetAPI) accesstoken(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *privetAPI) capabilities(w http.ResponseWriter, r *http.Request) {
+	log.Debugf("Received /capabilities request: %+v", r)
 	if ok := api.checkRequest(w, r, "GET"); !ok {
 		return
 	}
@@ -323,7 +326,7 @@ func (api *privetAPI) capabilities(w http.ResponseWriter, r *http.Request) {
 	}
 	j, err := json.MarshalIndent(capabilities, "", "  ")
 	if err != nil {
-		glog.Errorf("Failed to marshal capabilities response: %s", err)
+		log.Errorf("Failed to marshal capabilities response: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 	} else {
 		w.Write(j)
@@ -331,20 +334,21 @@ func (api *privetAPI) capabilities(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *privetAPI) createjob(w http.ResponseWriter, r *http.Request) {
+	log.Debugf("Received /createjob request: %+v", r)
 	if ok := api.checkRequest(w, r, "POST"); !ok {
 		return
 	}
 
 	requestBody, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		glog.Warningf("Failed to read request body: %s", err)
+		log.Warningf("Failed to read request body: %s", err)
 		writeError(w, "invalid_ticket", "Check connector logs")
 		return
 	}
 
 	var ticket cdd.CloudJobTicket
 	if err = json.Unmarshal(requestBody, &ticket); err != nil {
-		glog.Warningf("Failed to read request body: %s", err)
+		log.Warningf("Failed to read request body: %s", err)
 		writeError(w, "invalid_ticket", "Check connector logs")
 		return
 	}
@@ -369,7 +373,7 @@ func (api *privetAPI) createjob(w http.ResponseWriter, r *http.Request) {
 	j, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
 		api.jc.deleteJob(jobID)
-		glog.Errorf("Failed to marrshal createJob response: %s", err)
+		log.Errorf("Failed to marrshal createJob response: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 	} else {
 		w.Write(j)
@@ -377,13 +381,14 @@ func (api *privetAPI) createjob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
+	log.Debugf("Received /submitdoc request: %+v", r)
 	if ok := api.checkRequest(w, r, "POST"); !ok {
 		return
 	}
 
 	file, err := ioutil.TempFile("", "cups-connector-privet-")
 	if err != nil {
-		glog.Errorf("Failed to create file for new Privet job: %s", err)
+		log.Errorf("Failed to create file for new Privet job: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -391,7 +396,7 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 
 	jobSize, err := io.Copy(file, r.Body)
 	if err != nil {
-		glog.Errorf("Failed to copy new print job file: %s", err)
+		log.Errorf("Failed to copy new print job file: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		os.Remove(file.Name())
 		return
@@ -466,7 +471,7 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 	response.JobName = jobName
 	j, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
-		glog.Errorf("Failed to marshal submitdoc response: %s", err)
+		log.ErrorJobf(jobID, "Failed to marshal submitdoc response: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -475,6 +480,7 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *privetAPI) jobstate(w http.ResponseWriter, r *http.Request) {
+	log.Debugf("Received /jobstate request: %+v", r)
 	if ok := api.checkRequest(w, r, "GET"); !ok {
 		return
 	}

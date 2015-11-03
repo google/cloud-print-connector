@@ -21,11 +21,10 @@ import (
 	"github.com/google/cups-connector/cups"
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
+	"github.com/google/cups-connector/log"
 	"github.com/google/cups-connector/privet"
 	"github.com/google/cups-connector/snmp"
 	"github.com/google/cups-connector/xmpp"
-
-	"github.com/golang/glog"
 )
 
 // Manages all interactions between CUPS and Google Cloud Print.
@@ -56,7 +55,7 @@ type PrinterManager struct {
 	quit chan struct{}
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, snmp *snmp.SNMPManager, printerPollInterval string, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string, jobs <-chan *lib.Job, xmppNotifications <-chan xmpp.PrinterNotification) (*PrinterManager, error) {
+func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, snmp *snmp.SNMPManager, printerPollInterval time.Duration, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string, jobs <-chan *lib.Job, xmppNotifications <-chan xmpp.PrinterNotification) (*PrinterManager, error) {
 	var printers *lib.ConcurrentPrinterMap
 	var queuedJobsCount map[string]uint
 
@@ -113,18 +112,14 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *prive
 		for _, printer := range pm.printers.GetAll() {
 			err := privet.AddPrinter(printer, pm.printers.GetByCUPSName)
 			if err != nil {
-				glog.Warningf("Failed to register %s locally: %s", printer.Name, err)
+				log.WarningPrinterf(printer.Name, "Failed to register locally: %s", err)
 			} else {
-				glog.Infof("Registered %s locally", printer.Name)
+				log.InfoPrinterf(printer.Name, "Registered locally")
 			}
 		}
 	}
 
-	ppi, err := time.ParseDuration(printerPollInterval)
-	if err != nil {
-		return nil, err
-	}
-	pm.syncPrintersPeriodically(ppi)
+	pm.syncPrintersPeriodically(printerPollInterval)
 	pm.listenNotifications(jobs, xmppNotifications)
 
 	if gcp != nil {
@@ -150,7 +145,7 @@ func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 			select {
 			case <-t.C:
 				if err := pm.syncPrinters(false); err != nil {
-					glog.Error(err)
+					log.Error(err)
 				}
 				t.Reset(interval)
 
@@ -162,7 +157,7 @@ func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 }
 
 func (pm *PrinterManager) syncPrinters(ignorePrivet bool) error {
-	glog.Info("Synchronizing printers, stand by")
+	log.Info("Synchronizing printers, stand by")
 
 	// Get current snapshot of CUPS printers.
 	cupsPrinters, err := pm.cups.GetPrinters()
@@ -177,7 +172,7 @@ func (pm *PrinterManager) syncPrinters(ignorePrivet bool) error {
 	if pm.snmp != nil {
 		err = pm.snmp.AugmentPrinters(cupsPrinters)
 		if err != nil {
-			glog.Warningf("Failed to augment printers with SNMP data: %s", err)
+			log.Warningf("Failed to augment printers with SNMP data: %s", err)
 		}
 	}
 
@@ -195,7 +190,7 @@ func (pm *PrinterManager) syncPrinters(ignorePrivet bool) error {
 	// Compare the snapshot to what we know currently.
 	diffs := lib.DiffPrinters(cupsPrinters, pm.printers.GetAll())
 	if diffs == nil {
-		glog.Infof("Printers are already in sync; there are %d", len(cupsPrinters))
+		log.Infof("Printers are already in sync; there are %d", len(cupsPrinters))
 		return nil
 	}
 
@@ -214,7 +209,7 @@ func (pm *PrinterManager) syncPrinters(ignorePrivet bool) error {
 
 	// Update what we know.
 	pm.printers.Refresh(currentPrinters)
-	glog.Infof("Finished synchronizing %d printers", len(currentPrinters))
+	log.Infof("Finished synchronizing %d printers", len(currentPrinters))
 
 	return nil
 }
@@ -224,16 +219,16 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 	case lib.RegisterPrinter:
 		if pm.gcp != nil {
 			if err := pm.gcp.Register(&diff.Printer); err != nil {
-				glog.Errorf("Failed to register printer %s: %s", diff.Printer.Name, err)
+				log.ErrorPrinterf(diff.Printer.Name, "Failed to register: %s", err)
 				break
 			}
-			glog.Infof("Registered %s in the cloud", diff.Printer.Name)
+			log.InfoPrinterf(diff.Printer.Name+" "+diff.Printer.GCPID, "Registered in the cloud")
 
 			if pm.gcp.CanShare() {
 				if err := pm.gcp.Share(diff.Printer.GCPID, pm.shareScope); err != nil {
-					glog.Errorf("Failed to share printer %s: %s", diff.Printer.Name, err)
+					log.ErrorPrinterf(diff.Printer.Name, "Failed to share: %s", err)
 				} else {
-					glog.Infof("Shared %s", diff.Printer.Name)
+					log.InfoPrinterf(diff.Printer.Name, "Shared")
 				}
 			}
 		}
@@ -243,9 +238,9 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		if pm.privet != nil && !ignorePrivet {
 			err := pm.privet.AddPrinter(diff.Printer, pm.printers.GetByCUPSName)
 			if err != nil {
-				glog.Warningf("Failed to register %s locally: %s", diff.Printer.Name, err)
+				log.WarningPrinterf(diff.Printer.Name, "Failed to register locally: %s", err)
 			} else {
-				glog.Infof("Registered %s locally", diff.Printer.Name)
+				log.InfoPrinterf(diff.Printer.Name, "Registered locally")
 			}
 		}
 
@@ -255,18 +250,18 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 	case lib.UpdatePrinter:
 		if pm.gcp != nil {
 			if err := pm.gcp.Update(diff); err != nil {
-				glog.Errorf("Failed to update %s: %s", diff.Printer.Name, err)
+				log.ErrorPrinterf(diff.Printer.Name+" "+diff.Printer.GCPID, "Failed to update: %s", err)
 			} else {
-				glog.Infof("Updated %s in the cloud", diff.Printer.Name)
+				log.InfoPrinterf(diff.Printer.Name+" "+diff.Printer.GCPID, "Updated in the cloud")
 			}
 		}
 
 		if pm.privet != nil && !ignorePrivet && diff.DefaultDisplayNameChanged {
 			err := pm.privet.UpdatePrinter(diff)
 			if err != nil {
-				glog.Warningf("Failed to update %s locally: %s", diff.Printer.Name, err)
+				log.WarningPrinterf(diff.Printer.Name, "Failed to update locally: %s", err)
 			} else {
-				glog.Infof("Updated %s locally", diff.Printer.Name)
+				log.InfoPrinterf(diff.Printer.Name, "Updated locally")
 			}
 		}
 
@@ -278,18 +273,18 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 
 		if pm.gcp != nil {
 			if err := pm.gcp.Delete(diff.Printer.GCPID); err != nil {
-				glog.Errorf("Failed to delete a printer %s: %s", diff.Printer.GCPID, err)
+				log.ErrorPrinterf(diff.Printer.Name+" "+diff.Printer.GCPID, "Failed to delete from the cloud: %s", err)
 				break
 			}
-			glog.Infof("Deleted %s in the cloud", diff.Printer.Name)
+			log.InfoPrinterf(diff.Printer.Name+" "+diff.Printer.GCPID, "Deleted from the cloud")
 		}
 
 		if pm.privet != nil && !ignorePrivet {
 			err := pm.privet.DeletePrinter(diff.Printer.Name)
 			if err != nil {
-				glog.Warningf("Failed to delete %s locally: %s", diff.Printer.Name, err)
+				log.WarningPrinterf(diff.Printer.Name, "Failed to delete: %s", err)
 			} else {
-				glog.Infof("Deleted %s locally", diff.Printer.Name)
+				log.InfoPrinterf(diff.Printer.Name, "Deleted locally")
 			}
 		}
 
@@ -387,7 +382,7 @@ func (pm *PrinterManager) printJob(cupsPrinterName, filename, title, user, jobID
 			},
 		}
 		if err := updateJob(jobID, state); err != nil {
-			glog.Error(err)
+			log.ErrorJob(jobID, err)
 		}
 		return
 	}
@@ -398,7 +393,7 @@ func (pm *PrinterManager) printJob(cupsPrinterName, filename, title, user, jobID
 	cupsJobID, err := pm.cups.Print(printer.Name, filename, title, user, jobID, ticket)
 	if err != nil {
 		pm.incrementJobsProcessed(false)
-		glog.Errorf("Failed to send job %s to CUPS: %s", jobID, err)
+		log.ErrorJobf(jobID, "Failed to submit to CUPS: %s", err)
 		state := cdd.PrintJobStateDiff{
 			State: &cdd.JobState{
 				Type:              cdd.JobStateAborted,
@@ -406,12 +401,12 @@ func (pm *PrinterManager) printJob(cupsPrinterName, filename, title, user, jobID
 			},
 		}
 		if err := updateJob(jobID, state); err != nil {
-			glog.Error(err)
+			log.ErrorJob(jobID, err)
 		}
 		return
 	}
 
-	glog.Infof("Submitted job %s as CUPS job %d", jobID, cupsJobID)
+	log.InfoJobf(jobID, "Submitted as CUPS job %d", cupsJobID)
 
 	var state cdd.PrintJobStateDiff
 
@@ -421,7 +416,7 @@ func (pm *PrinterManager) printJob(cupsPrinterName, filename, title, user, jobID
 	for _ = range ticker.C {
 		cupsState, err := pm.cups.GetJobState(cupsJobID)
 		if err != nil {
-			glog.Warningf("Failed to get state of CUPS job %d: %s", cupsJobID, err)
+			log.WarningJobf(jobID, "Failed to get state of CUPS job %d: %s", cupsJobID, err)
 
 			state = cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
@@ -431,7 +426,7 @@ func (pm *PrinterManager) printJob(cupsPrinterName, filename, title, user, jobID
 				PagesPrinted: state.PagesPrinted,
 			}
 			if err := updateJob(jobID, state); err != nil {
-				glog.Error(err)
+				log.ErrorJob(jobID, err)
 			}
 			pm.incrementJobsProcessed(false)
 			return
@@ -440,9 +435,9 @@ func (pm *PrinterManager) printJob(cupsPrinterName, filename, title, user, jobID
 		if !reflect.DeepEqual(cupsState, state) {
 			state = cupsState
 			if err = updateJob(jobID, state); err != nil {
-				glog.Error(err)
+				log.ErrorJob(jobID, err)
 			}
-			glog.Infof("Job %s state is now: %s", jobID, state.State.Type)
+			log.InfoJobf(jobID, "State: %s", state.State.Type)
 		}
 
 		if state.State.Type != cdd.JobStateInProgress {
