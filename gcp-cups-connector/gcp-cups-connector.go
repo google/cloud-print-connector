@@ -16,8 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"gopkg.in/natefinch/lumberjack.v2"
-
 	"github.com/codegangsta/cli"
 	"github.com/google/cups-connector/cups"
 	"github.com/google/cups-connector/gcp"
@@ -54,12 +52,14 @@ func connector(context *cli.Context) int {
 		return 1
 	}
 
-	var logWriter io.Writer = &lumberjack.Logger{
-		Filename:   config.LogFileName,
-		MaxSize:    int(config.LogFileMaxMegabytes),
-		MaxBackups: int(config.LogMaxFiles),
-		LocalTime:  true,
+	logFileMaxBytes := config.LogFileMaxMegabytes * 1024 * 1024
+	var logWriter io.Writer
+	logWriter, err = log.NewLogRoller(config.LogFileName, logFileMaxBytes, config.LogMaxFiles)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to start log roller: %s", err)
+		return 1
 	}
+
 	if context.Bool("log-to-console") {
 		logWriter = io.MultiWriter(logWriter, os.Stderr)
 	}
