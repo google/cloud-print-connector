@@ -41,9 +41,10 @@ func main() {
 			Usage: "Log to STDERR, in addition to log file",
 		},
 	}
-	app.CommandNotFound = func(context *cli.Context, _ string) {
+	app.Action = func(context *cli.Context) {
 		os.Exit(connector(context))
 	}
+	app.RunAndExitOnError()
 }
 
 func connector(context *cli.Context) int {
