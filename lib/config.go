@@ -148,10 +148,10 @@ type Config struct {
 	LogFileName string `json:"log_file_name"`
 
 	// Maximum log file size.
-	LogFileMaxMegabytes uint64 `json:"log_file_max_megabytes"`
+	LogFileMaxMegabytes uint `json:"log_file_max_megabytes"`
 
 	// Maximum log file quantity.
-	LogMaxFiles uint16 `json:"log_max_files"`
+	LogMaxFiles uint `json:"log_max_files"`
 
 	// Least severity to log.
 	LogLevel string `json:"log_level"`
