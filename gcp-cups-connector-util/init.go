@@ -353,8 +353,8 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 		LocalPrintingEnable:          localEnable,
 		CloudPrintingEnable:          true,
 		LogFileName:                  context.String("log-file-name"),
-		LogFileMaxMegabytes:          uint64(context.Int("log-file-max-megabytes")),
-		LogMaxFiles:                  uint16(context.Int("log-max-files")),
+		LogFileMaxMegabytes:          uint(context.Int("log-file-max-megabytes")),
+		LogMaxFiles:                  uint(context.Int("log-max-files")),
 		LogLevel:                     context.String("log-level"),
 	}
 }
@@ -379,8 +379,8 @@ func createLocalConfig(context *cli.Context) *lib.Config {
 		LocalPrintingEnable:          true,
 		CloudPrintingEnable:          false,
 		LogFileName:                  context.String("log-file-name"),
-		LogFileMaxMegabytes:          uint64(context.Int("log-file-max-megabytes")),
-		LogMaxFiles:                  uint16(context.Int("log-max-files")),
+		LogFileMaxMegabytes:          uint(context.Int("log-file-max-megabytes")),
+		LogMaxFiles:                  uint(context.Int("log-max-files")),
 		LogLevel:                     context.String("log-level"),
 	}
 }
