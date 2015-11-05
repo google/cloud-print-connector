@@ -5,6 +5,7 @@
 // https://developers.google.com/open-source/licenses/bsd
 
 // +build !darwin
+// +build !windows
 
 package privet
 

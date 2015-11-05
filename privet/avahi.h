@@ -5,6 +5,7 @@
 // https://developers.google.com/open-source/licenses/bsd
 
 // +build !darwin
+// +build !windows
 
 #include <avahi-client/publish.h>
 #include <avahi-common/error.h>
