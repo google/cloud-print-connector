@@ -123,6 +123,24 @@ func TestTrColor(t *testing.T) {
 		},
 	}
 	translationTest(t, ppd, expected)
+
+	ppd = `*PPD-Adobe: "4.3"
+*OpenUI  *SelectColor/Select Color: PickOne
+*OrderDependency: 10 AnySetup *SelectColor
+*DefaultSelectColor: Color
+*SelectColor Color/Color:  "<</ProcessColorModel /DeviceCMYK>> setpagedevice"
+*SelectColor Grayscale/Grayscale:  "<</ProcessColorModel /DeviceGray>> setpagedevice"
+*CloseUI: *SelectColor
+`
+	expected = &cdd.PrinterDescriptionSection{
+		Color: &cdd.Color{
+			Option: []cdd.ColorOption{
+				cdd.ColorOption{"SelectColor:Color", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color")},
+				cdd.ColorOption{"SelectColor:Grayscale", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Grayscale")},
+			},
+		},
+	}
+	translationTest(t, ppd, expected)
 }
 
 func TestTrDuplex(t *testing.T) {
