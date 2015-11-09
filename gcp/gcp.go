@@ -177,6 +177,8 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]Job, error) {
 		}
 	}
 
+	log.Debugf("Fetched jobs: %+v", jobs)
+
 	return jobs, nil
 }
 
@@ -693,6 +695,8 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 
 	log.InfoJobf(job.GCPJobID, "Downloaded in %s", dt.String())
 	defer file.Close()
+
+	log.DebugJobf(job.GCPJobID, "Assembled with file %s: %+v", file.Name(), ticket.Print.Color)
 
 	return ticket, file.Name(), "", cdd.PrintJobStateDiff{}
 }

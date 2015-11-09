@@ -305,9 +305,11 @@ func (pm *PrinterManager) listenNotifications(jobs <-chan *lib.Job, xmppMessages
 				return
 
 			case job := <-jobs:
+				log.DebugJobf(job.JobID, "Received job: %+v", job)
 				go pm.printJob(job.CUPSPrinterName, job.Filename, job.Title, job.User, job.JobID, job.Ticket, job.UpdateJob)
 
 			case notification := <-xmppMessages:
+				log.Debugf("Received XMPP message: %+v", notification)
 				if notification.Type == xmpp.PrinterNewJobs {
 					if p, exists := pm.printers.GetByGCPID(notification.GCPID); exists {
 						go pm.gcp.HandleJobs(&p, func() { pm.incrementJobsProcessed(false) })

@@ -588,12 +588,12 @@ type tee struct {
 
 func (t *tee) Read(p []byte) (int, error) {
 	n, err := t.r.Read(p)
-	log.Debugf("XMPP read %d %s\n", n, p[0:n])
+	log.Debugf("XMPP read %d %s", n, p[0:n])
 	return n, err
 }
 
 func (t *tee) Write(p []byte) (int, error) {
 	n, err := t.w.Write(p)
-	log.Debugf("XMPP wrote %d %s\n", n, p[0:n])
+	log.Debugf("XMPP wrote %d %s", n, p[0:n])
 	return n, err
 }
