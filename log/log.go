@@ -62,7 +62,7 @@ func LevelFromString(level string) (LogLevel, bool) {
 	case "info":
 		return INFO, true
 	case "debug":
-		return INFO, true
+		return DEBUG, true
 	default:
 		return 0, false
 	}
