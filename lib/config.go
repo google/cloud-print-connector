@@ -155,6 +155,9 @@ type Config struct {
 
 	// Least severity to log.
 	LogLevel string `json:"log_level"`
+
+	// Log to the systemd journal instead of to files?
+	LogToJournal bool `json:"log_to_journal"`
 }
 
 // DefaultConfig represents reasonable default values for Config fields.
@@ -215,6 +218,7 @@ var DefaultConfig = Config{
 	LogFileMaxMegabytes:          1,
 	LogMaxFiles:                  3,
 	LogLevel:                     "INFO",
+	LogToJournal:                 false,
 }
 
 // getConfigFilename gets the absolute filename of the config file specified by

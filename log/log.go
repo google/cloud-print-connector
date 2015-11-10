@@ -13,8 +13,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/coreos/go-systemd/journal"
 )
 
 const (
@@ -23,6 +27,9 @@ const (
 	logPrinterFormat = "%c [%s] [Printer %s] %s\n"
 
 	dateTimeFormat = "02/Jan/2006:15:04:05 -0700"
+
+	journalJobFormat     = "[Job %s] %s"
+	journalPrinterFormat = "[Printer %s] %s"
 )
 
 var (
@@ -35,8 +42,9 @@ var (
 	}
 
 	logger struct {
-		writer io.Writer
-		level  LogLevel
+		writer         io.Writer
+		level          LogLevel
+		journalEnabled bool
 	}
 )
 
@@ -62,9 +70,26 @@ func LevelFromString(level string) (LogLevel, bool) {
 	case "info":
 		return INFO, true
 	case "debug":
-		return INFO, true
+		return DEBUG, true
 	default:
 		return 0, false
+	}
+}
+
+func (l LogLevel) priority() journal.Priority {
+	switch l {
+	case FATAL:
+		return journal.PriCrit
+	case ERROR:
+		return journal.PriErr
+	case WARNING:
+		return journal.PriWarning
+	case INFO:
+		return journal.PriInfo
+	case DEBUG:
+		return journal.PriDebug
+	default:
+		return journal.PriDebug
 	}
 }
 
@@ -83,6 +108,11 @@ func SetLevel(l LogLevel) {
 	logger.level = l
 }
 
+// SetJournalEnabled enables or disables writing to the systemd journal. Default is false.
+func SetJournalEnabled(b bool) {
+	logger.journalEnabled = b
+}
+
 func log(level LogLevel, printerID, jobID, format string, args ...interface{}) {
 	if level > logger.level {
 		return
@@ -97,12 +127,30 @@ func log(level LogLevel, printerID, jobID, format string, args ...interface{}) {
 		message = fmt.Sprintf(format, args...)
 	}
 
+	journalVars := make(map[string]string)
+	var journalMessage string
 	if printerID != "" {
 		fmt.Fprintf(logger.writer, logPrinterFormat, levelInitial, dateTime, printerID, message)
+		journalVars["PRINTER_ID"] = printerID
+		journalMessage = fmt.Sprintf(journalPrinterFormat, printerID, message)
 	} else if jobID != "" {
 		fmt.Fprintf(logger.writer, logJobFormat, levelInitial, dateTime, jobID, message)
+		journalVars["JOB_ID"] = jobID
+		journalMessage = fmt.Sprintf(journalJobFormat, jobID, message)
 	} else {
 		fmt.Fprintf(logger.writer, logFormat, levelInitial, dateTime, message)
+		journalMessage = message
+	}
+
+	if logger.journalEnabled {
+		pc := make([]uintptr, 1)
+		runtime.Callers(3, pc)
+		f := runtime.FuncForPC(pc[0])
+		journalVars["CODE_FUNC"] = f.Name()
+		file, line := f.FileLine(pc[0])
+		journalVars["CODE_FILE"] = file
+		journalVars["CODE_LINE"] = strconv.Itoa(line)
+		journal.Send(journalMessage, level.priority(), journalVars)
 	}
 }
 

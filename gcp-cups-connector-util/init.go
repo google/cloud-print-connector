@@ -42,7 +42,6 @@ var initFlags = []cli.Flag{
 		Usage: "GCP API timeout, for debugging",
 		Value: 30 * time.Second,
 	},
-
 	cli.StringFlag{
 		Name:  "share-scope",
 		Usage: "Scope (user or group email address) to automatically share printers with",
@@ -158,6 +157,10 @@ var initFlags = []cli.Flag{
 		Name:  "log-level",
 		Usage: "Minimum event severity to log: PANIC, ERROR, WARN, INFO, DEBUG, VERBOSE",
 		Value: lib.DefaultConfig.LogLevel,
+	},
+	cli.BoolFlag{
+		Name:  "log-to-journal",
+		Usage: "Log to the systemd journal (if available) instead of to log-file-name",
 	},
 }
 
@@ -356,6 +359,7 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 		LogFileMaxMegabytes:          uint(context.Int("log-file-max-megabytes")),
 		LogMaxFiles:                  uint(context.Int("log-max-files")),
 		LogLevel:                     context.String("log-level"),
+		LogToJournal:                 context.Bool("log-to-journal"),
 	}
 }
 
@@ -382,6 +386,7 @@ func createLocalConfig(context *cli.Context) *lib.Config {
 		LogFileMaxMegabytes:          uint(context.Int("log-file-max-megabytes")),
 		LogMaxFiles:                  uint(context.Int("log-max-files")),
 		LogLevel:                     context.String("log-level"),
+		LogToJournal:                 context.Bool("log-to-journal"),
 	}
 }
 

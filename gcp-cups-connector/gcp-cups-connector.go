@@ -11,12 +11,14 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/codegangsta/cli"
+	"github.com/coreos/go-systemd/journal"
 	"github.com/google/cups-connector/cups"
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
@@ -36,7 +38,7 @@ func main() {
 		lib.ConfigFilenameFlag,
 		cli.BoolFlag{
 			Name:  "log-to-console",
-			Usage: "Log to STDERR, in addition to log file",
+			Usage: "Log to STDERR, in addition to configured logging",
 		},
 	}
 	app.Action = func(context *cli.Context) {
@@ -52,24 +54,37 @@ func connector(context *cli.Context) int {
 		return 1
 	}
 
-	logFileMaxBytes := config.LogFileMaxMegabytes * 1024 * 1024
-	var logWriter io.Writer
-	logWriter, err = log.NewLogRoller(config.LogFileName, logFileMaxBytes, config.LogMaxFiles)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to start log roller: %s", err)
-		return 1
+	logToJournal := config.LogToJournal && journal.Enabled()
+	logToConsole := context.Bool("log-to-console")
+
+	if logToJournal {
+		log.SetJournalEnabled(true)
+		if logToConsole {
+			log.SetWriter(os.Stderr)
+		} else {
+			log.SetWriter(ioutil.Discard)
+		}
+	} else {
+		logFileMaxBytes := config.LogFileMaxMegabytes * 1024 * 1024
+		var logWriter io.Writer
+		logWriter, err = log.NewLogRoller(config.LogFileName, logFileMaxBytes, config.LogMaxFiles)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to start log roller: %s", err)
+			return 1
+		}
+
+		if logToConsole {
+			logWriter = io.MultiWriter(logWriter, os.Stderr)
+		}
+		log.SetWriter(logWriter)
 	}
 
-	if context.Bool("log-to-console") {
-		logWriter = io.MultiWriter(logWriter, os.Stderr)
-	}
 	logLevel, ok := log.LevelFromString(config.LogLevel)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Log level %s is not recognized", config.LogLevel)
 		return 1
 	}
 	log.SetLevel(logLevel)
-	log.SetWriter(logWriter)
 
 	if configFilename == "" {
 		log.Info("No config file was found, so using defaults")

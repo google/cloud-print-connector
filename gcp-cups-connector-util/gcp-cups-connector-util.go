@@ -330,6 +330,11 @@ func updateConfigFile(context *cli.Context) {
 		fmt.Println("Added log_level")
 		config.LogLevel = lib.DefaultConfig.LogLevel
 	}
+	if _, exists := configMap["log_to_journal"]; !exists {
+		dirty = true
+		fmt.Println("Added log_to_journal")
+		config.LogToJournal = lib.DefaultConfig.LogToJournal
+	}
 
 	if dirty {
 		config.ToFile(context)
