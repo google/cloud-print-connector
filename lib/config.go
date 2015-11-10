@@ -156,7 +156,7 @@ type Config struct {
 	// Least severity to log.
 	LogLevel string `json:"log_level"`
 
-	// Log to the systemd journal?
+	// Log to the systemd journal instead of to files?
 	LogToJournal bool `json:"log_to_journal"`
 }
 
