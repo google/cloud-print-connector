@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/google/cups-connector/cdd"
+	"github.com/google/cups-connector/log"
 )
 
 func TestGetUUID(t *testing.T) {
@@ -205,6 +206,8 @@ func TestConvertSupportedContentType(t *testing.T) {
 }
 
 func TestConvertMarkers(t *testing.T) {
+	log.SetLevel(log.ERROR)
+
 	m, ms := convertMarkers(nil)
 	if m != nil {
 		t.Logf("expected nil")

@@ -52,6 +52,7 @@ const (
 	ppdPickOne                 = "PickOne"
 	ppdPrintQualityTranslation = "Print Quality"
 	ppdResolution              = "Resolution"
+	ppdSelectColor             = "SelectColor"
 	ppdThroughput              = "Throughput"
 	ppdTrue                    = "True"
 	ppdUIConstraints           = "UIConstraints"
@@ -136,6 +137,8 @@ func translatePPD(ppd string) (*cdd.PrinterDescriptionSection, string, string) {
 	if e, exists := entriesByMainKeyword[ppdColorModel]; exists {
 		pds.Color = convertColorPPD(e)
 	} else if e, exists := entriesByMainKeyword[ppdCMAndResolution]; exists {
+		pds.Color = convertColorPPD(e)
+	} else if e, exists := entriesByMainKeyword[ppdSelectColor]; exists {
 		pds.Color = convertColorPPD(e)
 	}
 	if e, exists := entriesByMainKeyword[ppdDuplex]; exists {

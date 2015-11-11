@@ -132,6 +132,22 @@ func TestTranslateTicket(t *testing.T) {
 		t.Logf("expected\n %+v\ngot\n %+v", expected, o)
 		t.Fail()
 	}
+
+	ticket.Print = cdd.PrintTicketSection{
+		Color: &cdd.ColorTicketItem{VendorID: "SelectColor:Color", Type: cdd.ColorTypeStandardColor},
+	}
+	expected = map[string]string{
+		"SelectColor": "Color",
+	}
+	o, err = translateTicket(&ticket)
+	if err != nil {
+		t.Logf("did not expect error %s", err)
+		t.Fail()
+	}
+	if !reflect.DeepEqual(o, expected) {
+		t.Logf("expected\n %+v\ngot\n %+v", expected, o)
+		t.Fail()
+	}
 }
 
 func TestTranslateTicket_RicohLockedPrint(t *testing.T) {
