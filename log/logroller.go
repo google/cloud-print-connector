@@ -120,17 +120,21 @@ func (lr *LogRoller) roll() error {
 	}
 
 	// Get all rolled logs, plus some.
-	matches, err := filepath.Glob(lr.fileName + ".*")
+	allFiles, err := filepath.Glob(lr.fileName + ".*")
 	if err != nil {
 		return err
 	}
 
 	// Get number suffixes from the rolled logs; ignore non-matches.
-	numbers := make(sortableNumberStrings, 0, len(matches))
-	for _, match := range matches {
-		number := rollPattern.FindStringSubmatch(match[len(lr.fileName):])[1]
-		if _, err := strconv.ParseUint(number, 10, 16); err == nil {
-			numbers = append(numbers, number)
+	numbers := make(sortableNumberStrings, 0, len(allFiles))
+	for _, file := range allFiles {
+		match := rollPattern.FindStringSubmatch(file[len(lr.fileName):])
+		if len(match) < 2 {
+			continue
+		}
+		if _, err := strconv.ParseUint(match[1], 10, 16); err == nil {
+			// Keep the string form of the number.
+			numbers = append(numbers, match[1])
 		}
 	}
 
