@@ -90,19 +90,19 @@ func connector(context *cli.Context) int {
 		log.Info("No config file was found, so using defaults")
 	}
 
-	log.Error(lib.FullName)
+	log.Info(lib.FullName)
 	fmt.Println(lib.FullName)
 
 	if !config.CloudPrintingEnable && !config.LocalPrintingEnable {
-		log.Error("Cannot run connector with both local_printing_enable and cloud_printing_enable set to false")
+		log.Fatal("Cannot run connector with both local_printing_enable and cloud_printing_enable set to false")
 		return 1
 	}
 
 	if _, err := os.Stat(config.MonitorSocketFilename); !os.IsNotExist(err) {
 		if err != nil {
-			log.Errorf("Failed to stat monitor socket: %s", err)
+			log.Fatalf("Failed to stat monitor socket: %s", err)
 		} else {
-			log.Errorf(
+			log.Fatalf(
 				"A connector is already running, or the monitoring socket %s wasn't cleaned up properly",
 				config.MonitorSocketFilename)
 		}
@@ -131,14 +131,14 @@ func connector(context *cli.Context) int {
 			config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
 			config.GCPMaxConcurrentDownloads, jobs)
 		if err != nil {
-			log.Error(err)
+			log.Fatal(err)
 			return 1
 		}
 
 		x, err = xmpp.NewXMPP(config.XMPPJID, config.ProxyName, config.XMPPServer, config.XMPPPort,
 			xmppPingTimeout, xmppPingInterval, g.GetRobotAccessToken, xmppNotifications)
 		if err != nil {
-			log.Error(err)
+			log.Fatal(err)
 			return 1
 		}
 		defer x.Quit()
@@ -163,7 +163,7 @@ func connector(context *cli.Context) int {
 		log.Info("SNMP enabled")
 		s, err = snmp.NewSNMPManager(config.SNMPCommunity, config.SNMPMaxConnections)
 		if err != nil {
-			log.Error(err)
+			log.Fatal(err)
 			return 1
 		}
 		defer s.Quit()
@@ -177,7 +177,7 @@ func connector(context *cli.Context) int {
 			priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, g.ProximityToken)
 		}
 		if err != nil {
-			log.Error(err)
+			log.Fatal(err)
 			return 1
 		}
 		defer priv.Quit()
@@ -192,34 +192,34 @@ func connector(context *cli.Context) int {
 		config.CUPSJobQueueSize, config.CUPSJobFullUsername, config.CUPSIgnoreRawPrinters,
 		config.ShareScope, jobs, xmppNotifications)
 	if err != nil {
-		log.Error(err)
+		log.Fatal(err)
 		return 1
 	}
 	defer pm.Quit()
 
 	m, err := monitor.NewMonitor(c, g, priv, pm, config.MonitorSocketFilename)
 	if err != nil {
-		log.Error(err)
+		log.Fatal(err)
 		return 1
 	}
 	defer m.Quit()
 
 	if config.CloudPrintingEnable {
 		if config.LocalPrintingEnable {
-			log.Errorf("Ready to rock as proxy '%s' and in local mode", config.ProxyName)
+			log.Infof("Ready to rock as proxy '%s' and in local mode", config.ProxyName)
 			fmt.Printf("Ready to rock as proxy '%s' and in local mode\n", config.ProxyName)
 		} else {
-			log.Errorf("Ready to rock as proxy '%s'", config.ProxyName)
+			log.Infof("Ready to rock as proxy '%s'", config.ProxyName)
 			fmt.Printf("Ready to rock as proxy '%s'\n", config.ProxyName)
 		}
 	} else {
-		log.Error("Ready to rock in local-only mode")
+		log.Info("Ready to rock in local-only mode")
 		fmt.Println("Ready to rock in local-only mode")
 	}
 
 	waitIndefinitely()
 
-	log.Error("Shutting down")
+	log.Info("Shutting down")
 	fmt.Println("")
 	fmt.Println("Shutting down")
 
