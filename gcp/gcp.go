@@ -45,11 +45,10 @@ const (
 
 // GoogleCloudPrint is the interface between Go and the Google Cloud Print API.
 type GoogleCloudPrint struct {
-	baseURL                 string
-	robotClient             *http.Client
-	userClient              *http.Client
-	proxyName               string
-	xmppPingIntervalDefault time.Duration
+	baseURL     string
+	robotClient *http.Client
+	userClient  *http.Client
+	proxyName   string
 
 	jobs              chan<- *lib.Job
 	downloadSemaphore *lib.Semaphore
