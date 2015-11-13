@@ -37,6 +37,9 @@ const (
 	ppdJCLOpenUI               = "JCLOpenUI"
 	ppdJobType                 = "JobType"
 	ppdKMDuplex                = "KMDuplex"
+	ppdKMDuplexBooklet         = "Booklet"
+	ppdKMDuplexDouble          = "Double"
+	ppdKMDuplexSingle          = "Single"
 	ppdLockedPrint             = "LockedPrint"
 	ppdLockedPrintPassword     = "LockedPrintPassword"
 	ppdManufacturer            = "Manufacturer"
@@ -144,7 +147,7 @@ func translatePPD(ppd string) (*cdd.PrinterDescriptionSection, string, string) {
 	if e, exists := entriesByMainKeyword[ppdDuplex]; exists {
 		pds.Duplex = convertDuplex(e)
 	} else if e, exists := entriesByMainKeyword[ppdKMDuplex]; exists {
-		pds.Duplex = convertKMDuplex(e)
+		pds.Duplex = convertDuplex(e)
 	}
 	if e, exists := entriesByMainKeyword[ppdResolution]; exists {
 		pds.DPI = convertDPI(e)
@@ -469,11 +472,11 @@ func convertColorPPD(e entry) *cdd.Color {
 		}
 	}
 
-	c := cdd.Color{}
+	c := cdd.Color{VendorKey: e.mainKeyword}
 	if len(colorOptions) == 1 {
 		colorName := cleanupColorName(colorOptions[0].optionKeyword, colorOptions[0].translation)
 		co := cdd.ColorOption{
-			VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, colorOptions[0].optionKeyword),
+			VendorID: colorOptions[0].optionKeyword,
 			Type:     cdd.ColorTypeStandardColor,
 			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 		}
@@ -482,7 +485,7 @@ func convertColorPPD(e entry) *cdd.Color {
 		for _, o := range colorOptions {
 			colorName := cleanupColorName(o.optionKeyword, o.translation)
 			co := cdd.ColorOption{
-				VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, o.optionKeyword),
+				VendorID: o.optionKeyword,
 				Type:     cdd.ColorTypeCustomColor,
 				CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 			}
@@ -493,7 +496,7 @@ func convertColorPPD(e entry) *cdd.Color {
 	if len(grayOptions) == 1 {
 		colorName := cleanupColorName(grayOptions[0].optionKeyword, grayOptions[0].translation)
 		co := cdd.ColorOption{
-			VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, grayOptions[0].optionKeyword),
+			VendorID: grayOptions[0].optionKeyword,
 			Type:     cdd.ColorTypeStandardMonochrome,
 			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 		}
@@ -502,7 +505,7 @@ func convertColorPPD(e entry) *cdd.Color {
 		for _, o := range grayOptions {
 			colorName := cleanupColorName(o.optionKeyword, o.translation)
 			co := cdd.ColorOption{
-				VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, o.optionKeyword),
+				VendorID: o.optionKeyword,
 				Type:     cdd.ColorTypeCustomMonochrome,
 				CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 			}
@@ -513,7 +516,7 @@ func convertColorPPD(e entry) *cdd.Color {
 	for _, o := range otherOptions {
 		colorName := cleanupColorName(o.optionKeyword, o.translation)
 		co := cdd.ColorOption{
-			VendorID: fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, o.optionKeyword),
+			VendorID: o.optionKeyword,
 			Type:     cdd.ColorTypeCustomMonochrome,
 			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 		}
@@ -524,9 +527,8 @@ func convertColorPPD(e entry) *cdd.Color {
 		return nil
 	}
 
-	defaultValue := fmt.Sprintf("%s%s%s", e.mainKeyword, internalKeySeparator, e.defaultValue)
 	for i := range c.Option {
-		if c.Option[i].VendorID == defaultValue {
+		if c.Option[i].VendorID == e.defaultValue {
 			c.Option[i].IsDefault = true
 			return &c
 		}
@@ -536,83 +538,32 @@ func convertColorPPD(e entry) *cdd.Color {
 	return &c
 }
 
-var duplexPPDByCDD = map[cdd.DuplexType]string{
-	cdd.DuplexNoDuplex:  ppdNone,
-	cdd.DuplexLongEdge:  ppdDuplexNoTumble,
-	cdd.DuplexShortEdge: ppdDuplexTumble,
-}
-
-var (
-	ppdKMSingle = "Single"
-	ppdKMDouble = "Double"
-)
-
-func convertKMDuplex(e entry) *cdd.Duplex {
+func convertDuplex(e entry) *cdd.Duplex {
 	// TODO: Test on a real Konica Minolta printer.
-	d := cdd.Duplex{}
+	d := cdd.Duplex{VendorKey: e.mainKeyword}
 
 	var foundDefault bool
 	for _, o := range e.options {
 		def := o.optionKeyword == e.defaultValue
 		switch o.optionKeyword {
-		case ppdFalse, ppdKMSingle:
-			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def})
-			foundDefault = true
-		case ppdTrue, ppdKMDouble:
-			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def})
-			foundDefault = true
+		case ppdNone, ppdFalse, ppdKMDuplexSingle:
+			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def, o.optionKeyword})
+			foundDefault = foundDefault || def
+		case ppdDuplexNoTumble, ppdTrue, ppdKMDuplexDouble:
+			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def, o.optionKeyword})
+			foundDefault = foundDefault || def
+		case ppdDuplexTumble, ppdKMDuplexBooklet:
+			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexShortEdge, def, o.optionKeyword})
+			foundDefault = foundDefault || def
 		default:
 			if strings.HasPrefix(o.optionKeyword, "1") {
-				foundDefault = true
-				d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def})
+				d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def, o.optionKeyword})
+				foundDefault = foundDefault || def
 			} else if strings.HasPrefix(o.optionKeyword, "2") {
-				d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def})
-				foundDefault = true
+				d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def, o.optionKeyword})
+				foundDefault = foundDefault || def
 			}
 		}
-	}
-
-	if len(d.Option) == 0 {
-		return nil
-	}
-
-	if !foundDefault {
-		d.Option[0].IsDefault = true
-	}
-	return &d
-}
-
-func convertDuplex(e entry) *cdd.Duplex {
-	values := make(map[string]struct{}, 3)
-	for _, o := range e.options {
-		values[o.optionKeyword] = struct{}{}
-	}
-
-	var foundDefault bool
-	d := cdd.Duplex{}
-	if _, exists := values[ppdNone]; exists {
-		var def bool
-		if ppdNone == e.defaultValue {
-			foundDefault = true
-			def = true
-		}
-		d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def})
-	}
-	if _, exists := values[ppdDuplexNoTumble]; exists {
-		var def bool
-		if ppdDuplexNoTumble == e.defaultValue {
-			foundDefault = true
-			def = true
-		}
-		d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def})
-	}
-	if _, exists := values[ppdDuplexTumble]; exists {
-		var def bool
-		if ppdDuplexTumble == e.defaultValue {
-			foundDefault = true
-			def = true
-		}
-		d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexShortEdge, def})
 	}
 
 	if len(d.Option) == 0 {

@@ -16,11 +16,13 @@ import (
 	"testing"
 
 	"github.com/google/cups-connector/cdd"
+	"github.com/google/cups-connector/lib"
 )
 
 func TestTranslateTicket(t *testing.T) {
+	printer := lib.Printer{}
 	expected := map[string]string{}
-	o, err := translateTicket(nil)
+	o, err := translateTicket(&printer, nil)
 	if err != nil {
 		t.Logf("did not expect error %s", err)
 		t.Fail()
@@ -31,7 +33,7 @@ func TestTranslateTicket(t *testing.T) {
 	}
 
 	ticket := cdd.CloudJobTicket{}
-	o, err = translateTicket(&ticket)
+	o, err = translateTicket(&printer, &ticket)
 	if err != nil {
 		t.Logf("did not expect error %s", err)
 		t.Fail()
@@ -41,12 +43,50 @@ func TestTranslateTicket(t *testing.T) {
 		t.Fail()
 	}
 
+	printer = lib.Printer{
+		Description: &cdd.PrinterDescriptionSection{
+			Color: &cdd.Color{
+				Option: []cdd.ColorOption{
+					cdd.ColorOption{
+						VendorID: "zebra-stripes",
+						Type:     cdd.ColorTypeCustomMonochrome,
+					},
+				},
+				VendorKey: "ColorModel",
+			},
+			Duplex: &cdd.Duplex{
+				Option: []cdd.DuplexOption{
+					cdd.DuplexOption{
+						Type:     cdd.DuplexNoDuplex,
+						VendorID: "None",
+					},
+				},
+				VendorKey: "Duplex",
+			},
+			PageOrientation: &cdd.PageOrientation{},
+			Copies:          &cdd.Copies{},
+			Margins:         &cdd.Margins{},
+			DPI: &cdd.DPI{
+				Option: []cdd.DPIOption{
+					cdd.DPIOption{
+						HorizontalDPI: 100,
+						VerticalDPI:   100,
+						VendorID:      "q",
+					},
+				},
+			},
+			FitToPage:    &cdd.FitToPage{},
+			MediaSize:    &cdd.MediaSize{},
+			Collate:      &cdd.Collate{},
+			ReverseOrder: &cdd.ReverseOrder{},
+		},
+	}
 	ticket.Print = cdd.PrintTicketSection{
 		VendorTicketItem: []cdd.VendorTicketItem{
 			cdd.VendorTicketItem{"number-up", "a"},
 			cdd.VendorTicketItem{"a:b/c:d/e", "f"},
 		},
-		Color:           &cdd.ColorTicketItem{VendorID: "ColorModel:zebra-stripes", Type: cdd.ColorTypeCustomMonochrome},
+		Color:           &cdd.ColorTicketItem{VendorID: "zebra-stripes", Type: cdd.ColorTypeCustomMonochrome},
 		Duplex:          &cdd.DuplexTicketItem{Type: cdd.DuplexNoDuplex},
 		PageOrientation: &cdd.PageOrientationTicketItem{Type: cdd.PageOrientationAuto},
 		Copies:          &cdd.CopiesTicketItem{Copies: 2},
@@ -75,7 +115,7 @@ func TestTranslateTicket(t *testing.T) {
 		"collate":             "false",
 		"outputorder":         "normal",
 	}
-	o, err = translateTicket(&ticket)
+	o, err = translateTicket(&printer, &ticket)
 	if err != nil {
 		t.Logf("did not expect error %s", err)
 		t.Fail()
@@ -95,19 +135,52 @@ func TestTranslateTicket(t *testing.T) {
 		t.Fail()
 	}
 
+	printer.Description = &cdd.PrinterDescriptionSection{
+		Color: &cdd.Color{
+			Option: []cdd.ColorOption{
+				cdd.ColorOption{
+					VendorID: "color",
+					Type:     cdd.ColorTypeStandardColor,
+				},
+			},
+			VendorKey: "print-color-mode",
+		},
+		Duplex: &cdd.Duplex{
+			Option: []cdd.DuplexOption{
+				cdd.DuplexOption{
+					Type:     cdd.DuplexLongEdge,
+					VendorID: "Single",
+				},
+			},
+			VendorKey: "KMDuplex",
+		},
+		PageOrientation: &cdd.PageOrientation{},
+		DPI: &cdd.DPI{
+			Option: []cdd.DPIOption{
+				cdd.DPIOption{
+					HorizontalDPI: 100,
+					VerticalDPI:   100,
+					VendorID:      "q",
+				},
+			},
+		},
+		MediaSize: &cdd.MediaSize{},
+	}
 	ticket.Print = cdd.PrintTicketSection{
-		Color:           &cdd.ColorTicketItem{VendorID: "print-color-mode:color", Type: cdd.ColorTypeStandardColor},
+		Color:           &cdd.ColorTicketItem{VendorID: "color", Type: cdd.ColorTypeStandardColor},
+		Duplex:          &cdd.DuplexTicketItem{Type: cdd.DuplexLongEdge},
 		PageOrientation: &cdd.PageOrientationTicketItem{Type: cdd.PageOrientationLandscape},
 		DPI:             &cdd.DPITicketItem{100, 100, ""},
 		MediaSize:       &cdd.MediaSizeTicketItem{100000, 100000, false, ""},
 	}
 	expected = map[string]string{
 		"print-color-mode":      "color",
+		"KMDuplex":              "Single",
 		"orientation-requested": "4",
-		"Resolution":            "100x100dpi",
+		"Resolution":            "q",
 		"PageSize":              "Custom.283x283",
 	}
-	o, err = translateTicket(&ticket)
+	o, err = translateTicket(&printer, &ticket)
 	if err != nil {
 		t.Logf("did not expect error %s", err)
 		t.Fail()
@@ -117,13 +190,47 @@ func TestTranslateTicket(t *testing.T) {
 		t.Fail()
 	}
 
+	printer.Description.Color = &cdd.Color{
+		Option: []cdd.ColorOption{
+			cdd.ColorOption{
+				VendorID: "Gray600x600dpi",
+				Type:     cdd.ColorTypeStandardColor,
+			},
+		},
+		VendorKey: "CMAndResolution",
+	}
 	ticket.Print = cdd.PrintTicketSection{
-		Color: &cdd.ColorTicketItem{VendorID: "CMAndResolution:Gray600x600dpi", Type: cdd.ColorTypeStandardColor},
+		Color: &cdd.ColorTicketItem{VendorID: "Gray600x600dpi", Type: cdd.ColorTypeStandardColor},
 	}
 	expected = map[string]string{
 		"CMAndResolution": "Gray600x600dpi",
 	}
-	o, err = translateTicket(&ticket)
+	o, err = translateTicket(&printer, &ticket)
+	if err != nil {
+		t.Logf("did not expect error %s", err)
+		t.Fail()
+	}
+	if !reflect.DeepEqual(o, expected) {
+		t.Logf("expected\n %+v\ngot\n %+v", expected, o)
+		t.Fail()
+	}
+
+	printer.Description.Color = &cdd.Color{
+		Option: []cdd.ColorOption{
+			cdd.ColorOption{
+				VendorID: "Color",
+				Type:     cdd.ColorTypeStandardColor,
+			},
+		},
+		VendorKey: "SelectColor",
+	}
+	ticket.Print = cdd.PrintTicketSection{
+		Color: &cdd.ColorTicketItem{VendorID: "Color"},
+	}
+	expected = map[string]string{
+		"SelectColor": "Color",
+	}
+	o, err = translateTicket(&printer, &ticket)
 	if err != nil {
 		t.Logf("did not expect error %s", err)
 		t.Fail()
@@ -134,12 +241,9 @@ func TestTranslateTicket(t *testing.T) {
 	}
 
 	ticket.Print = cdd.PrintTicketSection{
-		Color: &cdd.ColorTicketItem{VendorID: "SelectColor:Color", Type: cdd.ColorTypeStandardColor},
+		Color: &cdd.ColorTicketItem{Type: cdd.ColorTypeStandardColor},
 	}
-	expected = map[string]string{
-		"SelectColor": "Color",
-	}
-	o, err = translateTicket(&ticket)
+	o, err = translateTicket(&printer, &ticket)
 	if err != nil {
 		t.Logf("did not expect error %s", err)
 		t.Fail()
@@ -151,6 +255,7 @@ func TestTranslateTicket(t *testing.T) {
 }
 
 func TestTranslateTicket_RicohLockedPrint(t *testing.T) {
+	printer := lib.Printer{}
 	ticket := cdd.CloudJobTicket{}
 	ticket.Print = cdd.PrintTicketSection{
 		VendorTicketItem: []cdd.VendorTicketItem{
@@ -161,7 +266,7 @@ func TestTranslateTicket_RicohLockedPrint(t *testing.T) {
 		"JobType":             "LockedPrint",
 		"LockedPrintPassword": "1234",
 	}
-	o, err := translateTicket(&ticket)
+	o, err := translateTicket(&printer, &ticket)
 	if err != nil {
 		t.Logf("did not expect error %s", err)
 		t.Fail()
@@ -177,7 +282,7 @@ func TestTranslateTicket_RicohLockedPrint(t *testing.T) {
 		},
 	}
 	expected = map[string]string{}
-	o, err = translateTicket(&ticket)
+	o, err = translateTicket(&printer, &ticket)
 	if err == nil {
 		t.Log("expected error")
 		t.Fail()
@@ -192,7 +297,7 @@ func TestTranslateTicket_RicohLockedPrint(t *testing.T) {
 			cdd.VendorTicketItem{"JobType:LockedPrint/LockedPrintPassword", "123"},
 		},
 	}
-	o, err = translateTicket(&ticket)
+	o, err = translateTicket(&printer, &ticket)
 	if err == nil {
 		t.Log("expected error")
 		t.Fail()
@@ -207,7 +312,7 @@ func TestTranslateTicket_RicohLockedPrint(t *testing.T) {
 			cdd.VendorTicketItem{"JobType:LockedPrint/LockedPrintPassword", "12345"},
 		},
 	}
-	o, err = translateTicket(&ticket)
+	o, err = translateTicket(&printer, &ticket)
 	if err == nil {
 		t.Log("expected error")
 		t.Fail()
@@ -222,7 +327,7 @@ func TestTranslateTicket_RicohLockedPrint(t *testing.T) {
 			cdd.VendorTicketItem{"JobType:LockedPrint/LockedPrintPassword", "1bc3"},
 		},
 	}
-	o, err = translateTicket(&ticket)
+	o, err = translateTicket(&printer, &ticket)
 	if err == nil {
 		t.Log("expected error")
 		t.Fail()

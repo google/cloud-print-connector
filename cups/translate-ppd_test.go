@@ -75,9 +75,10 @@ func TestTrColor(t *testing.T) {
 	expected := &cdd.PrinterDescriptionSection{
 		Color: &cdd.Color{
 			Option: []cdd.ColorOption{
-				cdd.ColorOption{"ColorModel:CMYK", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
-				cdd.ColorOption{"ColorModel:Gray", cdd.ColorTypeStandardMonochrome, "", true, cdd.NewLocalizedString("Black and White")},
+				cdd.ColorOption{"CMYK", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
+				cdd.ColorOption{"Gray", cdd.ColorTypeStandardMonochrome, "", true, cdd.NewLocalizedString("Black and White")},
 			},
+			VendorKey: "ColorModel",
 		},
 	}
 	translationTest(t, ppd, expected)
@@ -97,9 +98,10 @@ func TestTrColor(t *testing.T) {
 	expected = &cdd.PrinterDescriptionSection{
 		Color: &cdd.Color{
 			Option: []cdd.ColorOption{
-				cdd.ColorOption{"CMAndResolution:CMYKImageRET3600", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color")},
-				cdd.ColorOption{"CMAndResolution:Gray600x600dpi", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Gray")},
+				cdd.ColorOption{"CMYKImageRET3600", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color")},
+				cdd.ColorOption{"Gray600x600dpi", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Gray")},
 			},
+			VendorKey: "CMAndResolution",
 		},
 	}
 	translationTest(t, ppd, expected)
@@ -116,10 +118,11 @@ func TestTrColor(t *testing.T) {
 	expected = &cdd.PrinterDescriptionSection{
 		Color: &cdd.Color{
 			Option: []cdd.ColorOption{
-				cdd.ColorOption{"CMAndResolution:CMYKImageRET2400", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color, ImageRET 2400")},
-				cdd.ColorOption{"CMAndResolution:Gray1200x1200dpi", cdd.ColorTypeCustomMonochrome, "", false, cdd.NewLocalizedString("Gray, ProRes 1200")},
-				cdd.ColorOption{"CMAndResolution:Gray600x600dpi", cdd.ColorTypeCustomMonochrome, "", false, cdd.NewLocalizedString("Gray, 600 dpi")},
+				cdd.ColorOption{"CMYKImageRET2400", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color, ImageRET 2400")},
+				cdd.ColorOption{"Gray1200x1200dpi", cdd.ColorTypeCustomMonochrome, "", false, cdd.NewLocalizedString("Gray, ProRes 1200")},
+				cdd.ColorOption{"Gray600x600dpi", cdd.ColorTypeCustomMonochrome, "", false, cdd.NewLocalizedString("Gray, 600 dpi")},
 			},
+			VendorKey: "CMAndResolution",
 		},
 	}
 	translationTest(t, ppd, expected)
@@ -135,9 +138,10 @@ func TestTrColor(t *testing.T) {
 	expected = &cdd.PrinterDescriptionSection{
 		Color: &cdd.Color{
 			Option: []cdd.ColorOption{
-				cdd.ColorOption{"SelectColor:Color", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color")},
-				cdd.ColorOption{"SelectColor:Grayscale", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Grayscale")},
+				cdd.ColorOption{"Color", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color")},
+				cdd.ColorOption{"Grayscale", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Grayscale")},
 			},
+			VendorKey: "SelectColor",
 		},
 	}
 	translationTest(t, ppd, expected)
@@ -153,9 +157,10 @@ func TestTrDuplex(t *testing.T) {
 	expected := &cdd.PrinterDescriptionSection{
 		Duplex: &cdd.Duplex{
 			Option: []cdd.DuplexOption{
-				cdd.DuplexOption{cdd.DuplexNoDuplex, true},
-				cdd.DuplexOption{cdd.DuplexLongEdge, false},
+				cdd.DuplexOption{cdd.DuplexNoDuplex, true, "None"},
+				cdd.DuplexOption{cdd.DuplexLongEdge, false, "DuplexNoTumble"},
 			},
+			VendorKey: "Duplex",
 		},
 	}
 	translationTest(t, ppd, expected)
@@ -180,9 +185,11 @@ func TestTrKMDuplex(t *testing.T) {
 	expected := &cdd.PrinterDescriptionSection{
 		Duplex: &cdd.Duplex{
 			Option: []cdd.DuplexOption{
-				cdd.DuplexOption{cdd.DuplexNoDuplex, false},
-				cdd.DuplexOption{cdd.DuplexLongEdge, true},
+				cdd.DuplexOption{cdd.DuplexNoDuplex, false, "Single"},
+				cdd.DuplexOption{cdd.DuplexLongEdge, true, "Double"},
+				cdd.DuplexOption{cdd.DuplexShortEdge, false, "Booklet"},
 			},
+			VendorKey: "KMDuplex",
 		},
 	}
 	translationTest(t, ppd, expected)
@@ -198,9 +205,10 @@ func TestTrKMDuplex(t *testing.T) {
 	expected = &cdd.PrinterDescriptionSection{
 		Duplex: &cdd.Duplex{
 			Option: []cdd.DuplexOption{
-				cdd.DuplexOption{cdd.DuplexNoDuplex, true},
-				cdd.DuplexOption{cdd.DuplexLongEdge, false},
+				cdd.DuplexOption{cdd.DuplexNoDuplex, true, "False"},
+				cdd.DuplexOption{cdd.DuplexLongEdge, false, "True"},
 			},
+			VendorKey: "KMDuplex",
 		},
 	}
 	translationTest(t, ppd, expected)
