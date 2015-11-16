@@ -539,7 +539,6 @@ func convertColorPPD(e entry) *cdd.Color {
 }
 
 func convertDuplex(e entry) *cdd.Duplex {
-	// TODO: Test on a real Konica Minolta printer.
 	d := cdd.Duplex{VendorKey: e.mainKeyword}
 
 	var foundDefault bool
