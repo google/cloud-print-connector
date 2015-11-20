@@ -16,14 +16,15 @@ import (
 	"strings"
 
 	"github.com/google/cups-connector/cdd"
+	"github.com/google/cups-connector/lib"
 )
 
 var rVendorIDKeyValue = regexp.MustCompile(
 	`^([^\` + internalKeySeparator + `]+)(?:` + internalKeySeparator + `(.+))?$`)
 
 // translateTicket converts a CloudJobTicket to a map of options, suitable for a new CUPS print job.
-func translateTicket(ticket *cdd.CloudJobTicket) (map[string]string, error) {
-	if ticket == nil {
+func translateTicket(printer *lib.Printer, ticket *cdd.CloudJobTicket) (map[string]string, error) {
+	if printer == nil || ticket == nil {
 		return map[string]string{}, nil
 	}
 
@@ -46,42 +47,52 @@ func translateTicket(ticket *cdd.CloudJobTicket) (map[string]string, error) {
 			m[key] = value
 		}
 	}
-	if ticket.Print.Color != nil {
-		// TODO: Lookup VendorID by Color.Type in CDD when ticket Color.VendorID is empty?
-		parts := rVendorIDKeyValue.FindStringSubmatch(ticket.Print.Color.VendorID)
-		if parts != nil && parts[2] != "" {
-			m[parts[1]] = parts[2]
+	if ticket.Print.Color != nil && printer.Description.Color != nil {
+		if ticket.Print.Color.VendorID != "" {
+			m[printer.Description.Color.VendorKey] = ticket.Print.Color.VendorID
+		} else {
+			// The ticket doesn't provide the VendorID. Let's find it.
+			for _, colorOption := range printer.Description.Color.Option {
+				if ticket.Print.Color.Type == colorOption.Type {
+					m[printer.Description.Color.VendorKey] = colorOption.VendorID
+				}
+			}
 		}
 	}
-	if ticket.Print.Duplex != nil {
-		if ppdValue, exists := duplexPPDByCDD[ticket.Print.Duplex.Type]; exists {
-			m[ppdDuplex] = ppdValue
+	if ticket.Print.Duplex != nil && printer.Description.Duplex != nil {
+		for _, duplexOption := range printer.Description.Duplex.Option {
+			if ticket.Print.Duplex.Type == duplexOption.Type {
+				m[printer.Description.Duplex.VendorKey] = duplexOption.VendorID
+			}
 		}
 	}
-	if ticket.Print.PageOrientation != nil {
+	if ticket.Print.PageOrientation != nil && printer.Description.PageOrientation != nil {
 		if orientation, exists := orientationValueByType[ticket.Print.PageOrientation.Type]; exists {
 			m[attrOrientationRequested] = orientation
 		}
 	}
-	if ticket.Print.Copies != nil {
+	if ticket.Print.Copies != nil && printer.Description.Copies != nil {
 		m[attrCopies] = strconv.FormatInt(int64(ticket.Print.Copies.Copies), 10)
 	}
-	if ticket.Print.Margins != nil {
+	if ticket.Print.Margins != nil && printer.Description.Margins != nil {
 		m[attrMediaLeftMargin] = micronsToPoints(ticket.Print.Margins.LeftMicrons)
 		m[attrMediaRightMargin] = micronsToPoints(ticket.Print.Margins.RightMicrons)
 		m[attrMediaTopMargin] = micronsToPoints(ticket.Print.Margins.TopMicrons)
 		m[attrMediaBottomMargin] = micronsToPoints(ticket.Print.Margins.BottomMicrons)
 	}
-	if ticket.Print.DPI != nil {
+	if ticket.Print.DPI != nil && printer.Description.DPI != nil {
 		if ticket.Print.DPI.VendorID != "" {
 			m[ppdResolution] = ticket.Print.DPI.VendorID
 		} else {
-			// TODO: Lookup VendorID in CDD?
-			m[ppdResolution] = fmt.Sprintf("%dx%ddpi",
-				ticket.Print.DPI.HorizontalDPI, ticket.Print.DPI.VerticalDPI)
+			for _, dpiOption := range printer.Description.DPI.Option {
+				if ticket.Print.DPI.HorizontalDPI == dpiOption.HorizontalDPI &&
+					ticket.Print.DPI.VerticalDPI == dpiOption.VerticalDPI {
+					m[ppdResolution] = dpiOption.VendorID
+				}
+			}
 		}
 	}
-	if ticket.Print.FitToPage != nil {
+	if ticket.Print.FitToPage != nil && printer.Description.FitToPage != nil {
 		switch ticket.Print.FitToPage.Type {
 		case cdd.FitToPageFitToPage:
 			m[attrFitToPage] = attrTrue
@@ -89,7 +100,7 @@ func translateTicket(ticket *cdd.CloudJobTicket) (map[string]string, error) {
 			m[attrFitToPage] = attrFalse
 		}
 	}
-	if ticket.Print.MediaSize != nil {
+	if ticket.Print.MediaSize != nil && printer.Description.MediaSize != nil {
 		if ticket.Print.MediaSize.VendorID != "" {
 			m[ppdPageSize] = ticket.Print.MediaSize.VendorID
 		} else {
@@ -98,14 +109,14 @@ func translateTicket(ticket *cdd.CloudJobTicket) (map[string]string, error) {
 			m[ppdPageSize] = fmt.Sprintf("Custom.%sx%s", widthPoints, heightPoints)
 		}
 	}
-	if ticket.Print.Collate != nil {
+	if ticket.Print.Collate != nil && printer.Description.Collate != nil {
 		if ticket.Print.Collate.Collate {
 			m[attrCollate] = attrTrue
 		} else {
 			m[attrCollate] = attrFalse
 		}
 	}
-	if ticket.Print.ReverseOrder != nil {
+	if ticket.Print.ReverseOrder != nil && printer.Description.ReverseOrder != nil {
 		if ticket.Print.ReverseOrder.ReverseOrder {
 			m[attrOutputOrder] = "reverse"
 		} else {

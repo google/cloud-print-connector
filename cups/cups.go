@@ -406,8 +406,11 @@ func convertJobState(cupsState int32) cdd.PrintJobStateDiff {
 
 // Print sends a new print job to the specified printer. The job ID
 // is returned.
-func (c *CUPS) Print(printername, filename, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (uint32, error) {
-	pn := C.CString(printername)
+func (c *CUPS) Print(printer *lib.Printer, filename, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (uint32, error) {
+	printer.CUPSJobSemaphore.Acquire()
+	defer printer.CUPSJobSemaphore.Release()
+
+	pn := C.CString(printer.Name)
 	defer C.free(unsafe.Pointer(pn))
 	fn := C.CString(filename)
 	defer C.free(unsafe.Pointer(fn))
@@ -423,7 +426,7 @@ func (c *CUPS) Print(printername, filename, title, user, gcpJobID string, ticket
 	}
 	defer C.free(unsafe.Pointer(t))
 
-	options, err := translateTicket(ticket)
+	options, err := translateTicket(printer, ticket)
 	if err != nil {
 		return 0, err
 	}
