@@ -88,7 +88,7 @@ func newCUPSCore(maxConnections uint, connectTimeout time.Duration) (*cupsCore, 
 	}
 	cc.disconnect(http)
 
-	log.Infof("connected to CUPS server %s:%d %s\n", C.GoString(host), int(port), e)
+	log.Infof("connected to CUPS server %s:%d %s", C.GoString(host), int(port), e)
 
 	return cc, nil
 }
