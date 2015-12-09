@@ -15,9 +15,6 @@ import "C"
 import (
 	"bytes"
 	"errors"
-	"fmt"
-	"io"
-	"io/ioutil"
 	"os"
 	"sync"
 	"unsafe"
@@ -110,7 +107,6 @@ func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptio
 type ppdCacheEntry struct {
 	printername  *C.char
 	modtime      C.time_t
-	filename     string
 	description  cdd.PrinterDescriptionSection
 	manufacturer string
 	model        string
@@ -121,17 +117,9 @@ type ppdCacheEntry struct {
 // all else empty. The caller must free the name and buffer fields with
 // ppdCacheEntry.free()
 func createPPDCacheEntry(name string) (*ppdCacheEntry, error) {
-	file, err := ioutil.TempFile("", "cups-connector-ppd-")
-	if err != nil {
-		return nil, fmt.Errorf("Failed to create PPD cache entry file: %s", err)
-	}
-	defer file.Close()
-	filename := file.Name()
-
 	pce := &ppdCacheEntry{
 		printername: C.CString(name),
 		modtime:     C.time_t(0),
-		filename:    filename,
 	}
 
 	return pce, nil
@@ -153,7 +141,6 @@ func (pce *ppdCacheEntry) free() {
 	defer pce.mutex.Unlock()
 
 	C.free(unsafe.Pointer(pce.printername))
-	os.Remove(pce.filename)
 }
 
 // refresh calls cupsGetPPD3() to refresh this PPD information, in
@@ -183,23 +170,13 @@ func (pce *ppdCacheEntry) refresh(cc *cupsCore) error {
 	}
 	defer r.Close()
 
-	// Write to this PPD cache file.
-	file, err := os.OpenFile(pce.filename, os.O_WRONLY|os.O_TRUNC, 0200)
-	if err != nil {
-		return fmt.Errorf("Failed to open already-created PPD cache file: %s", err)
-	}
-	defer file.Close()
-
-	// Also write to a buffer for translation.
-	var content bytes.Buffer
-
-	// Write to these simultaneously.
-	w := io.MultiWriter(&content, file)
-	if _, err := io.Copy(w, r); err != nil {
+	// Write to a buffer string for translation.
+	var w bytes.Buffer
+	if _, err := w.ReadFrom(r); err != nil {
 		return err
 	}
 
-	description, manufacturer, model := translatePPD(content.String())
+	description, manufacturer, model := translatePPD(w.String())
 	if description == nil || manufacturer == "" || model == "" {
 		return errors.New("Failed to parse PPD")
 	}
