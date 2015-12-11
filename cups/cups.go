@@ -392,7 +392,7 @@ func (c *CUPS) RemoveCachedPPD(printername string) {
 }
 
 // GetJobState gets the current state of the job indicated by jobID.
-func (c *CUPS) GetJobState(jobID uint32) (cdd.PrintJobStateDiff, error) {
+func (c *CUPS) GetJobState(_ string, jobID uint32) (cdd.PrintJobStateDiff, error) {
 	ja := C.newArrayOfStrings(C.int(len(jobAttributes)))
 	defer C.freeStringArrayAndStrings(ja, C.int(len(jobAttributes)))
 	for i, attribute := range jobAttributes {

@@ -413,7 +413,7 @@ func (pm *PrinterManager) printJob(cupsPrinterName, filename, title, user, jobID
 	defer ticker.Stop()
 
 	for _ = range ticker.C {
-		cupsState, err := pm.cups.GetJobState(cupsJobID)
+		cupsState, err := pm.cups.GetJobState(printer.Name, cupsJobID)
 		if err != nil {
 			log.WarningJobf(jobID, "Failed to get state of CUPS job %d: %s", cupsJobID, err)
 
