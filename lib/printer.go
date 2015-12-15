@@ -36,7 +36,7 @@ type Printer struct {
 	Description        *cdd.PrinterDescriptionSection // CUPS: translated PPD;              GCP: capabilities field
 	CapsHash           string                         // CUPS: hash of PPD;                 GCP: capsHash field
 	Tags               map[string]string              // CUPS: all printer attributes;      GCP: repeated tag field
-	CUPSJobSemaphore   *Semaphore
+	NativeJobSemaphore *Semaphore
 }
 
 var rDeviceURIHostname *regexp.Regexp = regexp.MustCompile(
@@ -93,15 +93,15 @@ func printerSliceToMapByName(s []Printer) map[string]Printer {
 	return m
 }
 
-// DiffPrinters returns the diff between old (GCP) and new (CUPS) printers.
+// DiffPrinters returns the diff between old (GCP) and new (native) printers.
 // Returns nil if zero printers or if all diffs are NoChangeToPrinter operation.
-func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
+func DiffPrinters(nativePrinters, gcpPrinters []Printer) []PrinterDiff {
 	// So far, no changes.
 	dirty := false
 
 	diffs := make([]PrinterDiff, 0, 1)
-	printersConsidered := make(map[string]struct{}, len(cupsPrinters))
-	cupsPrintersByName := printerSliceToMapByName(cupsPrinters)
+	printersConsidered := make(map[string]struct{}, len(nativePrinters))
+	nativePrintersByName := printerSliceToMapByName(nativePrinters)
 
 	for i := range gcpPrinters {
 		if _, exists := printersConsidered[gcpPrinters[i].Name]; exists {
@@ -112,13 +112,13 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 		} else {
 			printersConsidered[gcpPrinters[i].Name] = struct{}{}
 
-			if cupsPrinter, exists := cupsPrintersByName[gcpPrinters[i].Name]; exists {
-				// CUPS printer doesn't know about GCPID yet.
-				cupsPrinter.GCPID = gcpPrinters[i].GCPID
+			if nativePrinter, exists := nativePrintersByName[gcpPrinters[i].Name]; exists {
+				// Native printer doesn't know about GCPID yet.
+				nativePrinter.GCPID = gcpPrinters[i].GCPID
 				// Don't lose track of this semaphore.
-				cupsPrinter.CUPSJobSemaphore = gcpPrinters[i].CUPSJobSemaphore
+				nativePrinter.NativeJobSemaphore = gcpPrinters[i].NativeJobSemaphore
 
-				diff := diffPrinter(&cupsPrinter, &gcpPrinters[i])
+				diff := diffPrinter(&nativePrinter, &gcpPrinters[i])
 				diffs = append(diffs, diff)
 
 				if diff.Operation != NoChangeToPrinter {
@@ -132,9 +132,9 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 		}
 	}
 
-	for i := range cupsPrinters {
-		if _, exists := printersConsidered[cupsPrinters[i].Name]; !exists {
-			diffs = append(diffs, PrinterDiff{Operation: RegisterPrinter, Printer: cupsPrinters[i]})
+	for i := range nativePrinters {
+		if _, exists := printersConsidered[nativePrinters[i].Name]; !exists {
+			diffs = append(diffs, PrinterDiff{Operation: RegisterPrinter, Printer: nativePrinters[i]})
 			dirty = true
 		}
 	}
@@ -146,61 +146,61 @@ func DiffPrinters(cupsPrinters, gcpPrinters []Printer) []PrinterDiff {
 	}
 }
 
-// diffPrinter finds the difference between a CUPS printer and the corresponding GCP printer.
+// diffPrinter finds the difference between a native printer and the corresponding GCP printer.
 //
-// pc: printer-CUPS; the thing that is correct
+// pn: printer-native; the thing that is correct
 //
 // pg: printer-GCP; the thing that will be updated
-func diffPrinter(pc, pg *Printer) PrinterDiff {
+func diffPrinter(pn, pg *Printer) PrinterDiff {
 	d := PrinterDiff{
 		Operation: UpdatePrinter,
-		Printer:   *pc,
+		Printer:   *pn,
 	}
 
-	if pg.DefaultDisplayName != pc.DefaultDisplayName {
+	if pg.DefaultDisplayName != pn.DefaultDisplayName {
 		d.DefaultDisplayNameChanged = true
 	}
-	if pg.Manufacturer != pc.Manufacturer {
+	if pg.Manufacturer != pn.Manufacturer {
 		d.ManufacturerChanged = true
 	}
-	if pg.Model != pc.Model {
+	if pg.Model != pn.Model {
 		d.ModelChanged = true
 	}
-	if pg.GCPVersion != pc.GCPVersion {
-		if pg.GCPVersion > pc.GCPVersion {
+	if pg.GCPVersion != pn.GCPVersion {
+		if pg.GCPVersion > pn.GCPVersion {
 			panic("GCP version cannot be downgraded; delete GCP printers")
 		}
 		d.GCPVersionChanged = true
 	}
-	if pg.SetupURL != pc.SetupURL {
+	if pg.SetupURL != pn.SetupURL {
 		d.SetupURLChanged = true
 	}
-	if pg.SupportURL != pc.SupportURL {
+	if pg.SupportURL != pn.SupportURL {
 		d.SupportURLChanged = true
 	}
-	if pg.UpdateURL != pc.UpdateURL {
+	if pg.UpdateURL != pn.UpdateURL {
 		d.UpdateURLChanged = true
 	}
-	if pg.ConnectorVersion != pc.ConnectorVersion {
+	if pg.ConnectorVersion != pn.ConnectorVersion {
 		d.ConnectorVersionChanged = true
 	}
-	if !reflect.DeepEqual(pg.State, pc.State) {
+	if !reflect.DeepEqual(pg.State, pn.State) {
 		d.StateChanged = true
 	}
 	// PrinterDescriptionSection objects contain fields that are not exported to JSON,
 	// and therefore cause comparison with GCP's copy to incorrectly appear not equal.
 	pgDescJSON, _ := json.Marshal(pg.Description)
-	pcDescJSON, _ := json.Marshal(pc.Description)
-	if !bytes.Equal(pgDescJSON, pcDescJSON) {
+	pnDescJSON, _ := json.Marshal(pn.Description)
+	if !bytes.Equal(pgDescJSON, pnDescJSON) {
 		d.DescriptionChanged = true
 	}
-	if pg.CapsHash != pc.CapsHash {
+	if pg.CapsHash != pn.CapsHash {
 		d.CapsHashChanged = true
 	}
 
 	gcpTagshash, gcpHasTagshash := pg.Tags["tagshash"]
-	cupsTagshash, cupsHasTagshash := pc.Tags["tagshash"]
-	if !gcpHasTagshash || !cupsHasTagshash || gcpTagshash != cupsTagshash {
+	nativeTagshash, nativeHasTagshash := pn.Tags["tagshash"]
+	if !gcpHasTagshash || !nativeHasTagshash || gcpTagshash != nativeTagshash {
 		d.TagsChanged = true
 	}
 

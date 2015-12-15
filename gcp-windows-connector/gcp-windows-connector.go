@@ -4,37 +4,32 @@
 // license that can be found in the LICENSE file or at
 // https://developers.google.com/open-source/licenses/bsd
 
-// +build linux darwin
+// +build windows
 
 package main
 
 import (
 	"fmt"
-	"io"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/codegangsta/cli"
-	"github.com/coreos/go-systemd/journal"
-	"github.com/google/cups-connector/cups"
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
 	"github.com/google/cups-connector/log"
 	"github.com/google/cups-connector/manager"
-	"github.com/google/cups-connector/monitor"
-	"github.com/google/cups-connector/privet"
-	"github.com/google/cups-connector/snmp"
+	"github.com/google/cups-connector/winspool"
 	"github.com/google/cups-connector/xmpp"
 )
 
+// TODO: Windows Service.
+
 func main() {
 	app := cli.NewApp()
-	app.Name = "gcp-cups-connector"
-	app.Usage = "Google Cloud Print CUPS Connector"
-	app.Version = lib.BuildDate
+	app.Name = "gcp-windows-connector"
+	app.Usage = "Google Cloud Print Windows Connector"
 	app.Flags = []cli.Flag{
 		lib.ConfigFilenameFlag,
 		cli.BoolFlag{
@@ -55,30 +50,7 @@ func connector(context *cli.Context) int {
 		return 1
 	}
 
-	logToJournal := config.LogToJournal && journal.Enabled()
-	logToConsole := context.Bool("log-to-console")
-
-	if logToJournal {
-		log.SetJournalEnabled(true)
-		if logToConsole {
-			log.SetWriter(os.Stderr)
-		} else {
-			log.SetWriter(ioutil.Discard)
-		}
-	} else {
-		logFileMaxBytes := config.LogFileMaxMegabytes * 1024 * 1024
-		var logWriter io.Writer
-		logWriter, err = log.NewLogRoller(config.LogFileName, logFileMaxBytes, config.LogMaxFiles)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to start log roller: %s", err)
-			return 1
-		}
-
-		if logToConsole {
-			logWriter = io.MultiWriter(logWriter, os.Stderr)
-		}
-		log.SetWriter(logWriter)
-	}
+	log.SetLogToConsole(context.Bool("log-to-console"))
 
 	logLevel, ok := log.LevelFromString(config.LogLevel)
 	if !ok {
@@ -97,16 +69,8 @@ func connector(context *cli.Context) int {
 	if !config.CloudPrintingEnable && !config.LocalPrintingEnable {
 		log.Fatal("Cannot run connector with both local_printing_enable and cloud_printing_enable set to false")
 		return 1
-	}
-
-	if _, err := os.Stat(config.MonitorSocketFilename); !os.IsNotExist(err) {
-		if err != nil {
-			log.Fatalf("Failed to stat monitor socket: %s", err)
-		} else {
-			log.Fatalf(
-				"A connector is already running, or the monitoring socket %s wasn't cleaned up properly",
-				config.MonitorSocketFilename)
-		}
+	} else if config.LocalPrintingEnable {
+		log.Fatal("Local printing has not been implemented in this version of the Windows connector.")
 		return 1
 	}
 
@@ -145,66 +109,51 @@ func connector(context *cli.Context) int {
 		defer x.Quit()
 	}
 
-	cupsConnectTimeout, err := time.ParseDuration(config.CUPSConnectTimeout)
-	if err != nil {
-		log.Fatalf("Failed to parse CUPS connect timeout: %s", err)
-		return 1
-	}
-	c, err := cups.NewCUPS(config.CUPSCopyPrinterInfoToDisplayName, config.PrefixJobIDToJobTitle,
-		config.DisplayNamePrefix, config.CUPSPrinterAttributes, config.CUPSMaxConnections,
-		cupsConnectTimeout, config.PrinterBlacklist, config.CUPSIgnoreRawPrinters,
-		config.CUPSIgnoreClassPrinters)
+	ws, err := winspool.NewWinSpool(config.PrefixJobIDToJobTitle, config.DisplayNamePrefix, config.PrinterBlacklist)
 	if err != nil {
 		log.Fatal(err)
 		return 1
 	}
-	defer c.Quit()
 
-	var s *snmp.SNMPManager
-	if config.SNMPEnable {
-		log.Info("SNMP enabled")
-		s, err = snmp.NewSNMPManager(config.SNMPCommunity, config.SNMPMaxConnections)
-		if err != nil {
-			log.Fatal(err)
-			return 1
+	/*
+		var s *snmp.SNMPManager
+		if config.SNMPEnable {
+			log.Info("SNMP enabled")
+			s, err = snmp.NewSNMPManager(config.SNMPCommunity, config.SNMPMaxConnections)
+			if err != nil {
+				log.Fatal(err)
+				return 1
+			}
+			defer s.Quit()
 		}
-		defer s.Quit()
-	}
 
-	var priv *privet.Privet
-	if config.LocalPrintingEnable {
-		if g == nil {
-			priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, nil)
-		} else {
-			priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, g.ProximityToken)
+		var priv *privet.Privet
+		if config.LocalPrintingEnable {
+			if g == nil {
+				priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, nil)
+			} else {
+				priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, g.ProximityToken)
+			}
+			if err != nil {
+				log.Fatal(err)
+				return 1
+			}
+			defer priv.Quit()
 		}
-		if err != nil {
-			log.Fatal(err)
-			return 1
-		}
-		defer priv.Quit()
-	}
+	*/
 
 	nativePrinterPollInterval, err := time.ParseDuration(config.NativePrinterPollInterval)
 	if err != nil {
-		log.Fatalf("Failed to parse CUPS printer poll interval: %s", err)
+		log.Fatalf("Failed to parse printer poll interval: %s", err)
 		return 1
 	}
-	pm, err := manager.NewPrinterManager(c, g, priv, s, nativePrinterPollInterval,
-		config.NativeJobQueueSize, config.CUPSJobFullUsername, config.CUPSIgnoreRawPrinters,
-		config.ShareScope, jobs, xmppNotifications)
+	pm, err := manager.NewPrinterManager(ws, g, nil, nil, nativePrinterPollInterval,
+		config.NativeJobQueueSize, false, false, config.ShareScope, jobs, xmppNotifications)
 	if err != nil {
 		log.Fatal(err)
 		return 1
 	}
 	defer pm.Quit()
-
-	m, err := monitor.NewMonitor(c, g, priv, pm, config.MonitorSocketFilename)
-	if err != nil {
-		log.Fatal(err)
-		return 1
-	}
-	defer m.Quit()
 
 	if config.CloudPrintingEnable {
 		if config.LocalPrintingEnable {

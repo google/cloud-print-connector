@@ -11,21 +11,85 @@ package winspool
 import (
 	"errors"
 	"fmt"
+	"os"
+	"runtime"
 	"strconv"
+	"strings"
 
 	"github.com/google/cups-connector/cdd"
 	"github.com/google/cups-connector/lib"
 )
 
+// winspoolPDS represents capabilities that WinSpool always provides.
+var winspoolPDS = cdd.PrinterDescriptionSection{
+	SupportedContentType: &[]cdd.SupportedContentType{
+		cdd.SupportedContentType{ContentType: "application/pdf"},
+	},
+	FitToPage: &cdd.FitToPage{
+		Option: []cdd.FitToPageOption{
+			cdd.FitToPageOption{
+				Type:      cdd.FitToPageNoFitting,
+				IsDefault: true,
+			},
+			cdd.FitToPageOption{
+				Type:      cdd.FitToPageFitToPage,
+				IsDefault: false,
+			},
+		},
+	},
+	Color: &cdd.Color{
+		// Advertise color and not B/W because there isn't a reliable way to detect a B/W printer.
+		Option: []cdd.ColorOption{
+			cdd.ColorOption{
+				Type:                       cdd.ColorTypeStandardColor,
+				IsDefault:                  true,
+				CustomDisplayNameLocalized: cdd.NewLocalizedString("Color"),
+			},
+		},
+	},
+}
+
 // Interface between Go and the Windows API.
 type WinSpool struct {
 	prefixJobIDToJobTitle bool
 	displayNamePrefix     string
+	systemTags            map[string]string
+	printerBlacklist      map[string]interface{}
 }
 
-func NewWinSpool(prefixJobIDToJobTitle bool, displayNamePrefix string) (*WinSpool, error) {
-	// TODO: Give meaning to both args.
-	return &WinSpool{prefixJobIDToJobTitle, displayNamePrefix}, nil
+func NewWinSpool(prefixJobIDToJobTitle bool, displayNamePrefix string, printerBlacklist []string) (*WinSpool, error) {
+	systemTags, err := getSystemTags()
+	if err != nil {
+		return nil, err
+	}
+
+	pb := map[string]interface{}{}
+	for _, p := range printerBlacklist {
+		pb[p] = struct{}{}
+	}
+
+	ws := WinSpool{
+		prefixJobIDToJobTitle: prefixJobIDToJobTitle,
+		displayNamePrefix:     displayNamePrefix,
+		systemTags:            systemTags,
+		printerBlacklist:      pb,
+	}
+	return &ws, nil
+}
+
+func getSystemTags() (map[string]string, error) {
+	tags := make(map[string]string)
+
+	tags["connector-version"] = lib.BuildDate
+	hostname, err := os.Hostname()
+	if err == nil {
+		tags["system-hostname"] = hostname
+	}
+	tags["system-arch"] = runtime.GOARCH
+	tags["system-golang-version"] = runtime.Version()
+	tags["system-windows-version"] = GetWindowsVersion()
+
+	return tags, nil
 }
 
 func convertPrinterState(wsStatus uint32) *cdd.PrinterStateSection {
@@ -221,8 +285,23 @@ func convertPrinterState(wsStatus uint32) *cdd.PrinterStateSection {
 	return &state
 }
 
+func getManModel(driverName string) (man string, model string) {
+	man = "Google"
+	model = "Cloud Printer"
+
+	parts := strings.SplitN(driverName, " ", 2)
+	if len(parts) > 0 && len(parts[0]) > 0 {
+		man = parts[0]
+	}
+	if len(parts) > 1 && len(parts[1]) > 0 {
+		model = parts[1]
+	}
+
+	return
+}
+
 // GetPrinters gets all Windows printers found on this computer.
-func (c *WinSpool) GetPrinters() ([]lib.Printer, error) {
+func (ws *WinSpool) GetPrinters() ([]lib.Printer, error) {
 	pi2s, err := EnumPrinters2()
 	if err != nil {
 		return nil, err
@@ -230,14 +309,23 @@ func (c *WinSpool) GetPrinters() ([]lib.Printer, error) {
 
 	printers := make([]lib.Printer, 0, len(pi2s))
 	for _, pi2 := range pi2s {
-		printerName := pi2.PrinterName()
-		portName := pi2.PortName()
-		devMode := pi2.DevMode()
+		printerName := pi2.GetPrinterName()
+		portName := pi2.GetPortName()
+		devMode := pi2.GetDevMode()
+
+		manufacturer, model := getManModel(pi2.GetDriverName())
 
 		printer := lib.Printer{
-			Name:        printerName,
-			State:       convertPrinterState(pi2.Status()),
-			Description: &cdd.PrinterDescriptionSection{},
+			Name:               printerName,
+			DefaultDisplayName: ws.displayNamePrefix + printerName,
+			UUID:               printerName, // TODO: Add something unique from host.
+			Manufacturer:       manufacturer,
+			Model:              model,
+			State:              convertPrinterState(pi2.GetStatus()),
+			Description:        &cdd.PrinterDescriptionSection{},
+			Tags: map[string]string{
+				"printer-location": pi2.GetLocation(),
+			},
 		}
 
 		if def, ok := devMode.GetDuplex(); ok {
@@ -299,19 +387,6 @@ func (c *WinSpool) GetPrinters() ([]lib.Printer, error) {
 			}
 		}
 
-		printer.Description.FitToPage = &cdd.FitToPage{
-			Option: []cdd.FitToPageOption{
-				cdd.FitToPageOption{
-					Type:      cdd.FitToPageNoFitting,
-					IsDefault: true,
-				},
-				cdd.FitToPageOption{
-					Type:      cdd.FitToPageFitToPage,
-					IsDefault: false,
-				},
-			},
-		}
-
 		printer.Description.MediaSize, err = convertMediaSize(printerName, portName, devMode)
 		if err != nil {
 			return nil, err
@@ -332,7 +407,44 @@ func (c *WinSpool) GetPrinters() ([]lib.Printer, error) {
 		printers = append(printers, printer)
 	}
 
+	printers = ws.filterBlacklistPrinters(printers)
+	printers = addStaticDescriptionToPrinters(printers)
+	printers = ws.addSystemTagsToPrinters(printers)
+
 	return printers, nil
+}
+
+func (ws *WinSpool) filterBlacklistPrinters(printers []lib.Printer) []lib.Printer {
+	result := make([]lib.Printer, 0, len(printers))
+	for i := range printers {
+		if _, exists := ws.printerBlacklist[printers[i].Name]; !exists {
+			result = append(result, printers[i])
+		}
+	}
+	return result
+}
+
+// addStaticDescriptionToPrinters adds information that is true for all
+// printers to printers.
+func addStaticDescriptionToPrinters(printers []lib.Printer) []lib.Printer {
+	for i := range printers {
+		printers[i].GCPVersion = lib.GCPAPIVersion
+		printers[i].SetupURL = lib.ConnectorHomeURL
+		printers[i].SupportURL = lib.ConnectorHomeURL
+		printers[i].UpdateURL = lib.ConnectorHomeURL
+		printers[i].ConnectorVersion = lib.ShortName
+		printers[i].Description.Absorb(&winspoolPDS)
+	}
+	return printers
+}
+
+func (ws *WinSpool) addSystemTagsToPrinters(printers []lib.Printer) []lib.Printer {
+	for i := range printers {
+		for k, v := range ws.systemTags {
+			printers[i].Tags[k] = v
+		}
+	}
+	return printers
 }
 
 func convertMediaSize(printerName, portName string, devMode *DevMode) (*cdd.MediaSize, error) {
@@ -365,7 +477,8 @@ func convertMediaSize(printerName, portName string, devMode *DevMode) (*cdd.Medi
 		if names[i] == "" {
 			continue
 		}
-		width, length := sizes[2*i], sizes[2*i+1]
+		// Convert from tenths-of-mm to micrometers
+		width, length := sizes[2*i]*100, sizes[2*i+1]*100
 
 		var def bool
 		if !foundDef {
@@ -432,7 +545,7 @@ func convertJobState(wsStatus uint32) *cdd.JobState {
 }
 
 // GetJobState gets the current state of the job indicated by jobID.
-func (c *WinSpool) GetJobState(printerName string, jobID uint32) (*cdd.PrintJobStateDiff, error) {
+func (ws *WinSpool) GetJobState(printerName string, jobID uint32) (*cdd.PrintJobStateDiff, error) {
 	hPrinter, err := OpenPrinter(printerName)
 	if err != nil {
 		return nil, err
@@ -656,7 +769,14 @@ var (
 
 // Print sends a new print job to the specified printer. The job ID
 // is returned.
-func (c *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (uint32, error) {
+func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (uint32, error) {
+	printer.NativeJobSemaphore.Acquire()
+	defer printer.NativeJobSemaphore.Release()
+
+	if ws.prefixJobIDToJobTitle {
+		title = fmt.Sprintf("gcp:%s %s", gcpJobID, title)
+	}
+
 	if printer == nil {
 		return 0, errors.New("Print() called with nil printer")
 	}
@@ -731,5 +851,5 @@ func (c *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID s
 
 // The following functions are not relevant to Windows printing, but are required by the NativePrintSystem interface.
 
-func (w *WinSpool) Quit()                              {}
-func (c *WinSpool) RemoveCachedPPD(printerName string) {}
+func (ws *WinSpool) Quit()                              {}
+func (ws *WinSpool) RemoveCachedPPD(printerName string) {}

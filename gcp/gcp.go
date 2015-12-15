@@ -659,13 +659,13 @@ func (gcp *GoogleCloudPrint) processJob(job *Job, printer *lib.Printer, reportJo
 	}
 
 	gcp.jobs <- &lib.Job{
-		CUPSPrinterName: printer.Name,
-		Filename:        filename,
-		Title:           job.Title,
-		User:            job.OwnerID,
-		JobID:           job.GCPJobID,
-		Ticket:          ticket,
-		UpdateJob:       gcp.Control,
+		NativePrinterName: printer.Name,
+		Filename:          filename,
+		Title:             job.Title,
+		User:              job.OwnerID,
+		JobID:             job.GCPJobID,
+		Ticket:            ticket,
+		UpdateJob:         gcp.Control,
 	}
 }
 

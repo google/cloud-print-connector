@@ -19,6 +19,8 @@ import (
 
 var (
 	gdi32    = syscall.MustLoadDLL("gdi32.dll")
+	kernel32 = syscall.MustLoadDLL("kernel32.dll")
+	ntoskrnl = syscall.MustLoadDLL("ntoskrnl.exe")
 	winspool = syscall.MustLoadDLL("winspool.drv")
 
 	abortDocProc           = gdi32.MustFindProc("AbortDoc")
@@ -37,6 +39,7 @@ var (
 	getPrinterProc         = winspool.MustFindProc("GetPrinterW")
 	openPrinterProc        = winspool.MustFindProc("OpenPrinterW")
 	resetDCProc            = gdi32.MustFindProc("ResetDCW")
+	rtlGetVersionProc      = ntoskrnl.MustFindProc("RtlGetVersion")
 	setGraphicsModeProc    = gdi32.MustFindProc("SetGraphicsMode")
 	setWorldTransformProc  = gdi32.MustFindProc("SetWorldTransform")
 	startDocProc           = gdi32.MustFindProc("StartDocW")
@@ -154,36 +157,28 @@ type PrinterInfo2 struct {
 	averagePPM          uint32
 }
 
-func (pi *PrinterInfo2) PrinterName() string {
+func (pi *PrinterInfo2) GetPrinterName() string {
 	return utf16PtrToString(pi.pPrinterName)
 }
 
-func (pi *PrinterInfo2) PortName() string {
+func (pi *PrinterInfo2) GetPortName() string {
 	return utf16PtrToString(pi.pPortName)
 }
 
-func (pi *PrinterInfo2) Comment() string {
-	return utf16PtrToString(pi.pComment)
+func (pi *PrinterInfo2) GetDriverName() string {
+	return utf16PtrToString(pi.pDriverName)
 }
 
-func (pi *PrinterInfo2) Location() string {
+func (pi *PrinterInfo2) GetLocation() string {
 	return utf16PtrToString(pi.pLocation)
 }
 
-func (pi *PrinterInfo2) DevMode() *DevMode {
+func (pi *PrinterInfo2) GetDevMode() *DevMode {
 	return pi.pDevMode
 }
 
-func (pi *PrinterInfo2) Attributes() uint32 {
-	return pi.attributes
-}
-
-func (pi *PrinterInfo2) Status() uint32 {
+func (pi *PrinterInfo2) GetStatus() uint32 {
 	return pi.status
-}
-
-func (pi *PrinterInfo2) AveragePPM() uint32 {
-	return pi.averagePPM
 }
 
 // PRINTER_INFO_4 struct.
@@ -412,10 +407,7 @@ func (dm *DevMode) GetDeviceName() string {
 }
 
 func (dm *DevMode) GetOrientation() (int16, bool) {
-	if dm.dmFields&DM_ORIENTATION == 0 {
-		return 0, false
-	}
-	return dm.dmOrientation, true
+	return dm.dmOrientation, dm.dmFields&DM_ORIENTATION != 0
 }
 
 func (dm *DevMode) SetOrientation(orientation int16) {
@@ -424,11 +416,7 @@ func (dm *DevMode) SetOrientation(orientation int16) {
 }
 
 func (dm *DevMode) GetPaperSize() (int16, bool) {
-	// TODO: try return dm.dmPaperSize, dm.dmFields&DM_PAPERSIZE
-	if dm.dmFields&DM_PAPERSIZE == 0 {
-		return 0, false
-	}
-	return dm.dmPaperSize, true
+	return dm.dmPaperSize, dm.dmFields&DM_PAPERSIZE != 0
 }
 
 func (dm *DevMode) SetPaperSize(paperSize int16) {
@@ -441,10 +429,7 @@ func (dm *DevMode) ClearPaperSize() {
 }
 
 func (dm *DevMode) GetPaperLength() (int16, bool) {
-	if dm.dmFields&DM_PAPERLENGTH == 0 {
-		return 0, false
-	}
-	return dm.dmPaperLength, true
+	return dm.dmPaperLength, dm.dmFields&DM_PAPERLENGTH != 0
 }
 
 func (dm *DevMode) SetPaperLength(length int16) {
@@ -457,10 +442,7 @@ func (dm *DevMode) ClearPaperLength() {
 }
 
 func (dm *DevMode) GetPaperWidth() (int16, bool) {
-	if dm.dmFields&DM_PAPERWIDTH == 0 {
-		return 0, false
-	}
-	return dm.dmPaperWidth, true
+	return dm.dmPaperWidth, dm.dmFields&DM_PAPERWIDTH != 0
 }
 
 func (dm *DevMode) SetPaperWidth(width int16) {
@@ -473,10 +455,7 @@ func (dm *DevMode) ClearPaperWidth() {
 }
 
 func (dm *DevMode) GetCopies() (int16, bool) {
-	if dm.dmFields&DM_COPIES == 0 {
-		return 0, false
-	}
-	return dm.dmCopies, true
+	return dm.dmCopies, dm.dmFields&DM_COPIES != 0
 }
 
 func (dm *DevMode) SetCopies(copies int16) {
@@ -485,10 +464,7 @@ func (dm *DevMode) SetCopies(copies int16) {
 }
 
 func (dm *DevMode) GetColor() (int16, bool) {
-	if dm.dmFields&DM_COLOR == 0 {
-		return 0, false
-	}
-	return dm.dmColor, true
+	return dm.dmColor, dm.dmFields&DM_COLOR != 0
 }
 
 func (dm *DevMode) SetColor(color int16) {
@@ -497,10 +473,7 @@ func (dm *DevMode) SetColor(color int16) {
 }
 
 func (dm *DevMode) GetDuplex() (int16, bool) {
-	if dm.dmFields&DM_DUPLEX == 0 {
-		return 0, false
-	}
-	return dm.dmDuplex, true
+	return dm.dmDuplex, dm.dmFields&DM_DUPLEX != 0
 }
 
 func (dm *DevMode) SetDuplex(duplex int16) {
@@ -509,10 +482,7 @@ func (dm *DevMode) SetDuplex(duplex int16) {
 }
 
 func (dm *DevMode) GetCollate() (int16, bool) {
-	if dm.dmFields&DM_COLLATE == 0 {
-		return 0, false
-	}
-	return dm.dmCollate, true
+	return dm.dmCollate, dm.dmFields&DM_COLLATE != 0
 }
 
 func (dm *DevMode) SetCollate(collate int16) {
@@ -701,7 +671,7 @@ func EnumPrinters5() (map[string]string, error) {
 	return m, nil
 }
 
-type HANDLE syscall.Handle
+type HANDLE uintptr
 
 func OpenPrinter(printerName string) (HANDLE, error) {
 	var pPrinterName *uint16
@@ -767,7 +737,6 @@ func (hPrinter HANDLE) GetPrinter8() (*DevMode, error) {
 	return devMode, nil
 }
 
-// TODO: Get all subkeys.
 func (hPrinter HANDLE) EnumPrinterDataEx() (map[string]interface{}, error) {
 	pKeyName, err := syscall.UTF16PtrFromString(`\`)
 	if err != nil {
@@ -832,7 +801,6 @@ func (hPrinter HANDLE) DocumentPropertiesGet(deviceName string) (*DevMode, error
 
 	var pDevMode []byte = make([]byte, cbBuf)
 	devMode := (*DevMode)(unsafe.Pointer(&pDevMode[0]))
-	// TODO: These two lines should not be needed, per MSDN.
 	devMode.dmSize = uint16(cbBuf)
 	devMode.dmSpecVersion = DM_SPECVERSION
 
@@ -934,8 +902,7 @@ func (hPrinter HANDLE) GetJob(jobID int32) (*JobInfo1, error) {
 	return &ji1, nil
 }
 
-// TODO: change HDC and HANDLE to uintptr
-type HDC syscall.Handle
+type HDC uintptr
 
 func CreateDC(deviceName string, devMode *DevMode) (HDC, error) {
 	lpszDevice, err := syscall.UTF16PtrFromString(deviceName)
@@ -1003,7 +970,6 @@ func (hDC HDC) StartDoc(docName string) (int32, error) {
 }
 
 func (hDC HDC) EndDoc() error {
-	// TODO: test
 	_, _, err := endDocProc.Call(uintptr(hDC))
 	if err != NO_ERROR {
 		return err
@@ -1012,14 +978,12 @@ func (hDC HDC) EndDoc() error {
 }
 
 func (hDC HDC) AbortDoc() error {
-	// TODO: test
 	r1, _, err := abortDocProc.Call(uintptr(hDC))
 	fmt.Println(r1, err, "using untested AbortDoc")
 	return err
 }
 
 func (hDC HDC) StartPage() error {
-	// TODO: test
 	_, _, err := startPageProc.Call(uintptr(hDC))
 	if err != NO_ERROR {
 		return err
@@ -1028,7 +992,6 @@ func (hDC HDC) StartPage() error {
 }
 
 func (hDC HDC) EndPage() error {
-	// TODO: test
 	_, _, err := endPageProc.Call(uintptr(hDC))
 	if err != NO_ERROR {
 		return err
@@ -1197,45 +1160,29 @@ func DeviceCapabilitiesInt32Pairs(device, port string, fwCapability uint16) ([]i
 	return values, nil
 }
 
-/*
-type Point struct {
-	x int32
-	y int32
-}
-
-func (p *Point) GetX() int32 {
-	return p.x
-}
-
-func (p *Point) GetY() int32 {
-	return p.y
-}
-
-func DeviceCapabilitiesPointArray(device, port string, fwCapability uint16) ([]Point, error) {
-	nValue, err := deviceCapabilities(device, port, fwCapability, nil)
+func DeviceCapabilitiesString(device, port string, fwCapability uint16) (string, error) {
+	fmt.Println("what")
+	cbBuf, err := deviceCapabilities(device, port, fwCapability, nil)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	if nValue <= 0 {
-		return []int32{}, nil
+	fmt.Println("cbBuf", cbBuf)
+
+	if cbBuf <= 0 {
+		return "", nil
 	}
 
-	pOutput := make([]byte, int32Size*2*nValue)
+	pOutput := make([]byte, cbBuf)
 	_, err = deviceCapabilities(device, port, fwCapability, pOutput)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	values := make([]int32, 0, nValue*2)
-	for i := int32(0); i < nValue*2; i++ {
-		value := *(*int32)(unsafe.Pointer(&pOutput[i*int32Size]))
-		values = append(values, value)
-	}
+	fmt.Println("pOutput", pOutput)
 
-	return values, nil
+	return utf16PtrToString((*uint16)(unsafe.Pointer(&pOutput[0]))), nil
 }
-*/
 
 // DevMode.dmPaperSize values.
 const (
@@ -1485,4 +1432,34 @@ var paperValueToSize = map[int]paperSize{
 	DMPAPER_PENV_8_ROTATED:                {3090, 1200},
 	DMPAPER_PENV_9_ROTATED:                {3240, 2290},
 	DMPAPER_PENV_10_ROTATED:               {4580, 3240},
+}
+
+type RTLOSVersionInfo struct {
+	dwOSVersionInfoSize uint32
+	dwMajorVersion      uint32
+	dwMinorVersion      uint32
+	dwBuildNumber       uint32
+	dwPlatformId        uint32
+
+	// WCHAR szCSDVersion[128]
+	szCSDVersion, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _ uint16
+}
+
+func GetWindowsVersion() string {
+	var osVersionInfo RTLOSVersionInfo
+	osVersionInfo.dwOSVersionInfoSize = uint32(unsafe.Sizeof(osVersionInfo))
+	r1, _, _ := rtlGetVersionProc.Call(uintptr(unsafe.Pointer(&osVersionInfo)))
+	if r1 != 0 {
+		// This is unimportant, so "unknown" is fine.
+		return "unknown (error)"
+	}
+
+	version := fmt.Sprintf("%d.%d.%d", osVersionInfo.dwMajorVersion, osVersionInfo.dwMinorVersion, osVersionInfo.dwBuildNumber)
+
+	servicePackVersion := utf16PtrToString((*uint16)(&osVersionInfo.szCSDVersion))
+	if servicePackVersion != "" {
+		version = fmt.Sprintf("%s %s", version, servicePackVersion)
+	}
+
+	return version
 }

@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://developers.google.com/open-source/licenses/bsd
 
-// +build !windows
+// +build linux darwin
 
 #include <stddef.h> // size_t
 #include <stdio.h>  // asprintf
