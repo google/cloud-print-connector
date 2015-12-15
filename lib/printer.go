@@ -9,6 +9,8 @@ https://developers.google.com/open-source/licenses/bsd
 package lib
 
 import (
+	"bytes"
+	"encoding/json"
 	"reflect"
 	"regexp"
 
@@ -185,7 +187,11 @@ func diffPrinter(pc, pg *Printer) PrinterDiff {
 	if !reflect.DeepEqual(pg.State, pc.State) {
 		d.StateChanged = true
 	}
-	if !reflect.DeepEqual(pg.Description, pc.Description) {
+	// PrinterDescriptionSection objects contain fields that are not exported to JSON,
+	// and therefore cause comparison with GCP's copy to incorrectly appear not equal.
+	pgDescJSON, _ := json.Marshal(pg.Description)
+	pcDescJSON, _ := json.Marshal(pc.Description)
+	if !bytes.Equal(pgDescJSON, pcDescJSON) {
 		d.DescriptionChanged = true
 	}
 	if pg.CapsHash != pc.CapsHash {
