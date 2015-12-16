@@ -135,9 +135,10 @@ type CUPS struct {
 	displayNamePrefix     string
 	printerAttributes     []string
 	systemTags            map[string]string
+	printerBlacklist      map[string]interface{}
 }
 
-func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix string, printerAttributes []string, maxConnections uint, connectTimeout time.Duration) (*CUPS, error) {
+func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix string, printerAttributes []string, maxConnections uint, connectTimeout time.Duration, printerBlacklist []string) (*CUPS, error) {
 	if err := checkPrinterAttributes(printerAttributes); err != nil {
 		return nil, err
 	}
@@ -153,6 +154,11 @@ func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix st
 		return nil, err
 	}
 
+	pb := map[string]interface{}{}
+	for _, p := range printerBlacklist {
+		pb[p] = struct{}{}
+	}
+
 	c := &CUPS{
 		cc:                cc,
 		pc:                pc,
@@ -160,6 +166,7 @@ func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix st
 		displayNamePrefix: displayNamePrefix,
 		printerAttributes: printerAttributes,
 		systemTags:        systemTags,
+		printerBlacklist:  pb,
 	}
 
 	return c, nil
@@ -201,6 +208,7 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	}
 
 	printers := c.responseToPrinters(response)
+	printers = c.filterBlacklistPrinters(printers)
 	printers = filterRawPrinters(printers)
 	printers = c.addPPDDescriptionToPrinters(printers)
 	printers = addStaticDescriptionToPrinters(printers)
@@ -246,6 +254,16 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 	}
 
 	return printers
+}
+
+func (c *CUPS) filterBlacklistPrinters(printers []lib.Printer) []lib.Printer {
+	result := make([]lib.Printer, 0, len(printers))
+	for i := range printers {
+		if _, exists := c.printerBlacklist[printers[i].Name]; !exists {
+			result = append(result, printers[i])
+		}
+	}
+	return result
 }
 
 // filterRawPrinters removes raw printers from the slice.

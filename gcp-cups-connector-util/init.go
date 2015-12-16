@@ -360,6 +360,7 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 		LogMaxFiles:                  uint(context.Int("log-max-files")),
 		LogLevel:                     context.String("log-level"),
 		LogToJournal:                 context.Bool("log-to-journal"),
+		PrinterBlacklist:             lib.DefaultConfig.PrinterBlacklist,
 	}
 }
 
@@ -387,6 +388,7 @@ func createLocalConfig(context *cli.Context) *lib.Config {
 		LogMaxFiles:                  uint(context.Int("log-max-files")),
 		LogLevel:                     context.String("log-level"),
 		LogToJournal:                 context.Bool("log-to-journal"),
+		PrinterBlacklist:             lib.DefaultConfig.PrinterBlacklist,
 	}
 }
 

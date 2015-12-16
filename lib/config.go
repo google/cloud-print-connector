@@ -158,6 +158,9 @@ type Config struct {
 
 	// Log to the systemd journal instead of to files?
 	LogToJournal bool `json:"log_to_journal"`
+
+	// Ignore printers with native names.
+	PrinterBlacklist []string `json:"printer_blacklist"`
 }
 
 // DefaultConfig represents reasonable default values for Config fields.
@@ -219,6 +222,7 @@ var DefaultConfig = Config{
 	LogMaxFiles:                  3,
 	LogLevel:                     "INFO",
 	LogToJournal:                 false,
+	PrinterBlacklist:             []string{},
 }
 
 // getConfigFilename gets the absolute filename of the config file specified by
