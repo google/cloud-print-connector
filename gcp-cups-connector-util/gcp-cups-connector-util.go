@@ -335,6 +335,11 @@ func updateConfigFile(context *cli.Context) {
 		fmt.Println("Added log_to_journal")
 		config.LogToJournal = lib.DefaultConfig.LogToJournal
 	}
+	if _, exists := configMap["printer_blacklist"]; !exists {
+		dirty = true
+		fmt.Println("Added printer_blacklist")
+		config.PrinterBlacklist = lib.DefaultConfig.PrinterBlacklist
+	}
 
 	if dirty {
 		config.ToFile(context)
