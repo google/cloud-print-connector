@@ -10,6 +10,8 @@ package lib
 
 const defaultConfigFilename = "gcp-windows-connector.config.json"
 
+type Config commonConfig
+
 // DefaultConfig represents reasonable default values for Config fields.
 // Omitted Config fields are omitted on purpose; they are unique per
 // connector instance.

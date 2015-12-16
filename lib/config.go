@@ -46,7 +46,7 @@ var (
 	FullName = "Google Cloud Print CUPS Connector version " + BuildDate + "-" + runtime.GOOS
 )
 
-type Config struct {
+type commonConfig struct {
 	// Associated with root account. XMPP credential.
 	XMPPJID string `json:"xmpp_jid,omitempty"`
 
@@ -69,11 +69,11 @@ type Config struct {
 	XMPPPort uint16 `json:"xmpp_port,omitempty"`
 
 	// XMPP ping timeout (give up waiting after this time).
+	// TODO: Rename with "gcp_" removed.
 	XMPPPingTimeout string `json:"gcp_xmpp_ping_timeout,omitempty"`
 
 	// XMPP ping interval (time between ping attempts).
-	// This value is used when a printer is registered, and can
-	// be overridden through the GCP API update method.
+	// TODO: Rename with "gcp_" removed.
 	// TODO: Rename with "_default" removed.
 	XMPPPingInterval string `json:"gcp_xmpp_ping_interval_default,omitempty"`
 
@@ -129,43 +129,6 @@ type Config struct {
 
 	// Least severity to log.
 	LogLevel string `json:"log_level"`
-
-	// CUPS only: Where to place log file.
-	LogFileName string `json:"log_file_name"`
-
-	// CUPS only: Maximum log file size.
-	LogFileMaxMegabytes uint `json:"log_file_max_megabytes"`
-
-	// CUPS only: Maximum log file quantity.
-	LogMaxFiles uint `json:"log_max_files"`
-
-	// CUPS only: Log to the systemd journal instead of to files?
-	LogToJournal bool `json:"log_to_journal"`
-
-	// CUPS only: Filename of unix socket for connector-check to talk to connector.
-	MonitorSocketFilename string `json:"monitor_socket_filename"`
-
-	// CUPS only: Maximum quantity of open CUPS connections.
-	CUPSMaxConnections uint `json:"cups_max_connections,omitempty"`
-
-	// CUPS only: timeout for opening a new connection.
-	CUPSConnectTimeout string `json:"cups_connect_timeout,omitempty"`
-
-	// CUPS only: printer attributes to copy to GCP.
-	CUPSPrinterAttributes []string `json:"cups_printer_attributes,omitempty"`
-
-	// CUPS only: use the full username (joe@example.com) in CUPS job.
-	CUPSJobFullUsername bool `json:"cups_job_full_username,omitempty"`
-
-	// CUPS only: ignore printers with make/model 'Local Raw Printer'.
-	CUPSIgnoreRawPrinters bool `json:"cups_ignore_raw_printers"`
-
-	// CUPS only: ignore printers with make/model 'Local Printer Class'.
-	CUPSIgnoreClassPrinters bool `json:"cups_ignore_class_printers"`
-
-	// CUPS only: copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName.
-	// TODO: rename with cups_ prefix
-	CUPSCopyPrinterInfoToDisplayName bool `json:"copy_printer_info_to_display_name,omitempty"`
 }
 
 // getConfigFilename gets the absolute filename of the config file specified by
