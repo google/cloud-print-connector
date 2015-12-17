@@ -366,7 +366,7 @@ func (pm *PrinterManager) deleteInFlightJob(jobID string) {
 // or ABORTED.
 //
 // All errors are reported and logged from inside this function.
-func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, jobID string, ticket *cdd.CloudJobTicket, updateJob func(string, cdd.PrintJobStateDiff) error) {
+func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, jobID string, ticket *cdd.CloudJobTicket, updateJob func(string, *cdd.PrintJobStateDiff) error) {
 	defer os.Remove(filename)
 	if !pm.addInFlightJob(jobID) {
 		// This print job was already received. We probably received it
@@ -389,7 +389,7 @@ func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, job
 				ServiceActionCause: &cdd.ServiceActionCause{ErrorCode: cdd.ServiceActionCausePrinterDeleted},
 			},
 		}
-		if err := updateJob(jobID, state); err != nil {
+		if err := updateJob(jobID, &state); err != nil {
 			log.ErrorJob(jobID, err)
 		}
 		return
@@ -405,7 +405,7 @@ func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, job
 				DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCausePrintFailure},
 			},
 		}
-		if err := updateJob(jobID, state); err != nil {
+		if err := updateJob(jobID, &state); err != nil {
 			log.ErrorJob(jobID, err)
 		}
 		return
@@ -430,7 +430,7 @@ func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, job
 				},
 				PagesPrinted: state.PagesPrinted,
 			}
-			if err := updateJob(jobID, state); err != nil {
+			if err := updateJob(jobID, &state); err != nil {
 				log.ErrorJob(jobID, err)
 			}
 			pm.incrementJobsProcessed(false)
@@ -439,7 +439,7 @@ func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, job
 
 		if !reflect.DeepEqual(*nativeState, state) {
 			state = *nativeState
-			if err = updateJob(jobID, state); err != nil {
+			if err = updateJob(jobID, &state); err != nil {
 				log.ErrorJob(jobID, err)
 			}
 			log.InfoJobf(jobID, "State: %s", state.State.Type)

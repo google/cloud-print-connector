@@ -17,5 +17,5 @@ type Job struct {
 	User              string
 	JobID             string
 	Ticket            *cdd.CloudJobTicket
-	UpdateJob         func(string, cdd.PrintJobStateDiff) error
+	UpdateJob         func(string, *cdd.PrintJobStateDiff) error
 }

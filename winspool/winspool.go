@@ -37,16 +37,6 @@ var winspoolPDS = cdd.PrinterDescriptionSection{
 			},
 		},
 	},
-	Color: &cdd.Color{
-		// Advertise color and not B/W because there isn't a reliable way to detect a B/W printer.
-		Option: []cdd.ColorOption{
-			cdd.ColorOption{
-				Type:                       cdd.ColorTypeStandardColor,
-				IsDefault:                  true,
-				CustomDisplayNameLocalized: cdd.NewLocalizedString("Color"),
-			},
-		},
-	},
 }
 
 // Interface between Go and the Windows API.
@@ -328,6 +318,40 @@ func (ws *WinSpool) GetPrinters() ([]lib.Printer, error) {
 			},
 		}
 
+		// Advertise color based on default value, which should be a solid indicator
+		// of color-ness, because the source of this devMode object is EnumPrinters.
+		if def, ok := devMode.GetColor(); ok {
+			if def == DMCOLOR_COLOR {
+				printer.Description.Color = &cdd.Color{
+					Option: []cdd.ColorOption{
+						cdd.ColorOption{
+							VendorID:                   strconv.FormatInt(int64(DMCOLOR_COLOR), 10),
+							Type:                       cdd.ColorTypeStandardColor,
+							IsDefault:                  true,
+							CustomDisplayNameLocalized: cdd.NewLocalizedString("Color"),
+						},
+						cdd.ColorOption{
+							VendorID:                   strconv.FormatInt(int64(DMCOLOR_MONOCHROME), 10),
+							Type:                       cdd.ColorTypeStandardMonochrome,
+							IsDefault:                  false,
+							CustomDisplayNameLocalized: cdd.NewLocalizedString("Monochrome"),
+						},
+					},
+				}
+			} else if def == DMCOLOR_MONOCHROME {
+				printer.Description.Color = &cdd.Color{
+					Option: []cdd.ColorOption{
+						cdd.ColorOption{
+							VendorID:                   strconv.FormatInt(int64(DMCOLOR_MONOCHROME), 10),
+							Type:                       cdd.ColorTypeStandardMonochrome,
+							IsDefault:                  true,
+							CustomDisplayNameLocalized: cdd.NewLocalizedString("Monochrome"),
+						},
+					},
+				}
+			}
+		}
+
 		if def, ok := devMode.GetDuplex(); ok {
 			duplex, err := DeviceCapabilitiesInt32(printerName, portName, DC_DUPLEX)
 			if err != nil {
@@ -539,6 +563,7 @@ func convertJobState(wsStatus uint32) *cdd.JobState {
 	} else {
 		// Don't know what is going on. Get the job out of our queue.
 		state.Type = cdd.JobStateAborted
+		state.DeviceActionCause = &cdd.DeviceActionCause{cdd.DeviceActionCauseOther}
 	}
 
 	return &state
@@ -556,7 +581,8 @@ func (ws *WinSpool) GetJobState(printerName string, jobID uint32) (*cdd.PrintJob
 		if err == ERROR_INVALID_PARAMETER {
 			jobState := cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
-					Type: cdd.JobStateAborted,
+					Type:              cdd.JobStateAborted,
+					DeviceActionCause: &cdd.DeviceActionCause{cdd.DeviceActionCauseOther},
 				},
 			}
 			return &jobState, nil
@@ -754,6 +780,12 @@ func printPage(printerName string, i int, c *jobContext, fitToPage bool) error {
 }
 
 var (
+	colorValueByType = map[cdd.ColorType]int16{
+		cdd.ColorTypeStandardColor:      DMCOLOR_COLOR,
+		cdd.ColorTypeStandardMonochrome: DMCOLOR_MONOCHROME,
+		// Ignore the rest, since we don't advertise them.
+	}
+
 	duplexValueByType = map[cdd.DuplexType]int16{
 		cdd.DuplexNoDuplex:  DMDUP_SIMPLEX,
 		cdd.DuplexLongEdge:  DMDUP_VERTICAL,
@@ -790,6 +822,18 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 	}
 	defer jobContext.free()
 
+	if ticket.Print.Color != nil && printer.Description.Color != nil {
+		if color, ok := colorValueByType[ticket.Print.Color.Type]; ok {
+			jobContext.devMode.SetColor(color)
+		} else if ticket.Print.Color.VendorID != "" {
+			v, err := strconv.ParseInt(ticket.Print.Color.VendorID, 10, 16)
+			if err != nil {
+				return 0, err
+			}
+			jobContext.devMode.SetColor(int16(v))
+		}
+	}
+
 	if ticket.Print.Duplex != nil && printer.Description.Duplex != nil {
 		if duplex, ok := duplexValueByType[ticket.Print.Duplex.Type]; ok {
 			jobContext.devMode.SetDuplex(duplex)
@@ -819,7 +863,6 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 		if ticket.Print.MediaSize.VendorID != "" {
 			v, err := strconv.ParseInt(ticket.Print.MediaSize.VendorID, 10, 16)
 			if err != nil {
-				fmt.Println("houston, problem", err)
 				return 0, err
 			}
 			jobContext.devMode.SetPaperSize(int16(v))
