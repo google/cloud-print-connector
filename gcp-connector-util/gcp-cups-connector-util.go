@@ -354,7 +354,7 @@ func cancelGCPJob(context *cli.Context) {
 		},
 	}
 
-	err := gcp.Control(context.String("job-id"), cancelState)
+	err := gcp.Control(context.String("job-id"), &cancelState)
 	if err != nil {
 		fmt.Printf("Failed to cancel GCP job %s: %s\n", context.String("job-id"), err)
 	} else {
@@ -420,7 +420,7 @@ func cancelAllGCPPrinterJobs(context *cli.Context) {
 	ch := make(chan bool)
 	for _, job := range jobs {
 		go func(gcpJobID string) {
-			err := gcp.Control(gcpJobID, cancelState)
+			err := gcp.Control(gcpJobID, &cancelState)
 			if err != nil {
 				fmt.Printf("Failed to cancel GCP job %s: %s\n", gcpJobID, err)
 			} else {

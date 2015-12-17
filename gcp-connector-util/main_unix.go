@@ -77,7 +77,7 @@ var unixCommands = []cli.Command{
 		ShortName: "i",
 		Usage:     "Creates a config file",
 		Action:    initConfigFile,
-		Flags:     append(commonInitFlags, unixInitFlags),
+		Flags:     append(commonInitFlags, unixInitFlags...),
 	},
 	cli.Command{
 		Name:      "monitor",
@@ -168,7 +168,7 @@ func updateConfig(config *lib.Config, configMap map[string]interface{}) bool {
 	if _, exists := configMap["copy_printer_info_to_display_name"]; !exists {
 		dirty = true
 		fmt.Println("Added copy_printer_info_to_display_name")
-		config.CopyPrinterInfoToDisplayName = lib.DefaultConfig.CopyPrinterInfoToDisplayName
+		config.CUPSCopyPrinterInfoToDisplayName = lib.DefaultConfig.CUPSCopyPrinterInfoToDisplayName
 	}
 
 	return dirty
