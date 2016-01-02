@@ -30,6 +30,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "gcp-cups-connector-util"
 	app.Usage = "Google Cloud Print CUPS Connector utility tools"
+	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
 		lib.ConfigFilenameFlag,
 	}
