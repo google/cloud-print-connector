@@ -30,6 +30,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "gcp-windows-connector"
 	app.Usage = "Google Cloud Print Windows Connector"
+	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
 		lib.ConfigFilenameFlag,
 		cli.BoolFlag{
