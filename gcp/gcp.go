@@ -20,8 +20,8 @@ import (
 	"net/url"
 	"os"
 	"sort"
-	"strings"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -490,19 +490,19 @@ func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string, role string, skip_n
 
 // Unshare calls google.com/cloudprint/unshare to unshare a registered GCP printer.
 func (gcp *GoogleCloudPrint) Unshare(gcpID, shareScope string) error {
-	if  gcp.userClient == nil {
-                return errors.New("Cannot share because user OAuth credentials not provided.")
-        }
+	if gcp.userClient == nil {
+		return errors.New("Cannot unshare because user OAuth credentials not provided.")
+	}
 
-        form := url.Values{}
+	form := url.Values{}
 	form.Set("printerid", gcpID)
 	form.Set("scope", "scope")
 
 	if _, _, _, err := postWithRetry(gcp.userClient, gcp.baseURL+"unshare", form); err != nil {
-                return err
-        }
+		return err
+	}
 
-        return nil
+	return nil
 }
 
 // Download downloads a URL (a print job data file) directly to a Writer.
