@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -468,8 +469,17 @@ func marshalCapabilities(description *cdd.PrinterDescriptionSection) (string, er
 	return string(cdd), nil
 }
 
+// Role is the role a user or group is granted when sharing a printer.
+type Role string
+
+const (
+	User    Role = "USER"
+	Manager Role = "MANAGER"
+	Owner   Role = "OWNER"
+)
+
 // Share calls google.com/cloudprint/share to share a registered GCP printer.
-func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string) error {
+func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string, role Role, skip_notification bool) error {
 	if gcp.userClient == nil {
 		return errors.New("Cannot share because user OAuth credentials not provided.")
 	}
@@ -477,10 +487,27 @@ func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string) error {
 	form := url.Values{}
 	form.Set("printerid", gcpID)
 	form.Set("scope", shareScope)
-	form.Set("role", "USER")
-	form.Set("skip_notification", "true")
+	form.Set("role", string(role))
+	form.Set("skip_notification", strconv.FormatBool(skip_notification))
 
 	if _, _, _, err := postWithRetry(gcp.userClient, gcp.baseURL+"share", form); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Unshare calls google.com/cloudprint/unshare to unshare a registered GCP printer.
+func (gcp *GoogleCloudPrint) Unshare(gcpID, shareScope string) error {
+	if gcp.userClient == nil {
+		return errors.New("Cannot unshare because user OAuth credentials not provided.")
+	}
+
+	form := url.Values{}
+	form.Set("printerid", gcpID)
+	form.Set("scope", "scope")
+
+	if _, _, _, err := postWithRetry(gcp.userClient, gcp.baseURL+"unshare", form); err != nil {
 		return err
 	}
 
