@@ -225,7 +225,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 			log.InfoPrinterf(diff.Printer.Name+" "+diff.Printer.GCPID, "Registered in the cloud")
 
 			if pm.gcp.CanShare() {
-				if err := pm.gcp.Share(diff.Printer.GCPID, pm.shareScope, "USER", true); err != nil {
+				if err := pm.gcp.Share(diff.Printer.GCPID, pm.shareScope, gcp.User, true); err != nil {
 					log.ErrorPrinterf(diff.Printer.Name, "Failed to share: %s", err)
 				} else {
 					log.InfoPrinterf(diff.Printer.Name, "Shared")

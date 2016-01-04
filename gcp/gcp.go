@@ -55,6 +55,15 @@ type GoogleCloudPrint struct {
 	downloadSemaphore *lib.Semaphore
 }
 
+// Role is the role a user or group is granted when sharing a printer.
+type Role string
+
+const (
+	User    Role = "USER"
+	Manager Role = "MANAGER"
+	Owner   Role = "OWNER"
+)
+
 // NewGoogleCloudPrint establishes a connection with GCP, returns a new GoogleCloudPrint object.
 func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL string, maxConcurrentDownload uint, jobs chan<- *lib.Job) (*GoogleCloudPrint, error) {
 	robotClient, err := newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, robotRefreshToken, ScopeCloudPrint, ScopeGoogleTalk)
@@ -470,7 +479,7 @@ func marshalCapabilities(description *cdd.PrinterDescriptionSection) (string, er
 }
 
 // Share calls google.com/cloudprint/share to share a registered GCP printer.
-func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string, role string, skip_notification bool) error {
+func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string, role Role, skip_notification bool) error {
 	if gcp.userClient == nil {
 		return errors.New("Cannot share because user OAuth credentials not provided.")
 	}
@@ -478,7 +487,7 @@ func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string, role string, skip_n
 	form := url.Values{}
 	form.Set("printerid", gcpID)
 	form.Set("scope", shareScope)
-	form.Set("role", role)
+	form.Set("role", string(role))
 	form.Set("skip_notification", strconv.FormatBool(skip_notification))
 
 	if _, _, _, err := postWithRetry(gcp.userClient, gcp.baseURL+"share", form); err != nil {
