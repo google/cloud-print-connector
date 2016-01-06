@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -112,6 +113,45 @@ func main() {
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name: "printer-id",
+				},
+			},
+		},
+		cli.Command{
+			Name:   "share-gcp-printer",
+			Usage:  "Shares a printer with user or group",
+			Action: shareGCPPrinter,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "printer-id",
+					Usage: "Printer to share.",
+				},
+				cli.StringFlag{
+					Name:  "email",
+					Usage: "Group or user to share with.",
+				},
+				cli.StringFlag{
+					Name:  "role",
+					Value: "USER",
+					Usage: "Role granted. user or manager.",
+				},
+				cli.BoolTFlag{
+					Name:  "skip-notification",
+					Usage: "Skip sending email notice. Defaults to true",
+				},
+			},
+		},
+		cli.Command{
+			Name:   "unshare-gcp-printer",
+			Usage:  "Removes user or group access to printer.",
+			Action: unshareGCPPrinter,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "printer-id",
+					Usage: "Printer to unshare.",
+				},
+				cli.StringFlag{
+					Name:  "email",
+					Usage: "Group or user to remove.",
 				},
 			},
 		},
@@ -519,5 +559,43 @@ func showGCPPrinterStatus(context *cli.Context) {
 	fmt.Println("Printer jobs:")
 	for state, count := range jobStateCounts {
 		fmt.Println(" ", state, ":", count)
+	}
+}
+
+// shareGCPPrinter shares a GCP printer
+func shareGCPPrinter(context *cli.Context) {
+	config := getConfig(context)
+	gcpConn := getGCP(config)
+
+	var role gcp.Role
+	switch strings.ToUpper(context.String("role")) {
+	case "USER":
+		role = gcp.User
+	case "MANAGER":
+		role = gcp.Manager
+	default:
+		fmt.Println("role should be user or manager.")
+		return
+	}
+
+	err := gcpConn.Share(context.String("printer-id"), context.String("email"),
+		role, context.Bool("skip-notification"))
+	if err != nil {
+		fmt.Printf("Failed to share GCP printer %s with %s: %s\n", context.String("printer-id"), context.String("email"), err)
+	} else {
+		fmt.Printf("Shared GCP printer %s with %s\n", context.String("printer-id"), context.String("email"))
+	}
+}
+
+// unshareGCPPrinter unshares a GCP printer.
+func unshareGCPPrinter(context *cli.Context) {
+	config := getConfig(context)
+	gcpConn := getGCP(config)
+
+	err := gcpConn.Unshare(context.String("printer-id"), context.String("email"))
+	if err != nil {
+		fmt.Printf("Failed to unshare GCP printer %s with %s: %s\n", context.String("printer-id"), context.String("email"), err)
+	} else {
+		fmt.Printf("Unshared GCP printer %s with %s\n", context.String("printer-id"), context.String("email"))
 	}
 }
