@@ -135,7 +135,7 @@ func main() {
 					Usage: "Role granted. user or manager.",
 				},
 				cli.BoolTFlag{
-					Name:  "skip_notification",
+					Name:  "skip-notification",
 					Usage: "Skip sending email notice. Defaults to true",
 				},
 			},
@@ -579,7 +579,7 @@ func shareGCPPrinter(context *cli.Context) {
 	}
 
 	err := gcpConn.Share(context.String("printer-id"), context.String("email"),
-		role, context.Bool("skip_notification"))
+		role, context.Bool("skip-notification"))
 	if err != nil {
 		fmt.Printf("Failed to share GCP printer %s with %s: %s\n", context.String("printer-id"), context.String("email"), err)
 	} else {
