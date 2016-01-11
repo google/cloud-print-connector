@@ -279,7 +279,12 @@ func dialViaHTTPProxy(server string, port uint16) (*tls.Conn, error) {
 			Host:   xmppHost,
 		},
 	}
-	proxyURL, err := http.ProxyFromEnvironment(&fakeRequest)
+
+	proxyURLFunc := http.ProxyFromEnvironment
+	if tr, ok := http.DefaultTransport.(*http.Transport); ok && tr.Proxy != nil {
+		proxyURLFunc = tr.Proxy
+	}
+	proxyURL, err := proxyURLFunc(&fakeRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +301,15 @@ func dialViaHTTPProxy(server string, port uint16) (*tls.Conn, error) {
 		return nil, fmt.Errorf("Failed to connect to HTTP proxy server: %s", err)
 	}
 
-	fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", xmppHost, xmppHost)
+	proxyAuth := ""
+	if u := proxyURL.User; u != nil {
+		username := u.Username()
+		password, _ := u.Password()
+		basicAuth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+		proxyAuth = "Proxy-Authorization: Basic " + basicAuth + "\r\n"
+	}
+
+	fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n%s\r\n", xmppHost, xmppHost, proxyAuth)
 
 	response, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: "CONNECT"})
 	if err != nil {
@@ -323,9 +336,11 @@ func dial(server string, port uint16) (*tls.Conn, error) {
 }
 
 func addTLS(server string, conn net.Conn) (*tls.Conn, error) {
-	tlsConfig := tls.Config{
-		ServerName: server,
+	tlsConfig := tls.Config{}
+	if tr, ok := http.DefaultTransport.(*http.Transport); ok && tr.TLSClientConfig != nil {
+		tlsConfig = *tr.TLSClientConfig
 	}
+	tlsConfig.ServerName = server
 	tlsClient := tls.Client(conn, &tlsConfig)
 
 	if err := tlsClient.Handshake(); err != nil {
