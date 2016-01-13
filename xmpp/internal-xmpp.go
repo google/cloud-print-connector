@@ -42,21 +42,18 @@ type internalXMPP struct {
 	xmlDecoder *xml.Decoder
 	fullJID    string
 
-	notifications       chan<- PrinterNotification
-	pingIntervalUpdates <-chan time.Duration
-	pongs               chan uint8
-	nextPingID          uint8
-	dead                chan<- struct{}
+	notifications chan<- PrinterNotification
+	pongs         chan uint8
+	nextPingID    uint8
+	dead          chan<- struct{}
 }
 
 // newInternalXMPP creates a new XMPP connection.
 //
 // Received XMPP notifications are sent on the notifications channel.
 //
-// Updates to the ping interval are received on pingIntervalUpdates.
-//
 // If the connection dies unexpectedly, a message is sent on dead.
-func newInternalXMPP(jid, accessToken, proxyName, server string, port uint16, pingTimeout, pingInterval time.Duration, notifications chan<- PrinterNotification, pingIntervalUpdates <-chan time.Duration, dead chan<- struct{}) (*internalXMPP, error) {
+func newInternalXMPP(jid, accessToken, proxyName, server string, port uint16, pingTimeout, pingInterval time.Duration, notifications chan<- PrinterNotification, dead chan<- struct{}) (*internalXMPP, error) {
 	var user, domain string
 	if parts := strings.SplitN(jid, "@", 2); len(parts) != 2 {
 		return nil, fmt.Errorf("Tried to use invalid XMPP JID: %s", jid)
@@ -97,15 +94,14 @@ func newInternalXMPP(jid, accessToken, proxyName, server string, port uint16, pi
 	}
 
 	x := internalXMPP{
-		conn:                conn,
-		xmlEncoder:          xmlEncoder,
-		xmlDecoder:          xmlDecoder,
-		fullJID:             fullJID,
-		notifications:       notifications,
-		pingIntervalUpdates: pingIntervalUpdates,
-		pongs:               make(chan uint8, 10),
-		nextPingID:          0,
-		dead:                dead,
+		conn:          conn,
+		xmlEncoder:    xmlEncoder,
+		xmlDecoder:    xmlDecoder,
+		fullJID:       fullJID,
+		notifications: notifications,
+		pongs:         make(chan uint8, 10),
+		nextPingID:    0,
+		dead:          dead,
 	}
 
 	// dispatchIncoming signals pingPeriodically to return via dying.
@@ -142,8 +138,6 @@ func (x *internalXMPP) pingPeriodically(timeout, interval time.Duration, dying <
 				log.Info(err)
 				x.Quit()
 			}
-		case interval = <-x.pingIntervalUpdates:
-			t.Reset(time.Nanosecond) // Induce ping and interval reset now.
 		case <-dying:
 			// Signal death externally.
 			x.dead <- struct{}{}
