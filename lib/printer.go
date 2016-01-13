@@ -236,3 +236,10 @@ func PrinterIsRaw(printer Printer) bool {
 	}
 	return false
 }
+
+func PrinterIsClass(printer Printer) bool {
+	if printer.Tags["printer-make-and-model"] == "Local Printer Class" {
+		return true
+	}
+	return false
+}

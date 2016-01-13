@@ -99,6 +99,10 @@ var initFlags = []cli.Flag{
 		Usage: "Whether to ignore CUPS raw printers",
 	},
 	cli.BoolTFlag{
+		Name:  "cups-ignore-class-printers",
+		Usage: "Whether to ignore CUPS class printers",
+	},
+	cli.BoolTFlag{
 		Name:  "copy-printer-info-to-display-name",
 		Usage: "Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName",
 	},
@@ -346,6 +350,7 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 		CUPSPrinterAttributes:        lib.DefaultConfig.CUPSPrinterAttributes,
 		CUPSJobFullUsername:          context.Bool("cups-job-full-username"),
 		CUPSIgnoreRawPrinters:        context.Bool("cups-ignore-raw-printers"),
+		CUPSIgnoreClassPrinters:      context.Bool("cups-ignore-class-printers"),
 		CopyPrinterInfoToDisplayName: context.Bool("copy-printer-info-to-display-name"),
 		PrefixJobIDToJobTitle:        context.Bool("prefix-job-id-to-job-title"),
 		DisplayNamePrefix:            context.String("display-name-prefix"),
@@ -374,6 +379,7 @@ func createLocalConfig(context *cli.Context) *lib.Config {
 		CUPSPrinterAttributes:        lib.DefaultConfig.CUPSPrinterAttributes,
 		CUPSJobFullUsername:          context.Bool("cups-job-full-username"),
 		CUPSIgnoreRawPrinters:        context.Bool("cups-ignore-raw-printers"),
+		CUPSIgnoreClassPrinters:      context.Bool("cups-ignore-class-printers"),
 		CopyPrinterInfoToDisplayName: context.Bool("copy-printer-info-to-display-name"),
 		PrefixJobIDToJobTitle:        context.Bool("prefix-job-id-to-job-title"),
 		DisplayNamePrefix:            context.String("display-name-prefix"),
