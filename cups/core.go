@@ -191,8 +191,8 @@ func (cc *cupsCore) getPPD(printername *C.char, modtime *C.time_t) (*C.char, err
 		C.free(unsafe.Pointer(buffer))
 		cupsLastError := C.cupsLastError()
 		if cupsLastError != C.IPP_STATUS_OK {
-			return nil, fmt.Errorf("Failed to call cupsGetPPD3(): %d %s",
-				int(cupsLastError), C.GoString(C.cupsLastErrorString()))
+			return nil, fmt.Errorf("Failed to call cupsGetPPD3() for printer %s: %d %s",
+				C.GoString(printername), int(cupsLastError), C.GoString(C.cupsLastErrorString()))
 		}
 
 		return nil, fmt.Errorf("Failed to call cupsGetPPD3(); HTTP status: %d", int(httpStatus))
