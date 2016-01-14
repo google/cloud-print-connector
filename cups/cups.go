@@ -136,9 +136,11 @@ type CUPS struct {
 	printerAttributes     []string
 	systemTags            map[string]string
 	printerBlacklist      map[string]interface{}
+	ignoreRawPrinters     bool
+	ignoreClassPrinters   bool
 }
 
-func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix string, printerAttributes []string, maxConnections uint, connectTimeout time.Duration, printerBlacklist []string) (*CUPS, error) {
+func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix string, printerAttributes []string, maxConnections uint, connectTimeout time.Duration, printerBlacklist []string, ignoreRawPrinters bool, ignoreClassPrinters bool) (*CUPS, error) {
 	if err := checkPrinterAttributes(printerAttributes); err != nil {
 		return nil, err
 	}
@@ -160,13 +162,15 @@ func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix st
 	}
 
 	c := &CUPS{
-		cc:                cc,
-		pc:                pc,
-		infoToDisplayName: infoToDisplayName,
-		displayNamePrefix: displayNamePrefix,
-		printerAttributes: printerAttributes,
-		systemTags:        systemTags,
-		printerBlacklist:  pb,
+		cc:                  cc,
+		pc:                  pc,
+		infoToDisplayName:   infoToDisplayName,
+		displayNamePrefix:   displayNamePrefix,
+		printerAttributes:   printerAttributes,
+		systemTags:          systemTags,
+		printerBlacklist:    pb,
+		ignoreRawPrinters:   ignoreRawPrinters,
+		ignoreClassPrinters: ignoreClassPrinters,
 	}
 
 	return c, nil
@@ -209,7 +213,12 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 
 	printers := c.responseToPrinters(response)
 	printers = c.filterBlacklistPrinters(printers)
-	printers = filterRawPrinters(printers)
+	if c.ignoreRawPrinters {
+		printers = filterRawPrinters(printers)
+	}
+	if c.ignoreClassPrinters {
+		printers = filterClassPrinters(printers)
+	}
 	printers = c.addPPDDescriptionToPrinters(printers)
 	printers = addStaticDescriptionToPrinters(printers)
 
@@ -266,6 +275,17 @@ func (c *CUPS) filterBlacklistPrinters(printers []lib.Printer) []lib.Printer {
 	return result
 }
 
+// filterClassPrinters removes class printers from the slice.
+func filterClassPrinters(printers []lib.Printer) []lib.Printer {
+        result := make([]lib.Printer, 0, len(printers))
+        for i := range printers {
+                if !lib.PrinterIsClass(printers[i]) {
+                        result = append(result, printers[i])
+                }
+        }
+        return result
+}
+
 // filterRawPrinters removes raw printers from the slice.
 func filterRawPrinters(printers []lib.Printer) []lib.Printer {
 	result := make([]lib.Printer, 0, len(printers))
@@ -292,7 +312,7 @@ func (c *CUPS) addPPDDescriptionToPrinters(printers []lib.Printer) []lib.Printer
 				p.Model = model
 				ch <- p
 			} else {
-				log.Error(err)
+				log.ErrorPrinter(p.Name, err)
 			}
 			wg.Done()
 		}(&printers[i])

@@ -256,6 +256,11 @@ func updateConfigFile(context *cli.Context) {
 		fmt.Println("Added cups_job_full_username")
 		config.CUPSJobFullUsername = lib.DefaultConfig.CUPSJobFullUsername
 	}
+	if _, exists := configMap["cups_ignore_class_printers"]; !exists {
+		dirty = true
+		fmt.Println("Added cups_ignore_class_printers")
+		config.CUPSIgnoreClassPrinters = lib.DefaultConfig.CUPSIgnoreClassPrinters
+	}
 	if _, exists := configMap["cups_ignore_raw_printers"]; !exists {
 		dirty = true
 		fmt.Println("Added cups_ignore_raw_printers")

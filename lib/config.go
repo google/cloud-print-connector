@@ -117,6 +117,9 @@ type Config struct {
 	// Whether to ignore printers with make/model 'Local Raw Printer'.
 	CUPSIgnoreRawPrinters bool `json:"cups_ignore_raw_printers"`
 
+	// Whether to ignore printers with make/model 'Local Printer Class'.
+	CUPSIgnoreClassPrinters bool `json:"cups_ignore_class_printers"`
+
 	// Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName.
 	CopyPrinterInfoToDisplayName bool `json:"copy_printer_info_to_display_name"`
 
@@ -208,6 +211,7 @@ var DefaultConfig = Config{
 	},
 	CUPSJobFullUsername:          false,
 	CUPSIgnoreRawPrinters:        true,
+	CUPSIgnoreClassPrinters:      true,
 	CopyPrinterInfoToDisplayName: true,
 	PrefixJobIDToJobTitle:        false,
 	DisplayNamePrefix:            "",

@@ -152,7 +152,8 @@ func connector(context *cli.Context) int {
 	}
 	c, err := cups.NewCUPS(config.CopyPrinterInfoToDisplayName, config.PrefixJobIDToJobTitle,
 		config.DisplayNamePrefix, config.CUPSPrinterAttributes, config.CUPSMaxConnections,
-		cupsConnectTimeout, config.PrinterBlacklist)
+		cupsConnectTimeout, config.PrinterBlacklist, config.CUPSIgnoreRawPrinters,
+		config.CUPSIgnoreClassPrinters)
 	if err != nil {
 		log.Fatal(err)
 		return 1
