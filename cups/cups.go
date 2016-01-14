@@ -312,7 +312,7 @@ func (c *CUPS) addPPDDescriptionToPrinters(printers []lib.Printer) []lib.Printer
 				p.Model = model
 				ch <- p
 			} else {
-				log.Error(err)
+				log.ErrorPrinter(p.Name, err)
 			}
 			wg.Done()
 		}(&printers[i])
