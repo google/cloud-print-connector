@@ -211,7 +211,7 @@ var DefaultConfig = Config{
 	},
 	CUPSJobFullUsername:          false,
 	CUPSIgnoreRawPrinters:        true,
-	CUPSIgnoreClassPrinters:      false,
+	CUPSIgnoreClassPrinters:      true,
 	CopyPrinterInfoToDisplayName: true,
 	PrefixJobIDToJobTitle:        false,
 	DisplayNamePrefix:            "",
