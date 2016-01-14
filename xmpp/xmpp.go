@@ -71,16 +71,14 @@ func NewXMPP(jid, proxyName, server string, port uint16, pingTimeout, pingInterv
 
 // Quit terminates the XMPP conversation so that new jobs stop arriving.
 func (x *XMPP) Quit() {
-	if x.ix != nil {
-		// Signal to KeepXMPPAlive.
-		close(x.quit)
-		select {
-		case <-x.dead:
-			// Wait for XMPP to die.
-		case <-time.After(3 * time.Second):
-			// But not too long.
-			log.Error("XMPP taking a while to close, so giving up")
-		}
+	// Signal to KeepXMPPAlive.
+	close(x.quit)
+	select {
+	case <-x.dead:
+		// Wait for XMPP to die.
+	case <-time.After(3 * time.Second):
+		// But not too long.
+		log.Error("XMPP taking a while to close, so giving up")
 	}
 }
 
@@ -89,6 +87,7 @@ func (x *XMPP) Quit() {
 func (x *XMPP) startXMPP() error {
 	if x.ix != nil {
 		go x.ix.Quit()
+		x.ix = nil
 	}
 
 	password, err := x.getAccessToken()

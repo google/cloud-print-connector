@@ -111,12 +111,15 @@ func newInternalXMPP(jid, accessToken, proxyName, server string, port uint16, pi
 	// dispatchIncoming signals pingPeriodically to return via dying.
 	dying := make(chan struct{})
 	go x.dispatchIncoming(dying)
-	go x.pingPeriodically(pingTimeout, pingInterval, dying)
 
 	// Check by ping
 	if success, err := x.ping(pingTimeout); !success {
+		x.Quit()
+		<-dying
 		return nil, fmt.Errorf("XMPP conversation started, but initial ping failed: %s", err)
 	}
+
+	go x.pingPeriodically(pingTimeout, pingInterval, dying)
 
 	return &x, nil
 }

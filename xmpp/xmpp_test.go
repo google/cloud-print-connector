@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -62,10 +63,163 @@ func TestXMPP_proxyauth(t *testing.T) {
 	x.Quit()
 }
 
+func TestXMPP_reconnect10(t *testing.T) {
+	// run 10 times to test concurrent condition
+	for i := 0; i < 10; i++ {
+		testXMPP_reconnect(t)
+	}
+}
+
+func testXMPP_reconnect(t *testing.T) {
+	cfg := configureTLS(t)
+	waiting := make(chan struct{})
+	ts := &testXMPPServer{handler: &testXMPPHandler{T: t, cfg: cfg, waiting: waiting}}
+	ts.Start()
+	defer ts.Close()
+
+	orig := http.DefaultTransport
+	http.DefaultTransport = &http.Transport{
+		TLSClientConfig: cfg,
+	}
+	defer func() {
+		http.DefaultTransport = orig
+	}()
+
+	ch := make(chan<- xmpp.PrinterNotification)
+	x, err := xmpp.NewXMPP("jid@example.com", "proxyName", "127.0.0.1", ts.port, time.Minute, time.Minute, func() (string, error) {
+		return "accessToken", nil
+	}, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waiting <- struct{}{} // signal testXMPPHandler to reconnect
+	waiting <- struct{}{}
+	go func() { waiting <- struct{}{} }() // make crossing condition Quit and reconnect. note that this goroutine may leak
+	x.Quit()
+}
+
+func TestXMPP_ping(t *testing.T) {
+	cfg := configureTLS(t)
+	waiting := make(chan struct{})
+	ts := &testXMPPServer{handler: &testXMPPHandler{T: t, cfg: cfg, waiting: waiting, wantPing: 2}}
+	ts.Start()
+	defer ts.Close()
+
+	orig := http.DefaultTransport
+	http.DefaultTransport = &http.Transport{
+		TLSClientConfig: cfg,
+	}
+	defer func() {
+		http.DefaultTransport = orig
+	}()
+
+	ch := make(chan<- xmpp.PrinterNotification)
+	x, err := xmpp.NewXMPP("jid@example.com", "proxyName", "127.0.0.1", ts.port, time.Second, time.Second, func() (string, error) {
+		return "accessToken", nil
+	}, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waiting <- struct{}{} // sync pings received
+	x.Quit()
+}
+
+func TestXMPP_pingtimeout10(t *testing.T) {
+	// run 10 times to test concurrent condition
+	for i := 0; i < 10; i++ {
+		testXMPP_pingtimeout(t)
+	}
+}
+
+func testXMPP_pingtimeout(t *testing.T) {
+	cfg := configureTLS(t)
+	ts := &testXMPPServer{handler: &testXMPPHandler{T: t, cfg: cfg}}
+	ts.Start()
+	defer ts.Close()
+
+	orig := http.DefaultTransport
+	http.DefaultTransport = &http.Transport{
+		TLSClientConfig: cfg,
+	}
+	defer func() {
+		http.DefaultTransport = orig
+	}()
+
+	ch := make(chan<- xmpp.PrinterNotification)
+	x, err := xmpp.NewXMPP("jid@example.com", "proxyName", "127.0.0.1", ts.port, time.Millisecond, time.Millisecond, func() (string, error) {
+		return "accessToken", nil
+	}, ch)
+	if err != nil {
+		if strings.Contains(err.Error(), "initial ping failed") { // ignore initial ping failed due to short timeout duration
+			t.Log(err)
+			return
+		}
+		t.Fatal(err)
+	}
+
+	time.Sleep(time.Millisecond * 100) // make ping timeout
+	x.Quit()
+
+	ts.Close()
+	if ts.count <= 1 {
+		t.Fatal("want: multiple connection counts by reconnecting but:", ts.count)
+	}
+}
+
+type testXMPPServer struct {
+	handler           *testXMPPHandler
+	listener          net.Listener
+	port              uint16
+	clientConnections sync.WaitGroup
+	count             int
+}
+
+func (t *testXMPPServer) Close() {
+	t.listener.Close()
+	t.clientConnections.Wait()
+}
+
+func (t *testXMPPServer) Start() error {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	t.listener = ln
+
+	strs := strings.Split(ln.Addr().String(), ":")
+	port, err := strconv.Atoi(strs[1])
+	if err != nil {
+		return err
+	}
+	t.port = uint16(port)
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			t.clientConnections.Add(1)
+			t.count++
+
+			go func() {
+				defer t.clientConnections.Done()
+				defer conn.Close()
+				tlsConn := t.handler.handshakeTLS(conn)
+				t.handler.serveXMPP(tlsConn)
+			}()
+		}
+	}()
+	return nil
+}
+
 type testXMPPHandler struct {
 	*testing.T
-	cfg           *tls.Config
+	cfg *tls.Config
+
 	wantProxyAuth string
+	wantPing      int
+	waiting       chan struct{}
 
 	dec *xml.Decoder
 }
@@ -95,14 +249,18 @@ func (t testXMPPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("failed to flush", err)
 	}
 
+	tlsConn := t.handshakeTLS(conn)
+	t.serveXMPP(tlsConn)
+}
+
+func (t testXMPPHandler) handshakeTLS(conn net.Conn) net.Conn {
 	cloneTLSConfig := *t.cfg
 	tlsConn := tls.Server(conn, &cloneTLSConfig)
 
 	if err := tlsConn.Handshake(); err != nil {
 		t.Fatal("failed to handshake TLS", err)
 	}
-
-	t.serveXMPP(tlsConn)
+	return tlsConn
 }
 
 func (t testXMPPHandler) serveXMPP(conn net.Conn) {
@@ -113,7 +271,14 @@ func (t testXMPPHandler) serveXMPP(conn net.Conn) {
 	t.xmppHandshake(conn)
 	t.handleSubscribe(conn)
 	t.handlePing(conn)
-	ioutil.ReadAll(conn) // wait for client end
+	for i := 0; i < t.wantPing; i++ {
+		t.handlePing(conn)
+	}
+	if t.waiting == nil {
+		ioutil.ReadAll(conn) // wait for client end
+	} else {
+		<-t.waiting
+	}
 }
 
 func (t testXMPPHandler) xmppHello(conn net.Conn) {
@@ -173,9 +338,16 @@ func (t testXMPPHandler) handleSubscribe(conn net.Conn) {
 }
 
 func (t testXMPPHandler) handlePing(conn net.Conn) {
-	t.readElement("iq", "ping")
+	iq := t.readElement("iq", "ping")
+	id := "0"
+	for _, attr := range iq.Attr {
+		if attr.Name.Local == "id" {
+			id = attr.Value
+			break
+		}
+	}
 	io.WriteString(conn, `
-<iq to="barejid/fulljid" from="cloudprint.google.com" id="0" type="result"/>
+<iq to="barejid/fulljid" from="cloudprint.google.com" id="`+id+`" type="result"/>
 `)
 }
 
