@@ -26,13 +26,11 @@ var (
 	abortDocProc           = gdi32.MustFindProc("AbortDoc")
 	closePrinterProc       = winspool.MustFindProc("ClosePrinter")
 	createDCProc           = gdi32.MustFindProc("CreateDCW")
-	createICProc           = gdi32.MustFindProc("CreateICW")
 	deleteDCProc           = gdi32.MustFindProc("DeleteDC")
 	deviceCapabilitiesProc = winspool.MustFindProc("DeviceCapabilitiesW")
 	documentPropertiesProc = winspool.MustFindProc("DocumentPropertiesW")
 	endDocProc             = gdi32.MustFindProc("EndDoc")
 	endPageProc            = gdi32.MustFindProc("EndPage")
-	enumPrinterDataExProc  = winspool.MustFindProc("EnumPrinterDataExW")
 	enumPrintersProc       = winspool.MustFindProc("EnumPrintersW")
 	getDeviceCapsProc      = gdi32.MustFindProc("GetDeviceCaps")
 	getJobProc             = winspool.MustFindProc("GetJobW")
@@ -179,35 +177,6 @@ func (pi *PrinterInfo2) GetDevMode() *DevMode {
 
 func (pi *PrinterInfo2) GetStatus() uint32 {
 	return pi.status
-}
-
-// PRINTER_INFO_4 struct.
-type PrinterInfo4 struct {
-	pPrinterName *uint16
-	pServerName  *uint16
-	attributes   uint32
-}
-
-// PRINTER_INFO_5 struct.
-type PrinterInfo5 struct {
-	pPrinterName             *uint16
-	pPortName                *uint16
-	attributes               uint32
-	deviceNotSelectedTimeout uint32
-	transmissionRetryTimeout uint32
-}
-
-func (pi *PrinterInfo5) PrinterName() string {
-	return utf16PtrToString(pi.pPrinterName)
-}
-
-func (pi *PrinterInfo5) PortName() string {
-	return utf16PtrToString(pi.pPortName)
-}
-
-// PRINTER_INFO_8 and PRINTER_INFO_9 struct.
-type PrinterInfo89 struct {
-	pDevMode *DevMode
 }
 
 // PRINTER_ENUM_VALUES struct.
@@ -627,50 +596,6 @@ func EnumPrinters2() ([]PrinterInfo2, error) {
 	return printers, nil
 }
 
-func EnumPrinters4() ([]string, error) {
-	pPrinterEnum, pcReturned, err := enumPrinters(4)
-	if err != nil {
-		return nil, err
-	}
-
-	hdr := reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(&pPrinterEnum[0])),
-		Len:  int(pcReturned),
-		Cap:  int(pcReturned),
-	}
-	printers := *(*[]PrinterInfo4)(unsafe.Pointer(&hdr))
-
-	printerNames := make([]string, 0, len(printers))
-	for _, printer := range printers {
-		printerNames = append(printerNames, utf16PtrToString(printer.pPrinterName))
-	}
-
-	return printerNames, nil
-}
-
-func EnumPrinters5() (map[string]string, error) {
-	pPrinterEnum, pcReturned, err := enumPrinters(5)
-	if err != nil {
-		return nil, err
-	}
-
-	hdr := reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(&pPrinterEnum[0])),
-		Len:  int(pcReturned),
-		Cap:  int(pcReturned),
-	}
-	printers := *(*[]PrinterInfo5)(unsafe.Pointer(&hdr))
-
-	m := make(map[string]string, len(printers))
-	for _, printer := range printers {
-		printerName := utf16PtrToString(printer.pPrinterName)
-		portName := utf16PtrToString(printer.pPortName)
-		m[printerName] = portName
-	}
-
-	return m, nil
-}
-
 type HANDLE uintptr
 
 func OpenPrinter(printerName string) (HANDLE, error) {
@@ -713,81 +638,7 @@ func (hPrinter HANDLE) getPrinter(level uint32) ([]byte, error) {
 	return pPrinter, nil
 }
 
-func (hPrinter HANDLE) GetPrinter5() (string, string, error) {
-	pPrinter, err := hPrinter.getPrinter(5)
-	if err != nil {
-		return "", "", err
-	}
-	var printerInfo5 PrinterInfo5 = *(*PrinterInfo5)(unsafe.Pointer(&pPrinter[0]))
-
-	printerName := utf16PtrToString(printerInfo5.pPrinterName)
-	portName := utf16PtrToString(printerInfo5.pPortName)
-
-	return printerName, portName, nil
-}
-
-func (hPrinter HANDLE) GetPrinter8() (*DevMode, error) {
-	pPrinter, err := hPrinter.getPrinter(8)
-	if err != nil {
-		return nil, err
-	}
-	var printerInfo8 PrinterInfo89 = *(*PrinterInfo89)(unsafe.Pointer(&pPrinter[0]))
-	var devMode *DevMode = (*DevMode)(unsafe.Pointer(printerInfo8.pDevMode))
-
-	return devMode, nil
-}
-
-func (hPrinter HANDLE) EnumPrinterDataEx() (map[string]interface{}, error) {
-	pKeyName, err := syscall.UTF16PtrFromString(`\`)
-	if err != nil {
-		return nil, err
-	}
-
-	var cbEnumValues, nEnumValues uint32
-	_, _, err = enumPrinterDataExProc.Call(uintptr(hPrinter), uintptr(unsafe.Pointer(pKeyName)), 0, 0, uintptr(unsafe.Pointer(&cbEnumValues)), uintptr(unsafe.Pointer(&nEnumValues)))
-	if err != NO_ERROR {
-		return nil, err
-	}
-
-	var pEnumValues []byte = make([]byte, cbEnumValues)
-	_, _, err = enumPrinterDataExProc.Call(uintptr(hPrinter), uintptr(unsafe.Pointer(pKeyName)), uintptr(unsafe.Pointer(&pEnumValues[0])), uintptr(cbEnumValues), uintptr(unsafe.Pointer(&cbEnumValues)), uintptr(unsafe.Pointer(&nEnumValues)))
-	if err != NO_ERROR {
-		return nil, err
-	}
-
-	hdr := reflect.SliceHeader{
-		Data: uintptr(unsafe.Pointer(&pEnumValues[0])),
-		Len:  int(nEnumValues),
-		Cap:  int(nEnumValues),
-	}
-	printerData := *(*[]PrinterEnumValues)(unsafe.Pointer(&hdr))
-
-	m := map[string]interface{}{}
-	for _, pd := range printerData {
-		var value interface{}
-		switch pd.dwType {
-		case REG_NONE:
-			// Do nothing.
-		case REG_SZ, REG_EXPAND_SZ:
-			value = utf16PtrToStringSize((*uint16)(unsafe.Pointer(pd.pData)), pd.cbData)
-		case REG_BINARY:
-			// Uncomment when useful.
-			value = binaryRegValueToBytes(pd.pData, pd.cbData)
-		case REG_DWORD:
-			value = *(*uint32)(unsafe.Pointer(pd.pData))
-		default:
-			value = fmt.Sprintf("registry type %d not implemented", pd.dwType)
-		}
-
-		key := utf16PtrToStringSize(pd.pValueName, pd.cbValueName)
-		m[key] = value
-	}
-
-	return m, nil
-}
-
 func (hPrinter HANDLE) DocumentPropertiesGet(deviceName string) (*DevMode, error) {
-	// TODO: test
 	pDeviceName, err := syscall.UTF16PtrFromString(deviceName)
 	if err != nil {
 		return nil, err
@@ -813,7 +664,6 @@ func (hPrinter HANDLE) DocumentPropertiesGet(deviceName string) (*DevMode, error
 }
 
 func (hPrinter HANDLE) DocumentPropertiesSet(deviceName string, devMode *DevMode) error {
-	// TODO: test
 	pDeviceName, err := syscall.UTF16PtrFromString(deviceName)
 	if err != nil {
 		return err
@@ -910,19 +760,6 @@ func CreateDC(deviceName string, devMode *DevMode) (HDC, error) {
 		return 0, err
 	}
 	r1, _, err := createDCProc.Call(0, uintptr(unsafe.Pointer(lpszDevice)), 0, uintptr(unsafe.Pointer(devMode)))
-	if r1 == 0 {
-		return 0, err
-	}
-
-	return HDC(r1), nil
-}
-
-func CreateIC(deviceName string, devMode *DevMode) (HDC, error) {
-	lpszDevice, err := syscall.UTF16PtrFromString(deviceName)
-	if err != nil {
-		return 0, err
-	}
-	r1, _, err := createICProc.Call(0, uintptr(unsafe.Pointer(lpszDevice)), 0, uintptr(unsafe.Pointer(devMode)))
 	if r1 == 0 {
 		return 0, err
 	}
@@ -1036,7 +873,6 @@ func (hDC HDC) SetWorldTransform(xform *XFORM) error {
 	return nil
 }
 
-// TODO: Figure out the right way to call DeviceCapabilities; this is just an idea.
 func DeviceCapabilitiesInt32(device, port string, fwCapability uint16) (int32, error) {
 	pDevice, err := syscall.UTF16PtrFromString(device)
 	if err != nil {
@@ -1099,11 +935,6 @@ func DeviceCapabilitiesStrings(device, port string, fwCapability uint16, stringL
 	return values, nil
 }
 
-func DeviceCapabilitiesBool(device, port string, fwCapability uint16) (bool, error) {
-	value, err := deviceCapabilities(device, port, fwCapability, nil)
-	return value == 1, err
-}
-
 const (
 	uint16Size = 2
 	int32Size  = 4
@@ -1158,30 +989,6 @@ func DeviceCapabilitiesInt32Pairs(device, port string, fwCapability uint16) ([]i
 	}
 
 	return values, nil
-}
-
-func DeviceCapabilitiesString(device, port string, fwCapability uint16) (string, error) {
-	fmt.Println("what")
-	cbBuf, err := deviceCapabilities(device, port, fwCapability, nil)
-	if err != nil {
-		return "", err
-	}
-
-	fmt.Println("cbBuf", cbBuf)
-
-	if cbBuf <= 0 {
-		return "", nil
-	}
-
-	pOutput := make([]byte, cbBuf)
-	_, err = deviceCapabilities(device, port, fwCapability, pOutput)
-	if err != nil {
-		return "", err
-	}
-
-	fmt.Println("pOutput", pOutput)
-
-	return utf16PtrToString((*uint16)(unsafe.Pointer(&pOutput[0]))), nil
 }
 
 // DevMode.dmPaperSize values.
@@ -1305,134 +1112,6 @@ const (
 	DMPAPER_PENV_9_ROTATED                = 117
 	DMPAPER_PENV_10_ROTATED               = 118
 )
-
-type paperSize struct {
-	w int16 // Paper width in 0.1mm units.
-	h int16
-}
-
-func inchesToDMM(w, h float32) paperSize {
-	return paperSize{int16(w*254.0 + 0.5), int16(h*254.0 + 0.5)}
-}
-
-var paperValueToSize = map[int]paperSize{
-	DMPAPER_LETTER:                        inchesToDMM(8.5, 11),
-	DMPAPER_LETTERSMALL:                   inchesToDMM(8.5, 11),
-	DMPAPER_TABLOID:                       inchesToDMM(11, 17),
-	DMPAPER_LEDGER:                        inchesToDMM(17, 11),
-	DMPAPER_LEGAL:                         inchesToDMM(8.5, 14),
-	DMPAPER_STATEMENT:                     inchesToDMM(5.5, 8.5),
-	DMPAPER_EXECUTIVE:                     inchesToDMM(7.25, 10.5),
-	DMPAPER_A3:                            {2970, 4200},
-	DMPAPER_A4:                            {2100, 2970},
-	DMPAPER_A4SMALL:                       {2100, 2970},
-	DMPAPER_A5:                            {1480, 2100},
-	DMPAPER_B4:                            {2500, 3540},
-	DMPAPER_B5:                            {1820, 2570},
-	DMPAPER_FOLIO:                         inchesToDMM(8.5, 13),
-	DMPAPER_QUARTO:                        {2150, 2750},
-	DMPAPER_10X14:                         inchesToDMM(10, 14),
-	DMPAPER_11X17:                         inchesToDMM(11, 17),
-	DMPAPER_NOTE:                          inchesToDMM(8.5, 11),
-	DMPAPER_ENV_9:                         inchesToDMM(3.875, 8.875),
-	DMPAPER_ENV_10:                        inchesToDMM(4.125, 9.5),
-	DMPAPER_ENV_11:                        inchesToDMM(4.5, 10.375),
-	DMPAPER_ENV_12:                        inchesToDMM(4.75, 11),
-	DMPAPER_ENV_14:                        inchesToDMM(5, 11.5),
-	DMPAPER_CSHEET:                        inchesToDMM(17, 22),
-	DMPAPER_DSHEET:                        inchesToDMM(22, 34),
-	DMPAPER_ESHEET:                        inchesToDMM(34, 44),
-	DMPAPER_ENV_DL:                        {1100, 2200},
-	DMPAPER_ENV_C5:                        {1620, 2290},
-	DMPAPER_ENV_C3:                        {3240, 4580},
-	DMPAPER_ENV_C4:                        {2290, 3240},
-	DMPAPER_ENV_C6:                        {1140, 1620},
-	DMPAPER_ENV_C65:                       {1140, 2290},
-	DMPAPER_ENV_B4:                        {2500, 3530},
-	DMPAPER_ENV_B5:                        {1760, 2500},
-	DMPAPER_ENV_B6:                        {1760, 1250},
-	DMPAPER_ENV_ITALY:                     {1100, 2300},
-	DMPAPER_ENV_MONARCH:                   inchesToDMM(3.875, 7.5),
-	DMPAPER_ENV_PERSONAL:                  inchesToDMM(3.725, 6.5),
-	DMPAPER_FANFOLD_US:                    inchesToDMM(14.875, 11),
-	DMPAPER_FANFOLD_STD_GERMAN:            inchesToDMM(8.5, 12),
-	DMPAPER_FANFOLD_LGL_GERMAN:            inchesToDMM(8.5, 13),
-	DMPAPER_ISO_B4:                        {2500, 3530},
-	DMPAPER_JAPANESE_POSTCARD:             {1000, 1480},
-	DMPAPER_9X11:                          inchesToDMM(9, 11),
-	DMPAPER_10X11:                         inchesToDMM(10, 11),
-	DMPAPER_15X11:                         inchesToDMM(15, 11),
-	DMPAPER_ENV_INVITE:                    {2200, 2200},
-	DMPAPER_LETTER_EXTRA:                  inchesToDMM(9.5, 12),
-	DMPAPER_LEGAL_EXTRA:                   inchesToDMM(9.5, 15),
-	DMPAPER_TABLOID_EXTRA:                 inchesToDMM(11.69, 18),
-	DMPAPER_A4_EXTRA:                      inchesToDMM(9.27, 12.69),
-	DMPAPER_LETTER_TRANSVERSE:             inchesToDMM(8.5, 11),
-	DMPAPER_A4_TRANSVERSE:                 {2100, 2970},
-	DMPAPER_LETTER_EXTRA_TRANSVERSE:       inchesToDMM(9.5, 12),
-	DMPAPER_A_PLUS:                        {2270, 3560},
-	DMPAPER_B_PLUS:                        {3050, 4870},
-	DMPAPER_LETTER_PLUS:                   inchesToDMM(8.5, 12.69),
-	DMPAPER_A4_PLUS:                       {2100, 3300},
-	DMPAPER_A5_TRANSVERSE:                 {1480, 2100},
-	DMPAPER_B5_TRANSVERSE:                 {1820, 2570},
-	DMPAPER_A3_EXTRA:                      {3220, 4450},
-	DMPAPER_A5_EXTRA:                      {1740, 2350},
-	DMPAPER_B5_EXTRA:                      {2010, 2760},
-	DMPAPER_A2:                            {4200, 5940},
-	DMPAPER_A3_TRANSVERSE:                 {2970, 4200},
-	DMPAPER_A3_EXTRA_TRANSVERSE:           {4220, 4450},
-	DMPAPER_DBL_JAPANESE_POSTCARD:         {2000, 1480},
-	DMPAPER_A6:                            {1050, 1480},
-	DMPAPER_JENV_KAKU2:                    {2400, 3320},
-	DMPAPER_JENV_KAKU3:                    {2160, 2770},
-	DMPAPER_JENV_CHOU3:                    {1200, 2350},
-	DMPAPER_JENV_CHOU4:                    {900, 2050},
-	DMPAPER_LETTER_ROTATED:                inchesToDMM(11, 8.5),
-	DMPAPER_A3_ROTATED:                    {4200, 2970},
-	DMPAPER_A4_ROTATED:                    {2970, 2100},
-	DMPAPER_A5_ROTATED:                    {2100, 1480},
-	DMPAPER_B4_JIS_ROTATED:                {3640, 2570},
-	DMPAPER_B5_JIS_ROTATED:                {2570, 1820},
-	DMPAPER_JAPANESE_POSTCARD_ROTATED:     {1480, 1000},
-	DMPAPER_DBL_JAPANESE_POSTCARD_ROTATED: {1480, 2000},
-	DMPAPER_A6_ROTATED:                    {1480, 1050},
-	DMPAPER_JENV_KAKU2_ROTATED:            {3320, 2400},
-	DMPAPER_JENV_KAKU3_ROTATED:            {2770, 2160},
-	DMPAPER_JENV_CHOU3_ROTATED:            {2350, 1200},
-	DMPAPER_JENV_CHOU4_ROTATED:            {2050, 900},
-	DMPAPER_B6_JIS:                        {1280, 1820},
-	DMPAPER_B6_JIS_ROTATED:                {1820, 1280},
-	DMPAPER_12X11:                         inchesToDMM(12, 11),
-	DMPAPER_JENV_YOU4:                     {2350, 1050},
-	DMPAPER_JENV_YOU4_ROTATED:             {1050, 2350},
-	DMPAPER_P16K:                          {1460, 2150},
-	DMPAPER_P32K:                          {970, 1510},
-	DMPAPER_P32KBIG:                       {970, 1510},
-	DMPAPER_PENV_1:                        {1010, 1650},
-	DMPAPER_PENV_2:                        {1020, 1760},
-	DMPAPER_PENV_3:                        {1250, 1760},
-	DMPAPER_PENV_4:                        {1100, 2080},
-	DMPAPER_PENV_5:                        {1100, 2200},
-	DMPAPER_PENV_6:                        {1200, 2300},
-	DMPAPER_PENV_7:                        {1600, 2300},
-	DMPAPER_PENV_8:                        {1200, 3090},
-	DMPAPER_PENV_9:                        {2290, 3240},
-	DMPAPER_PENV_10:                       {3240, 4580},
-	DMPAPER_P16K_ROTATED:                  {2150, 1460},
-	DMPAPER_P32K_ROTATED:                  {1510, 970},
-	DMPAPER_P32KBIG_ROTATED:               {1510, 970},
-	DMPAPER_PENV_1_ROTATED:                {1650, 1020},
-	DMPAPER_PENV_2_ROTATED:                {1020, 1760},
-	DMPAPER_PENV_3_ROTATED:                {1760, 1250},
-	DMPAPER_PENV_4_ROTATED:                {2080, 1100},
-	DMPAPER_PENV_5_ROTATED:                {2200, 1100},
-	DMPAPER_PENV_6_ROTATED:                {2300, 1200},
-	DMPAPER_PENV_7_ROTATED:                {2300, 1600},
-	DMPAPER_PENV_8_ROTATED:                {3090, 1200},
-	DMPAPER_PENV_9_ROTATED:                {3240, 2290},
-	DMPAPER_PENV_10_ROTATED:               {4580, 3240},
-}
 
 type RTLOSVersionInfo struct {
 	dwOSVersionInfoSize uint32

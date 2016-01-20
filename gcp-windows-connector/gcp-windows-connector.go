@@ -25,6 +25,7 @@ import (
 )
 
 // TODO: Windows Service.
+// TODO: Event Log.
 
 func main() {
 	app := cli.NewApp()
@@ -115,33 +116,6 @@ func connector(context *cli.Context) int {
 		log.Fatal(err)
 		return 1
 	}
-
-	/*
-		var s *snmp.SNMPManager
-		if config.SNMPEnable {
-			log.Info("SNMP enabled")
-			s, err = snmp.NewSNMPManager(config.SNMPCommunity, config.SNMPMaxConnections)
-			if err != nil {
-				log.Fatal(err)
-				return 1
-			}
-			defer s.Quit()
-		}
-
-		var priv *privet.Privet
-		if config.LocalPrintingEnable {
-			if g == nil {
-				priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, nil)
-			} else {
-				priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, g.ProximityToken)
-			}
-			if err != nil {
-				log.Fatal(err)
-				return 1
-			}
-			defer priv.Quit()
-		}
-	*/
 
 	nativePrinterPollInterval, err := time.ParseDuration(config.NativePrinterPollInterval)
 	if err != nil {
