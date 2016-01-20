@@ -36,9 +36,8 @@ type XMPP struct {
 	pingInterval   time.Duration
 	getAccessToken func() (string, error)
 
-	notifications       chan<- PrinterNotification
-	pingIntervalUpdates chan time.Duration
-	dead                chan struct{}
+	notifications chan<- PrinterNotification
+	dead          chan struct{}
 
 	quit chan struct{}
 
@@ -47,17 +46,16 @@ type XMPP struct {
 
 func NewXMPP(jid, proxyName, server string, port uint16, pingTimeout, pingInterval time.Duration, getAccessToken func() (string, error), notifications chan<- PrinterNotification) (*XMPP, error) {
 	x := XMPP{
-		jid:                 jid,
-		proxyName:           proxyName,
-		server:              server,
-		port:                port,
-		pingTimeout:         pingTimeout,
-		pingInterval:        pingInterval,
-		getAccessToken:      getAccessToken,
-		notifications:       notifications,
-		pingIntervalUpdates: make(chan time.Duration, 10),
-		dead:                make(chan struct{}),
-		quit:                make(chan struct{}),
+		jid:            jid,
+		proxyName:      proxyName,
+		server:         server,
+		port:           port,
+		pingTimeout:    pingTimeout,
+		pingInterval:   pingInterval,
+		getAccessToken: getAccessToken,
+		notifications:  notifications,
+		dead:           make(chan struct{}),
+		quit:           make(chan struct{}),
 	}
 
 	err := x.startXMPP()
@@ -96,7 +94,7 @@ func (x *XMPP) startXMPP() error {
 	}
 
 	// The current access token is the XMPP password.
-	ix, err := newInternalXMPP(x.jid, password, x.proxyName, x.server, x.port, x.pingTimeout, x.pingInterval, x.notifications, x.pingIntervalUpdates, x.dead)
+	ix, err := newInternalXMPP(x.jid, password, x.proxyName, x.server, x.port, x.pingTimeout, x.pingInterval, x.notifications, x.dead)
 	if err != nil {
 		return fmt.Errorf("Failed to start XMPP conversation: %s", err)
 	}
@@ -126,11 +124,4 @@ func (x *XMPP) keepXMPPAlive() {
 			return
 		}
 	}
-}
-
-// SetPingInterval sets the XMPP ping interval. Should be the min of all
-// printers' ping intervals.
-func (x *XMPP) SetPingInterval(interval time.Duration) {
-	x.pingIntervalUpdates <- interval
-	log.Infof("Connector XMPP ping interval changed to %s", interval.String())
 }
