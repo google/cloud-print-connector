@@ -13,9 +13,9 @@ import "sync"
 // ConcurrentPrinterMap is a map-like data structure that is also
 // thread-safe. Printers are keyed by Printer.Name and Printer.GCPID.
 type ConcurrentPrinterMap struct {
-	byCUPSName map[string]Printer
-	byGCPID    map[string]Printer
-	mutex      sync.RWMutex
+	byNativeName map[string]Printer
+	byGCPID      map[string]Printer
+	mutex        sync.RWMutex
 }
 
 // NewConcurrentPrinterMap initializes an empty ConcurrentPrinterMap.
@@ -43,18 +43,18 @@ func (cpm *ConcurrentPrinterMap) Refresh(newPrinters []Printer) {
 	cpm.mutex.Lock()
 	defer cpm.mutex.Unlock()
 
-	cpm.byCUPSName = c
+	cpm.byNativeName = c
 	cpm.byGCPID = g
 }
 
-// Get gets a printer, using the CUPS name as key.
+// Get gets a printer, using the native name as key.
 //
 // The second return value is true if the entry exists.
-func (cpm *ConcurrentPrinterMap) GetByCUPSName(name string) (Printer, bool) {
+func (cpm *ConcurrentPrinterMap) GetByNativeName(name string) (Printer, bool) {
 	cpm.mutex.RLock()
 	defer cpm.mutex.RUnlock()
 
-	if p, exists := cpm.byCUPSName[name]; exists {
+	if p, exists := cpm.byNativeName[name]; exists {
 		return p, true
 	}
 	return Printer{}, false
@@ -78,9 +78,9 @@ func (cpm *ConcurrentPrinterMap) GetAll() []Printer {
 	cpm.mutex.RLock()
 	defer cpm.mutex.RUnlock()
 
-	printers := make([]Printer, len(cpm.byCUPSName))
+	printers := make([]Printer, len(cpm.byNativeName))
 	i := 0
-	for _, printer := range cpm.byCUPSName {
+	for _, printer := range cpm.byNativeName {
 		printers[i] = printer
 		i++
 	}

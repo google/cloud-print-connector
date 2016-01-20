@@ -447,13 +447,13 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 	}
 
 	api.jobs <- &lib.Job{
-		CUPSPrinterName: api.name,
-		Filename:        file.Name(),
-		Title:           jobName,
-		User:            userName,
-		JobID:           jobID,
-		Ticket:          ticket,
-		UpdateJob:       api.jc.updateJob,
+		NativePrinterName: api.name,
+		Filename:          file.Name(),
+		Title:             jobName,
+		User:              userName,
+		JobID:             jobID,
+		Ticket:            ticket,
+		UpdateJob:         api.jc.updateJob,
 	}
 
 	var response struct {

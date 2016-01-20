@@ -221,6 +221,7 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	}
 	printers = c.addPPDDescriptionToPrinters(printers)
 	printers = addStaticDescriptionToPrinters(printers)
+	printers = c.addSystemTagsToPrinters(printers)
 
 	return printers, nil
 }
@@ -244,9 +245,6 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 			defaultDisplayName = name
 		}
 		defaultDisplayName = c.displayNamePrefix + defaultDisplayName
-		for k, v := range c.systemTags {
-			tags[k] = v
-		}
 		p := lib.Printer{
 			Name:               name,
 			DefaultDisplayName: defaultDisplayName,
@@ -333,12 +331,21 @@ func (c *CUPS) addPPDDescriptionToPrinters(printers []lib.Printer) []lib.Printer
 // printers to printers.
 func addStaticDescriptionToPrinters(printers []lib.Printer) []lib.Printer {
 	for i := range printers {
-		printers[i].Description.Absorb(&cupsPDS)
 		printers[i].GCPVersion = lib.GCPAPIVersion
-		printers[i].ConnectorVersion = lib.ShortName
 		printers[i].SetupURL = lib.ConnectorHomeURL
 		printers[i].SupportURL = lib.ConnectorHomeURL
 		printers[i].UpdateURL = lib.ConnectorHomeURL
+		printers[i].ConnectorVersion = lib.ShortName
+		printers[i].Description.Absorb(&cupsPDS)
+	}
+	return printers
+}
+
+func (c *CUPS) addSystemTagsToPrinters(printers []lib.Printer) []lib.Printer {
+	for i := range printers {
+		for k, v := range c.systemTags {
+			printers[i].Tags[k] = v
+		}
 	}
 	return printers
 }
@@ -392,7 +399,7 @@ func (c *CUPS) RemoveCachedPPD(printername string) {
 }
 
 // GetJobState gets the current state of the job indicated by jobID.
-func (c *CUPS) GetJobState(jobID uint32) (cdd.PrintJobStateDiff, error) {
+func (c *CUPS) GetJobState(_ string, jobID uint32) (*cdd.PrintJobStateDiff, error) {
 	ja := C.newArrayOfStrings(C.int(len(jobAttributes)))
 	defer C.freeStringArrayAndStrings(ja, C.int(len(jobAttributes)))
 	for i, attribute := range jobAttributes {
@@ -401,7 +408,7 @@ func (c *CUPS) GetJobState(jobID uint32) (cdd.PrintJobStateDiff, error) {
 
 	response, err := c.cc.getJobAttributes(C.int(jobID), ja)
 	if err != nil {
-		return cdd.PrintJobStateDiff{}, err
+		return nil, err
 	}
 
 	// cupsDoRequest() returned ipp_t pointer needs explicit free.
@@ -414,7 +421,7 @@ func (c *CUPS) GetJobState(jobID uint32) (cdd.PrintJobStateDiff, error) {
 }
 
 // convertJobState converts CUPS job state to cdd.PrintJobStateDiff.
-func convertJobState(cupsState int32) cdd.PrintJobStateDiff {
+func convertJobState(cupsState int32) *cdd.PrintJobStateDiff {
 	var state cdd.PrintJobStateDiff
 
 	switch cupsState {
@@ -439,14 +446,14 @@ func convertJobState(cupsState int32) cdd.PrintJobStateDiff {
 		state.State = &cdd.JobState{Type: cdd.JobStateDone}
 	}
 
-	return state
+	return &state
 }
 
 // Print sends a new print job to the specified printer. The job ID
 // is returned.
 func (c *CUPS) Print(printer *lib.Printer, filename, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (uint32, error) {
-	printer.CUPSJobSemaphore.Acquire()
-	defer printer.CUPSJobSemaphore.Release()
+	printer.NativeJobSemaphore.Acquire()
+	defer printer.NativeJobSemaphore.Release()
 
 	pn := C.CString(printer.Name)
 	defer C.free(unsafe.Pointer(pn))

@@ -97,7 +97,7 @@ func (gcp *GoogleCloudPrint) CanShare() bool {
 
 // Control calls google.com/cloudprint/control to set the state of a
 // GCP print job.
-func (gcp *GoogleCloudPrint) Control(jobID string, state cdd.PrintJobStateDiff) error {
+func (gcp *GoogleCloudPrint) Control(jobID string, state *cdd.PrintJobStateDiff) error {
 	semanticState, err := json.Marshal(state)
 	if err != nil {
 		return err
@@ -659,13 +659,13 @@ func (gcp *GoogleCloudPrint) processJob(job *Job, printer *lib.Printer, reportJo
 	}
 
 	gcp.jobs <- &lib.Job{
-		CUPSPrinterName: printer.Name,
-		Filename:        filename,
-		Title:           job.Title,
-		User:            job.OwnerID,
-		JobID:           job.GCPJobID,
-		Ticket:          ticket,
-		UpdateJob:       gcp.Control,
+		NativePrinterName: printer.Name,
+		Filename:          filename,
+		Title:             job.Title,
+		User:              job.OwnerID,
+		JobID:             job.GCPJobID,
+		Ticket:            ticket,
+		UpdateJob:         gcp.Control,
 	}
 }
 
@@ -675,12 +675,12 @@ func (gcp *GoogleCloudPrint) processJob(job *Job, printer *lib.Printer, reportJo
 //
 // Errors are returned as a string (last return value), for reporting
 // to GCP and local log.
-func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string, string, cdd.PrintJobStateDiff) {
+func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string, string, *cdd.PrintJobStateDiff) {
 	ticket, err := gcp.Ticket(job.GCPJobID)
 	if err != nil {
 		return nil, "",
 			fmt.Sprintf("Failed to get a ticket: %s", err),
-			cdd.PrintJobStateDiff{
+			&cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
 					Type:              cdd.JobStateAborted,
 					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseInvalidTicket},
@@ -692,7 +692,7 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 	if err != nil {
 		return nil, "",
 			fmt.Sprintf("Failed to create a temporary file: %s", err),
-			cdd.PrintJobStateDiff{
+			&cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
 					Type:              cdd.JobStateAborted,
 					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseOther},
@@ -711,7 +711,7 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 		os.Remove(file.Name())
 		return nil, "",
 			fmt.Sprintf("Failed to download data: %s", err),
-			cdd.PrintJobStateDiff{
+			&cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
 					Type:              cdd.JobStateAborted,
 					DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCauseDownloadFailure},
@@ -724,5 +724,5 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 
 	log.DebugJobf(job.GCPJobID, "Assembled with file %s: %+v", file.Name(), ticket.Print.Color)
 
-	return ticket, file.Name(), "", cdd.PrintJobStateDiff{}
+	return ticket, file.Name(), "", &cdd.PrintJobStateDiff{}
 }

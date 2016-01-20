@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://developers.google.com/open-source/licenses/bsd
 
-// +build !darwin
+// +build linux
 
 #include <avahi-client/publish.h>
 #include <avahi-common/error.h>

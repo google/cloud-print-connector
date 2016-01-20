@@ -32,15 +32,16 @@ const (
 	gcpOAuthGrantTypeDevice = "http://oauth.net/grant_type/device/1.0"
 )
 
-var initFlags = []cli.Flag{
-	cli.StringFlag{
-		Name:  "gcp-user-refresh-token",
-		Usage: "GCP user refresh token, useful when managing many connectors",
-	},
+var commonInitFlags = []cli.Flag{
 	cli.DurationFlag{
 		Name:  "gcp-api-timeout",
 		Usage: "GCP API timeout, for debugging",
 		Value: 30 * time.Second,
+	},
+
+	cli.StringFlag{
+		Name:  "gcp-user-refresh-token",
+		Usage: "GCP user refresh token, useful when managing many connectors",
 	},
 	cli.StringFlag{
 		Name:  "share-scope",
@@ -52,17 +53,17 @@ var initFlags = []cli.Flag{
 	},
 	cli.IntFlag{
 		Name:  "xmpp-port",
-		Usage: "Max connections to CUPS server",
+		Usage: "XMPP port number",
 		Value: int(lib.DefaultConfig.XMPPPort),
 	},
 	cli.StringFlag{
-		Name:  "gcp-xmpp-ping-timeout",
-		Usage: "GCP XMPP ping timeout (give up waiting for ping response after this)",
+		Name:  "xmpp-ping-timeout",
+		Usage: "XMPP ping timeout (give up waiting for ping response after this)",
 		Value: lib.DefaultConfig.XMPPPingTimeout,
 	},
 	cli.StringFlag{
-		Name:  "gcp-xmpp-ping-interval-default",
-		Usage: "GCP XMPP ping interval default (ping every this often)",
+		Name:  "xmpp-ping-interval",
+		Usage: "XMPP ping interval (ping every this often)",
 		Value: lib.DefaultConfig.XMPPPingInterval,
 	},
 	cli.IntFlag{
@@ -71,40 +72,14 @@ var initFlags = []cli.Flag{
 		Value: int(lib.DefaultConfig.GCPMaxConcurrentDownloads),
 	},
 	cli.IntFlag{
-		Name:  "cups-max-connections",
-		Usage: "Max connections to CUPS server",
-		Value: int(lib.DefaultConfig.CUPSMaxConnections),
+		Name:  "native-job-queue-size",
+		Usage: "Native job queue size",
+		Value: int(lib.DefaultConfig.NativeJobQueueSize),
 	},
 	cli.StringFlag{
-		Name:  "cups-connect-timeout",
-		Usage: "CUPS timeout for opening a new connection",
-		Value: lib.DefaultConfig.CUPSConnectTimeout,
-	},
-	cli.IntFlag{
-		Name:  "cups-job-queue-size",
-		Usage: "CUPS job queue size",
-		Value: int(lib.DefaultConfig.CUPSJobQueueSize),
-	},
-	cli.StringFlag{
-		Name:  "cups-printer-poll-interval",
-		Usage: "Interval, in seconds, between CUPS printer state polls",
-		Value: lib.DefaultConfig.CUPSPrinterPollInterval,
-	},
-	cli.BoolFlag{
-		Name:  "cups-job-full-username",
-		Usage: "Whether to use the full username (joe@example.com) in CUPS jobs",
-	},
-	cli.BoolTFlag{
-		Name:  "cups-ignore-raw-printers",
-		Usage: "Whether to ignore CUPS raw printers",
-	},
-	cli.BoolTFlag{
-		Name:  "cups-ignore-class-printers",
-		Usage: "Whether to ignore CUPS class printers",
-	},
-	cli.BoolTFlag{
-		Name:  "copy-printer-info-to-display-name",
-		Usage: "Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName",
+		Name:  "native-printer-poll-interval",
+		Usage: "Interval, in seconds, between native printer state polls",
+		Value: lib.DefaultConfig.NativePrinterPollInterval,
 	},
 	cli.BoolFlag{
 		Name:  "prefix-job-id-to-job-title",
@@ -114,11 +89,6 @@ var initFlags = []cli.Flag{
 		Name:  "display-name-prefix",
 		Usage: "Prefix to add to GCP printer's display name",
 		Value: lib.DefaultConfig.DisplayNamePrefix,
-	},
-	cli.StringFlag{
-		Name:  "monitor-socket-filename",
-		Usage: "Filename of unix socket for connector-check to talk to connector",
-		Value: lib.DefaultConfig.MonitorSocketFilename,
 	},
 	cli.BoolFlag{
 		Name:  "snmp-enable",
@@ -143,28 +113,9 @@ var initFlags = []cli.Flag{
 		Usage: "Enable cloud discovery and printing",
 	},
 	cli.StringFlag{
-		Name:  "log-file-name",
-		Usage: "Log file name, full path",
-		Value: lib.DefaultConfig.LogFileName,
-	},
-	cli.IntFlag{
-		Name:  "log-file-max-megabytes",
-		Usage: "Log file max size, in megabytes",
-		Value: int(lib.DefaultConfig.LogFileMaxMegabytes),
-	},
-	cli.IntFlag{
-		Name:  "log-max-files",
-		Usage: "Maximum log file quantity before rollover",
-		Value: int(lib.DefaultConfig.LogMaxFiles),
-	},
-	cli.StringFlag{
 		Name:  "log-level",
 		Usage: "Minimum event severity to log: PANIC, ERROR, WARN, INFO, DEBUG, VERBOSE",
 		Value: lib.DefaultConfig.LogLevel,
-	},
-	cli.BoolFlag{
-		Name:  "log-to-journal",
-		Usage: "Log to the systemd journal (if available) instead of to log-file-name",
 	},
 }
 
@@ -322,80 +273,6 @@ func createRobotAccount(context *cli.Context, userClient *http.Client) (string, 
 	token := verifyRobotAccount(authCode)
 
 	return xmppJID, token
-}
-
-// createCloudConfig creates a config object that supports cloud and (optionally) local mode.
-func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string, localEnable bool) *lib.Config {
-	return &lib.Config{
-		XMPPJID:                   xmppJID,
-		RobotRefreshToken:         robotRefreshToken,
-		UserRefreshToken:          userRefreshToken,
-		ShareScope:                shareScope,
-		ProxyName:                 proxyName,
-		XMPPServer:                lib.DefaultConfig.XMPPServer,
-		XMPPPort:                  uint16(context.Int("xmpp-port")),
-		XMPPPingTimeout:           context.String("gcp-xmpp-ping-timeout"),
-		XMPPPingInterval:          context.String("gcp-xmpp-ping-interval-default"),
-		GCPBaseURL:                lib.DefaultConfig.GCPBaseURL,
-		GCPOAuthClientID:          lib.DefaultConfig.GCPOAuthClientID,
-		GCPOAuthClientSecret:      lib.DefaultConfig.GCPOAuthClientSecret,
-		GCPOAuthAuthURL:           lib.DefaultConfig.GCPOAuthAuthURL,
-		GCPOAuthTokenURL:          lib.DefaultConfig.GCPOAuthTokenURL,
-		GCPMaxConcurrentDownloads: uint(context.Int("gcp-max-concurrent-downloads")),
-
-		CUPSMaxConnections:           uint(context.Int("cups-max-connections")),
-		CUPSConnectTimeout:           context.String("cups-connect-timeout"),
-		CUPSJobQueueSize:             uint(context.Int("cups-job-queue-size")),
-		CUPSPrinterPollInterval:      context.String("cups-printer-poll-interval"),
-		CUPSPrinterAttributes:        lib.DefaultConfig.CUPSPrinterAttributes,
-		CUPSJobFullUsername:          context.Bool("cups-job-full-username"),
-		CUPSIgnoreRawPrinters:        context.Bool("cups-ignore-raw-printers"),
-		CUPSIgnoreClassPrinters:      context.Bool("cups-ignore-class-printers"),
-		CopyPrinterInfoToDisplayName: context.Bool("copy-printer-info-to-display-name"),
-		PrefixJobIDToJobTitle:        context.Bool("prefix-job-id-to-job-title"),
-		DisplayNamePrefix:            context.String("display-name-prefix"),
-		MonitorSocketFilename:        context.String("monitor-socket-filename"),
-		SNMPEnable:                   context.Bool("snmp-enable"),
-		SNMPCommunity:                context.String("snmp-community"),
-		SNMPMaxConnections:           uint(context.Int("snmp-max-connections")),
-		LocalPrintingEnable:          localEnable,
-		CloudPrintingEnable:          true,
-		LogFileName:                  context.String("log-file-name"),
-		LogFileMaxMegabytes:          uint(context.Int("log-file-max-megabytes")),
-		LogMaxFiles:                  uint(context.Int("log-max-files")),
-		LogLevel:                     context.String("log-level"),
-		LogToJournal:                 context.Bool("log-to-journal"),
-		PrinterBlacklist:             lib.DefaultConfig.PrinterBlacklist,
-	}
-}
-
-// createLocalConfig creates a config object that supports local mode.
-func createLocalConfig(context *cli.Context) *lib.Config {
-	return &lib.Config{
-		CUPSMaxConnections:           uint(context.Int("cups-max-connections")),
-		CUPSConnectTimeout:           context.String("cups-connect-timeout"),
-		CUPSJobQueueSize:             uint(context.Int("cups-job-queue-size")),
-		CUPSPrinterPollInterval:      context.String("cups-printer-poll-interval"),
-		CUPSPrinterAttributes:        lib.DefaultConfig.CUPSPrinterAttributes,
-		CUPSJobFullUsername:          context.Bool("cups-job-full-username"),
-		CUPSIgnoreRawPrinters:        context.Bool("cups-ignore-raw-printers"),
-		CUPSIgnoreClassPrinters:      context.Bool("cups-ignore-class-printers"),
-		CopyPrinterInfoToDisplayName: context.Bool("copy-printer-info-to-display-name"),
-		PrefixJobIDToJobTitle:        context.Bool("prefix-job-id-to-job-title"),
-		DisplayNamePrefix:            context.String("display-name-prefix"),
-		MonitorSocketFilename:        context.String("monitor-socket-filename"),
-		SNMPEnable:                   context.Bool("snmp-enable"),
-		SNMPCommunity:                context.String("snmp-community"),
-		SNMPMaxConnections:           uint(context.Int("snmp-max-connections")),
-		LocalPrintingEnable:          true,
-		CloudPrintingEnable:          false,
-		LogFileName:                  context.String("log-file-name"),
-		LogFileMaxMegabytes:          uint(context.Int("log-file-max-megabytes")),
-		LogMaxFiles:                  uint(context.Int("log-max-files")),
-		LogLevel:                     context.String("log-level"),
-		LogToJournal:                 context.Bool("log-to-journal"),
-		PrinterBlacklist:             lib.DefaultConfig.PrinterBlacklist,
-	}
 }
 
 func writeConfigFile(context *cli.Context, config *lib.Config) string {

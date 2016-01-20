@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/cups"
 	"github.com/google/cups-connector/gcp"
 	"github.com/google/cups-connector/lib"
 	"github.com/google/cups-connector/log"
@@ -27,9 +26,16 @@ import (
 	"github.com/google/cups-connector/xmpp"
 )
 
-// Manages all interactions between CUPS and Google Cloud Print.
+type NativePrintSystem interface {
+	GetPrinters() ([]lib.Printer, error)
+	GetJobState(printerName string, jobID uint32) (*cdd.PrintJobStateDiff, error)
+	Print(printer *lib.Printer, fileName, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (uint32, error)
+	RemoveCachedPPD(printerName string)
+}
+
+// Manages state and interactions between the native print system and Google Cloud Print.
 type PrinterManager struct {
-	cups   *cups.CUPS
+	native NativePrintSystem
 	gcp    *gcp.GoogleCloudPrint
 	xmpp   *xmpp.XMPP
 	privet *privet.Privet
@@ -47,15 +53,15 @@ type PrinterManager struct {
 	jobsInFlightMutex sync.Mutex
 	jobsInFlight      map[string]struct{}
 
-	cupsQueueSize     uint
-	jobFullUsername   bool
-	ignoreRawPrinters bool
-	shareScope        string
+	nativeJobQueueSize uint
+	jobFullUsername    bool
+	ignoreRawPrinters  bool
+	shareScope         string
 
 	quit chan struct{}
 }
 
-func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, snmp *snmp.SNMPManager, printerPollInterval time.Duration, cupsQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string, jobs <-chan *lib.Job, xmppNotifications <-chan xmpp.PrinterNotification) (*PrinterManager, error) {
+func NewPrinterManager(native NativePrintSystem, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, snmp *snmp.SNMPManager, printerPollInterval time.Duration, nativeJobQueueSize uint, jobFullUsername, ignoreRawPrinters bool, shareScope string, jobs <-chan *lib.Job, xmppNotifications <-chan xmpp.PrinterNotification) (*PrinterManager, error) {
 	var printers *lib.ConcurrentPrinterMap
 	var queuedJobsCount map[string]uint
 
@@ -69,7 +75,7 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *prive
 		}
 		// Organize the GCP printers into a map.
 		for i := range gcpPrinters {
-			gcpPrinters[i].CUPSJobSemaphore = lib.NewSemaphore(cupsQueueSize)
+			gcpPrinters[i].NativeJobSemaphore = lib.NewSemaphore(nativeJobQueueSize)
 		}
 		printers = lib.NewConcurrentPrinterMap(gcpPrinters)
 	} else {
@@ -78,7 +84,7 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *prive
 
 	// Construct.
 	pm := PrinterManager{
-		cups:   cups,
+		native: native,
 		gcp:    gcp,
 		privet: privet,
 		snmp:   snmp,
@@ -92,10 +98,10 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *prive
 		jobsInFlightMutex: sync.Mutex{},
 		jobsInFlight:      make(map[string]struct{}),
 
-		cupsQueueSize:     cupsQueueSize,
-		jobFullUsername:   jobFullUsername,
-		ignoreRawPrinters: ignoreRawPrinters,
-		shareScope:        shareScope,
+		nativeJobQueueSize: nativeJobQueueSize,
+		jobFullUsername:    jobFullUsername,
+		ignoreRawPrinters:  ignoreRawPrinters,
+		shareScope:         shareScope,
 
 		quit: make(chan struct{}),
 	}
@@ -110,7 +116,7 @@ func NewPrinterManager(cups *cups.CUPS, gcp *gcp.GoogleCloudPrint, privet *prive
 	// Initialize Privet printers.
 	if privet != nil {
 		for _, printer := range pm.printers.GetAll() {
-			err := privet.AddPrinter(printer, pm.printers.GetByCUPSName)
+			err := privet.AddPrinter(printer, pm.printers.GetByNativeName)
 			if err != nil {
 				log.WarningPrinterf(printer.Name, "Failed to register locally: %s", err)
 			} else {
@@ -159,38 +165,38 @@ func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 func (pm *PrinterManager) syncPrinters(ignorePrivet bool) error {
 	log.Info("Synchronizing printers, stand by")
 
-	// Get current snapshot of CUPS printers.
-	cupsPrinters, err := pm.cups.GetPrinters()
+	// Get current snapshot of native printers.
+	nativePrinters, err := pm.native.GetPrinters()
 	if err != nil {
 		return fmt.Errorf("Sync failed while calling GetPrinters(): %s", err)
 	}
 	if pm.ignoreRawPrinters {
-		cupsPrinters, _ = lib.FilterRawPrinters(cupsPrinters)
+		nativePrinters, _ = lib.FilterRawPrinters(nativePrinters)
 	}
 
-	// Augment CUPS printers with extra information from SNMP.
+	// Augment native printers with extra information from SNMP.
 	if pm.snmp != nil {
-		err = pm.snmp.AugmentPrinters(cupsPrinters)
+		err = pm.snmp.AugmentPrinters(nativePrinters)
 		if err != nil {
 			log.Warningf("Failed to augment printers with SNMP data: %s", err)
 		}
 	}
 
 	// Set CapsHash on all printers.
-	for i := range cupsPrinters {
+	for i := range nativePrinters {
 		h := adler32.New()
-		lib.DeepHash(cupsPrinters[i].Tags, h)
-		cupsPrinters[i].Tags["tagshash"] = fmt.Sprintf("%x", h.Sum(nil))
+		lib.DeepHash(nativePrinters[i].Tags, h)
+		nativePrinters[i].Tags["tagshash"] = fmt.Sprintf("%x", h.Sum(nil))
 
 		h = adler32.New()
-		lib.DeepHash(cupsPrinters[i].Description, h)
-		cupsPrinters[i].CapsHash = fmt.Sprintf("%x", h.Sum(nil))
+		lib.DeepHash(nativePrinters[i].Description, h)
+		nativePrinters[i].CapsHash = fmt.Sprintf("%x", h.Sum(nil))
 	}
 
 	// Compare the snapshot to what we know currently.
-	diffs := lib.DiffPrinters(cupsPrinters, pm.printers.GetAll())
+	diffs := lib.DiffPrinters(nativePrinters, pm.printers.GetAll())
 	if diffs == nil {
-		log.Infof("Printers are already in sync; there are %d", len(cupsPrinters))
+		log.Infof("Printers are already in sync; there are %d", len(nativePrinters))
 		return nil
 	}
 
@@ -233,10 +239,10 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 			}
 		}
 
-		diff.Printer.CUPSJobSemaphore = lib.NewSemaphore(pm.cupsQueueSize)
+		diff.Printer.NativeJobSemaphore = lib.NewSemaphore(pm.nativeJobQueueSize)
 
 		if pm.privet != nil && !ignorePrivet {
-			err := pm.privet.AddPrinter(diff.Printer, pm.printers.GetByCUPSName)
+			err := pm.privet.AddPrinter(diff.Printer, pm.printers.GetByNativeName)
 			if err != nil {
 				log.WarningPrinterf(diff.Printer.Name, "Failed to register locally: %s", err)
 			} else {
@@ -269,7 +275,7 @@ func (pm *PrinterManager) applyDiff(diff *lib.PrinterDiff, ch chan<- lib.Printer
 		return
 
 	case lib.DeletePrinter:
-		pm.cups.RemoveCachedPPD(diff.Printer.Name)
+		pm.native.RemoveCachedPPD(diff.Printer.Name)
 
 		if pm.gcp != nil {
 			if err := pm.gcp.Delete(diff.Printer.GCPID); err != nil {
@@ -306,7 +312,7 @@ func (pm *PrinterManager) listenNotifications(jobs <-chan *lib.Job, xmppMessages
 
 			case job := <-jobs:
 				log.DebugJobf(job.JobID, "Received job: %+v", job)
-				go pm.printJob(job.CUPSPrinterName, job.Filename, job.Title, job.User, job.JobID, job.Ticket, job.UpdateJob)
+				go pm.printJob(job.NativePrinterName, job.Filename, job.Title, job.User, job.JobID, job.Ticket, job.UpdateJob)
 
 			case notification := <-xmppMessages:
 				log.Debugf("Received XMPP message: %+v", notification)
@@ -355,12 +361,12 @@ func (pm *PrinterManager) deleteInFlightJob(jobID string) {
 	delete(pm.jobsInFlight, jobID)
 }
 
-// printJob prints a new job to a CUPS printer, then polls the CUPS job state
+// printJob prints a new job to a native printer, then polls the native job state
 // and updates the GCP/Privet job state. then returns when the job state is DONE
 // or ABORTED.
 //
 // All errors are reported and logged from inside this function.
-func (pm *PrinterManager) printJob(cupsPrinterName, filename, title, user, jobID string, ticket *cdd.CloudJobTicket, updateJob func(string, cdd.PrintJobStateDiff) error) {
+func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, jobID string, ticket *cdd.CloudJobTicket, updateJob func(string, *cdd.PrintJobStateDiff) error) {
 	defer os.Remove(filename)
 	if !pm.addInFlightJob(jobID) {
 		// This print job was already received. We probably received it
@@ -374,7 +380,7 @@ func (pm *PrinterManager) printJob(cupsPrinterName, filename, title, user, jobID
 		user = strings.Split(user, "@")[0]
 	}
 
-	printer, exists := pm.printers.GetByCUPSName(cupsPrinterName)
+	printer, exists := pm.printers.GetByNativeName(nativePrinterName)
 	if !exists {
 		pm.incrementJobsProcessed(false)
 		state := cdd.PrintJobStateDiff{
@@ -383,29 +389,29 @@ func (pm *PrinterManager) printJob(cupsPrinterName, filename, title, user, jobID
 				ServiceActionCause: &cdd.ServiceActionCause{ErrorCode: cdd.ServiceActionCausePrinterDeleted},
 			},
 		}
-		if err := updateJob(jobID, state); err != nil {
+		if err := updateJob(jobID, &state); err != nil {
 			log.ErrorJob(jobID, err)
 		}
 		return
 	}
 
-	cupsJobID, err := pm.cups.Print(&printer, filename, title, user, jobID, ticket)
+	nativeJobID, err := pm.native.Print(&printer, filename, title, user, jobID, ticket)
 	if err != nil {
 		pm.incrementJobsProcessed(false)
-		log.ErrorJobf(jobID, "Failed to submit to CUPS: %s", err)
+		log.ErrorJobf(jobID, "Failed to submit to native print system: %s", err)
 		state := cdd.PrintJobStateDiff{
 			State: &cdd.JobState{
 				Type:              cdd.JobStateAborted,
 				DeviceActionCause: &cdd.DeviceActionCause{ErrorCode: cdd.DeviceActionCausePrintFailure},
 			},
 		}
-		if err := updateJob(jobID, state); err != nil {
+		if err := updateJob(jobID, &state); err != nil {
 			log.ErrorJob(jobID, err)
 		}
 		return
 	}
 
-	log.InfoJobf(jobID, "Submitted as CUPS job %d", cupsJobID)
+	log.InfoJobf(jobID, "Submitted as native job %d", nativeJobID)
 
 	var state cdd.PrintJobStateDiff
 
@@ -413,9 +419,9 @@ func (pm *PrinterManager) printJob(cupsPrinterName, filename, title, user, jobID
 	defer ticker.Stop()
 
 	for _ = range ticker.C {
-		cupsState, err := pm.cups.GetJobState(cupsJobID)
+		nativeState, err := pm.native.GetJobState(printer.Name, nativeJobID)
 		if err != nil {
-			log.WarningJobf(jobID, "Failed to get state of CUPS job %d: %s", cupsJobID, err)
+			log.WarningJobf(jobID, "Failed to get state of native job %d: %s", nativeJobID, err)
 
 			state = cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
@@ -424,16 +430,16 @@ func (pm *PrinterManager) printJob(cupsPrinterName, filename, title, user, jobID
 				},
 				PagesPrinted: state.PagesPrinted,
 			}
-			if err := updateJob(jobID, state); err != nil {
+			if err := updateJob(jobID, &state); err != nil {
 				log.ErrorJob(jobID, err)
 			}
 			pm.incrementJobsProcessed(false)
 			return
 		}
 
-		if !reflect.DeepEqual(cupsState, state) {
-			state = cupsState
-			if err = updateJob(jobID, state); err != nil {
+		if !reflect.DeepEqual(*nativeState, state) {
+			state = *nativeState
+			if err = updateJob(jobID, &state); err != nil {
 				log.ErrorJob(jobID, err)
 			}
 			log.InfoJobf(jobID, "State: %s", state.State.Type)
@@ -456,7 +462,7 @@ func (pm *PrinterManager) GetJobStats() (uint, uint, uint, error) {
 	var processing uint
 
 	for _, printer := range pm.printers.GetAll() {
-		processing += printer.CUPSJobSemaphore.Count()
+		processing += printer.NativeJobSemaphore.Count()
 	}
 
 	pm.jobStatsMutex.Lock()

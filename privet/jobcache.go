@@ -137,7 +137,7 @@ func (jc *jobCache) deleteJob(jobID string) {
 	delete(jc.entries, jobID)
 }
 
-func (jc *jobCache) updateJob(jobID string, stateDiff cdd.PrintJobStateDiff) error {
+func (jc *jobCache) updateJob(jobID string, stateDiff *cdd.PrintJobStateDiff) error {
 	jc.entriesMutex.Lock()
 	defer jc.entriesMutex.Unlock()
 
