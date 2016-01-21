@@ -370,6 +370,9 @@ func initConfigFile(context *cli.Context) {
 		var userClient *http.Client
 		if context.IsSet("gcp-user-refresh-token") {
 			userClient = getUserClientFromToken(context)
+			if shareScope != "" {
+				userRefreshToken = context.String("gcp-user-refresh-token")
+			}
 		} else {
 			var urt string
 			userClient, urt = getUserClientFromUser(context)
