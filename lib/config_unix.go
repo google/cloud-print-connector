@@ -8,6 +8,14 @@
 
 package lib
 
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/codegangsta/cli"
+	"launchpad.net/go-xdg/v0"
+)
+
 const defaultConfigFilename = "gcp-cups-connector.config.json"
 
 type Config struct {
@@ -196,4 +204,39 @@ var DefaultConfig = Config{
 	CUPSIgnoreRawPrinters:            true,
 	CUPSIgnoreClassPrinters:          true,
 	CUPSCopyPrinterInfoToDisplayName: true,
+}
+
+// getConfigFilename gets the absolute filename of the config file specified by
+// the ConfigFilename flag, and whether it exists.
+//
+// If the (relative or absolute) ConfigFilename exists, then it is returned.
+// If the ConfigFilename exists in a valid XDG path, then it is returned.
+// If neither of those exist, the (relative or absolute) ConfigFilename is returned.
+func getConfigFilename(context *cli.Context) (string, bool) {
+	cf := context.GlobalString("config-filename")
+
+	if filepath.IsAbs(cf) {
+		// Absolute path specified; user knows what they want.
+		_, err := os.Stat(cf)
+		return cf, err == nil
+	}
+
+	absCF, err := filepath.Abs(cf)
+	if err != nil {
+		// syscall failure; treat as if file doesn't exist.
+		return cf, false
+	}
+	if _, err := os.Stat(absCF); err == nil {
+		// File exists on relative path.
+		return absCF, true
+	}
+
+	if xdgCF, err := xdg.Config.Find(cf); err == nil {
+		// File exists in an XDG directory.
+		return xdgCF, true
+	}
+
+	// Default to relative path. This is probably what the user expects if
+	// it wasn't found anywhere else.
+	return absCF, false
 }
