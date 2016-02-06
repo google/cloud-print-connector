@@ -18,6 +18,8 @@ import (
 )
 
 const (
+	ConnectorName = "Cloud Print Connector"
+
 	// A website with user-friendly information.
 	ConnectorHomeURL = "https://github.com/google/cups-connector"
 
@@ -30,16 +32,14 @@ var (
 		Usage: fmt.Sprintf("Connector config filename (default \"%s\")", defaultConfigFilename),
 		Value: defaultConfigFilename,
 	}
-)
 
-var (
 	// To be populated by something like:
 	// go install -ldflags "-X github.com/google/cups-connector/lib.BuildDate=`date +%Y.%m.%d`"
 	BuildDate = "DEV"
 
-	ShortName = "CUPS Connector " + BuildDate + "-" + runtime.GOOS
+	ShortName = platformName + " Connector " + BuildDate + "-" + runtime.GOOS
 
-	FullName = "Google Cloud Print CUPS Connector version " + BuildDate + "-" + runtime.GOOS
+	FullName = ConnectorName + " for " + platformName + " version " + BuildDate + "-" + runtime.GOOS
 )
 
 type commonConfig struct {

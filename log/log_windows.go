@@ -12,6 +12,9 @@ package log
 import (
 	"fmt"
 	"time"
+
+	"github.com/google/cups-connector/lib"
+	"golang.org/x/sys/windows/svc/eventlog"
 )
 
 const (
@@ -22,15 +25,12 @@ const (
 )
 
 var logger struct {
-	level         LogLevel
-	logToStdout   bool
-	logToEventLog bool
+	level LogLevel
+	elog  *eventlog.Log
 }
 
 func init() {
 	logger.level = INFO
-	logger.logToStdout = false
-	logger.logToEventLog = true
 }
 
 // SetLevel sets the minimum severity level to log. Default is INFO.
@@ -38,12 +38,21 @@ func SetLevel(l LogLevel) {
 	logger.level = l
 }
 
-func SetLogToConsole(b bool) {
-	logger.logToStdout = b
-}
-
-func SetLogToEventLog(b bool) {
-	logger.logToEventLog = b
+func SetLogToEventLog(b bool) error {
+	if b && logger.elog == nil {
+		l, err := eventlog.Open(lib.ConnectorName)
+		if err != nil {
+			return err
+		}
+		logger.elog = l
+	} else if !b && logger.elog != nil {
+		err := logger.elog.Close()
+		if err != nil {
+			return err
+		}
+		logger.elog = nil
+	}
+	return nil
 }
 
 func log(level LogLevel, printerID, jobID, format string, args ...interface{}) {
@@ -64,18 +73,23 @@ func log(level LogLevel, printerID, jobID, format string, args ...interface{}) {
 		message = fmt.Sprintf(logJobFormat, jobID, message)
 	}
 
-	if logger.logToStdout {
+	if logger.elog == nil {
 		dateTime := time.Now().Format(dateTimeFormat)
 		levelValue := stringByLevel[level]
 		fmt.Println(dateTime, levelValue, message)
-	}
-
-	if logger.logToEventLog {
+	} else {
 		if level == DEBUG || level == FATAL {
 			// Windows Event Log only has three levels; these two extra information prepended.
 			message = fmt.Sprintf("%s %s", stringByLevel[level], message)
 		}
 
-		// TODO
+		switch level {
+		case FATAL, ERROR:
+			logger.elog.Error(1, message)
+		case WARNING:
+			logger.elog.Warning(2, message)
+		case INFO, DEBUG:
+			logger.elog.Info(3, message)
+		}
 	}
 }

@@ -16,7 +16,11 @@ import (
 	"launchpad.net/go-xdg/v0"
 )
 
-const defaultConfigFilename = "gcp-cups-connector.config.json"
+const (
+	platformName = "CUPS"
+
+	defaultConfigFilename = "gcp-cups-connector.config.json"
+)
 
 type Config struct {
 	// Associated with root account. XMPP credential.

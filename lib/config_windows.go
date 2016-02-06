@@ -15,7 +15,11 @@ import (
 	"github.com/codegangsta/cli"
 )
 
-const defaultConfigFilename = "gcp-windows-connector.config.json"
+const (
+	platformName = "Windows"
+
+	defaultConfigFilename = "gcp-windows-connector.config.json"
+)
 
 type Config struct {
 	// Associated with root account. XMPP credential.

@@ -9,11 +9,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 
 	"github.com/codegangsta/cli"
 	"github.com/google/cups-connector/lib"
+	"golang.org/x/sys/windows/svc/eventlog"
 )
 
 var windowsCommands = []cli.Command{
@@ -24,10 +26,38 @@ var windowsCommands = []cli.Command{
 		Action:    initConfigFile,
 		Flags:     commonInitFlags,
 	},
+	cli.Command{
+		Name:   "install-event-log",
+		Usage:  "Installs registry entries for the event log",
+		Action: installEventLog,
+	},
+	cli.Command{
+		Name:   "remove-event-log",
+		Usage:  "Removes registry entries for the event log",
+		Action: removeEventLog,
+	},
 }
 
 func updateConfig(config *lib.Config, configMap map[string]interface{}) bool {
 	return commonUpdateConfig(config, configMap)
+}
+
+func installEventLog(c *cli.Context) {
+	err := eventlog.InstallAsEventCreate(lib.ConnectorName, eventlog.Error|eventlog.Warning|eventlog.Info)
+	if err != nil {
+		fmt.Printf("Failed to install event log registry entries: %s\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Event log registry entries installed successfully")
+}
+
+func removeEventLog(c *cli.Context) {
+	err := eventlog.Remove(lib.ConnectorName)
+	if err != nil {
+		fmt.Printf("Failed to remove event log registry entries: %s\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Event log registry entries removed successfully")
 }
 
 func main() {
@@ -36,7 +66,7 @@ func main() {
 
 	app := cli.NewApp()
 	app.Name = "gcp-windows-connector-util"
-	app.Usage = "Google Cloud Print Windows Connector utility tools"
+	app.Usage = lib.ConnectorName + " for Windows utility tools"
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
 		lib.ConfigFilenameFlag,

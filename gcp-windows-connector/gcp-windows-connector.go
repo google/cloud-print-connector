@@ -22,6 +22,7 @@ import (
 	"github.com/google/cups-connector/manager"
 	"github.com/google/cups-connector/winspool"
 	"github.com/google/cups-connector/xmpp"
+	"golang.org/x/sys/windows/svc"
 )
 
 // TODO: Windows Service.
@@ -30,15 +31,8 @@ import (
 func main() {
 	app := cli.NewApp()
 	app.Name = "gcp-windows-connector"
-	app.Usage = "Google Cloud Print Windows Connector"
+	app.Usage = "Google Cloud Print Connector for Windows"
 	app.Version = lib.BuildDate
-	app.Flags = []cli.Flag{
-		lib.ConfigFilenameFlag,
-		cli.BoolFlag{
-			Name:  "log-to-console",
-			Usage: "Log to STDERR, in addition to configured logging",
-		},
-	}
 	app.Action = func(context *cli.Context) {
 		os.Exit(connector(context))
 	}
@@ -48,15 +42,24 @@ func main() {
 func connector(context *cli.Context) int {
 	config, configFilename, err := lib.GetConfig(context)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read config file: %s", err)
+		fmt.Fprintf(os.Stderr, "Failed to read config file: %s\n", err)
 		return 1
 	}
 
-	log.SetLogToConsole(context.Bool("log-to-console"))
+	if interactive, err := svc.IsAnInteractiveSession(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to detect interactive session: %s\n", err)
+		return 1
+	} else if !interactive {
+		err = log.SetLogToEventLog(true)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to start event log: %s\n", err)
+			return 1
+		}
+	}
 
 	logLevel, ok := log.LevelFromString(config.LogLevel)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "Log level %s is not recognized", config.LogLevel)
+		fmt.Fprintf(os.Stderr, "Log level %s is not recognized\n", config.LogLevel)
 		return 1
 	}
 	log.SetLevel(logLevel)
@@ -66,7 +69,6 @@ func connector(context *cli.Context) int {
 	}
 
 	log.Info(lib.FullName)
-	fmt.Println(lib.FullName)
 
 	if !config.CloudPrintingEnable && !config.LocalPrintingEnable {
 		log.Fatal("Cannot run connector with both local_printing_enable and cloud_printing_enable set to false")
@@ -133,21 +135,16 @@ func connector(context *cli.Context) int {
 	if config.CloudPrintingEnable {
 		if config.LocalPrintingEnable {
 			log.Infof("Ready to rock as proxy '%s' and in local mode", config.ProxyName)
-			fmt.Printf("Ready to rock as proxy '%s' and in local mode\n", config.ProxyName)
 		} else {
 			log.Infof("Ready to rock as proxy '%s'", config.ProxyName)
-			fmt.Printf("Ready to rock as proxy '%s'\n", config.ProxyName)
 		}
 	} else {
 		log.Info("Ready to rock in local-only mode")
-		fmt.Println("Ready to rock in local-only mode")
 	}
 
 	waitIndefinitely()
 
 	log.Info("Shutting down")
-	fmt.Println("")
-	fmt.Println("Shutting down")
 
 	return 0
 }
@@ -161,7 +158,7 @@ func waitIndefinitely() {
 	go func() {
 		// In case the process doesn't die quickly, wait for a second termination request.
 		<-ch
-		fmt.Println("Second termination request received")
+		log.Info("Second termination request received")
 		os.Exit(1)
 	}()
 }
