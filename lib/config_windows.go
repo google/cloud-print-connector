@@ -8,6 +8,13 @@
 
 package lib
 
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/codegangsta/cli"
+)
+
 const defaultConfigFilename = "gcp-windows-connector.config.json"
 
 type Config struct {
@@ -126,4 +133,33 @@ var DefaultConfig = Config{
 	LocalPrintingEnable: true,
 	CloudPrintingEnable: false,
 	LogLevel:            "INFO",
+}
+
+// getConfigFilename gets the absolute filename of the config file specified by
+// the ConfigFilename flag, and whether it exists.
+//
+// If the (relative or absolute) ConfigFilename exists, then it is returned.
+// If neither of those exist, the (relative or absolute) ConfigFilename is returned.
+func getConfigFilename(context *cli.Context) (string, bool) {
+	cf := context.GlobalString("config-filename")
+
+	if filepath.IsAbs(cf) {
+		// Absolute path specified; user knows what they want.
+		_, err := os.Stat(cf)
+		return cf, err == nil
+	}
+
+	absCF, err := filepath.Abs(cf)
+	if err != nil {
+		// syscall failure; treat as if file doesn't exist.
+		return cf, false
+	}
+	if _, err := os.Stat(absCF); err == nil {
+		// File exists on relative path.
+		return absCF, true
+	}
+
+	// Default to relative path. This is probably what the user expects if
+	// it wasn't found anywhere else.
+	return absCF, false
 }
