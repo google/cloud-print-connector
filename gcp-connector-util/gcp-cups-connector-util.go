@@ -105,6 +105,10 @@ var commonCommands = []cli.Command{
 				Name:  "skip-notification",
 				Usage: "Skip sending email notice. Defaults to true",
 			},
+			cli.BoolFlag{
+				Name:  "public",
+				Usage: "Make the printer public (anyone can print)",
+			},
 		},
 	},
 	cli.Command{
@@ -119,6 +123,10 @@ var commonCommands = []cli.Command{
 			cli.StringFlag{
 				Name:  "email",
 				Usage: "Group or user to remove.",
+			},
+			cli.BoolFlag{
+				Name:  "public",
+				Usage: "Remove public printer access.",
 			},
 		},
 	},
@@ -491,11 +499,17 @@ func shareGCPPrinter(context *cli.Context) {
 	}
 
 	err := gcpConn.Share(context.String("printer-id"), context.String("email"),
-		role, context.Bool("skip-notification"))
-	if err != nil {
-		fmt.Printf("Failed to share GCP printer %s with %s: %s\n", context.String("printer-id"), context.String("email"), err)
+		role, context.Bool("skip-notification"), context.Bool("public"))
+	var sharedWith string
+	if context.Bool("public") {
+		sharedWith = "public"
 	} else {
-		fmt.Printf("Shared GCP printer %s with %s\n", context.String("printer-id"), context.String("email"))
+		sharedWith = context.String("email")
+	}
+	if err != nil {
+		fmt.Printf("Failed to share GCP printer %s with %s: %s\n", context.String("printer-id"), sharedWith, err)
+	} else {
+		fmt.Printf("Shared GCP printer %s with %s\n", context.String("printer-id"), sharedWith)
 	}
 }
 
@@ -504,10 +518,16 @@ func unshareGCPPrinter(context *cli.Context) {
 	config := getConfig(context)
 	gcpConn := getGCP(config)
 
-	err := gcpConn.Unshare(context.String("printer-id"), context.String("email"))
-	if err != nil {
-		fmt.Printf("Failed to unshare GCP printer %s with %s: %s\n", context.String("printer-id"), context.String("email"), err)
+	err := gcpConn.Unshare(context.String("printer-id"), context.String("email"), context.Bool("public"))
+	var sharedWith string
+	if context.Bool("public") {
+		sharedWith = "public"
 	} else {
-		fmt.Printf("Unshared GCP printer %s with %s\n", context.String("printer-id"), context.String("email"))
+		sharedWith = context.String("email")
+	}
+	if err != nil {
+		fmt.Printf("Failed to unshare GCP printer %s with %s: %s\n", context.String("printer-id"), sharedWith, err)
+	} else {
+		fmt.Printf("Unshared GCP printer %s with %s\n", context.String("printer-id"), sharedWith)
 	}
 }
