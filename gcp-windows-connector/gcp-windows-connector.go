@@ -33,6 +33,9 @@ func main() {
 	app.Name = "gcp-windows-connector"
 	app.Usage = "Google Cloud Print Connector for Windows"
 	app.Version = lib.BuildDate
+	app.Flags = []cli.Flag{
+		lib.ConfigFilenameFlag,
+	}
 	app.Action = func(context *cli.Context) {
 		os.Exit(connector(context))
 	}
