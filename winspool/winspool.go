@@ -544,7 +544,7 @@ func convertJobState(wsStatus uint32) *cdd.JobState {
 	} else if wsStatus&(JOB_STATUS_PRINTED|JOB_STATUS_COMPLETE) != 0 {
 		state.Type = cdd.JobStateDone
 
-	} else if wsStatus&JOB_STATUS_PAUSED != 0 {
+	} else if wsStatus&JOB_STATUS_PAUSED != 0 || wsStatus == 0 {
 		state.Type = cdd.JobStateStopped
 		state.UserActionCause = &cdd.UserActionCause{cdd.UserActionCausePaused}
 
@@ -597,6 +597,7 @@ func (ws *WinSpool) GetJobState(printerName string, jobID uint32) (*cdd.PrintJob
 }
 
 type jobContext struct {
+	jobID    int32
 	pDoc     PopplerDocument
 	hPrinter HANDLE
 	devMode  *DevMode
@@ -605,40 +606,48 @@ type jobContext struct {
 	cContext CairoContext
 }
 
-func newJobContext(printerName, fileName, title string) (int32, *jobContext, error) {
+func newJobContext(printerName, fileName, title string) (*jobContext, error) {
 	pDoc, err := PopplerDocumentNewFromFile(fileName)
 	if err != nil {
-		return 0, nil, err
+		return nil, err
 	}
 	hPrinter, err := OpenPrinter(printerName)
 	if err != nil {
 		pDoc.Unref()
-		return 0, nil, err
+		return nil, err
 	}
 	devMode, err := hPrinter.DocumentPropertiesGet(printerName)
 	if err != nil {
 		hPrinter.ClosePrinter()
 		pDoc.Unref()
-		return 0, nil, err
+		return nil, err
 	}
 	err = hPrinter.DocumentPropertiesSet(printerName, devMode)
 	if err != nil {
 		hPrinter.ClosePrinter()
 		pDoc.Unref()
-		return 0, nil, err
+		return nil, err
 	}
 	hDC, err := CreateDC(devMode.GetDeviceName(), devMode)
 	if err != nil {
 		hPrinter.ClosePrinter()
 		pDoc.Unref()
-		return 0, nil, err
+		return nil, err
 	}
 	jobID, err := hDC.StartDoc(title)
 	if err != nil {
 		hDC.DeleteDC()
 		hPrinter.ClosePrinter()
 		pDoc.Unref()
-		return 0, nil, err
+		return nil, err
+	}
+	err = hPrinter.SetJob(jobID, JOB_CONTROL_RETAIN)
+	if err != nil {
+		hDC.EndDoc()
+		hDC.DeleteDC()
+		hPrinter.ClosePrinter()
+		pDoc.Unref()
+		return nil, err
 	}
 	cSurface, err := CairoWin32PrintingSurfaceCreate(hDC)
 	if err != nil {
@@ -646,7 +655,7 @@ func newJobContext(printerName, fileName, title string) (int32, *jobContext, err
 		hDC.DeleteDC()
 		hPrinter.ClosePrinter()
 		pDoc.Unref()
-		return 0, nil, err
+		return nil, err
 	}
 	cContext, err := CairoCreateContext(cSurface)
 	if err != nil {
@@ -655,10 +664,10 @@ func newJobContext(printerName, fileName, title string) (int32, *jobContext, err
 		hDC.DeleteDC()
 		hPrinter.ClosePrinter()
 		pDoc.Unref()
-		return 0, nil, err
+		return nil, err
 	}
-	c := jobContext{pDoc, hPrinter, devMode, hDC, cSurface, cContext}
-	return jobID, &c, nil
+	c := jobContext{jobID, pDoc, hPrinter, devMode, hDC, cSurface, cContext}
+	return &c, nil
 }
 
 func (c *jobContext) free() error {
@@ -668,6 +677,10 @@ func (c *jobContext) free() error {
 		return err
 	}
 	err = c.cSurface.Destroy()
+	if err != nil {
+		return err
+	}
+	err = c.hPrinter.SetJob(c.jobID, JOB_CONTROL_RELEASE)
 	if err != nil {
 		return err
 	}
@@ -816,7 +829,7 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 		return 0, errors.New("Print() called with nil ticket")
 	}
 
-	jobID, jobContext, err := newJobContext(printer.Name, fileName, title)
+	jobContext, err := newJobContext(printer.Name, fileName, title)
 	if err != nil {
 		return 0, err
 	}
@@ -889,7 +902,7 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 		}
 	}
 
-	return uint32(jobID), nil
+	return uint32(jobContext.jobID), nil
 }
 
 // The following functions are not relevant to Windows printing, but are required by the NativePrintSystem interface.
