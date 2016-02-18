@@ -34,11 +34,11 @@ var (
 	enumPrintersProc       = winspool.MustFindProc("EnumPrintersW")
 	getDeviceCapsProc      = gdi32.MustFindProc("GetDeviceCaps")
 	getJobProc             = winspool.MustFindProc("GetJobW")
-	getPrinterProc         = winspool.MustFindProc("GetPrinterW")
 	openPrinterProc        = winspool.MustFindProc("OpenPrinterW")
 	resetDCProc            = gdi32.MustFindProc("ResetDCW")
 	rtlGetVersionProc      = ntoskrnl.MustFindProc("RtlGetVersion")
 	setGraphicsModeProc    = gdi32.MustFindProc("SetGraphicsMode")
+	setJobProc             = winspool.MustFindProc("SetJobW")
 	setWorldTransformProc  = gdi32.MustFindProc("SetWorldTransform")
 	startDocProc           = gdi32.MustFindProc("StartDocW")
 	startPageProc          = gdi32.MustFindProc("StartPage")
@@ -622,22 +622,6 @@ func (hPrinter *HANDLE) ClosePrinter() error {
 	return nil
 }
 
-func (hPrinter HANDLE) getPrinter(level uint32) ([]byte, error) {
-	var cbBuf uint32
-	_, _, err := getPrinterProc.Call(uintptr(hPrinter), uintptr(level), 0, 0, uintptr(unsafe.Pointer(&cbBuf)))
-	if err != ERROR_INSUFFICIENT_BUFFER {
-		return nil, err
-	}
-
-	var pPrinter []byte = make([]byte, cbBuf)
-	_, _, err = getPrinterProc.Call(uintptr(hPrinter), uintptr(level), uintptr(unsafe.Pointer(&pPrinter[0])), uintptr(cbBuf), uintptr(unsafe.Pointer(&cbBuf)))
-	if err != NO_ERROR {
-		return nil, err
-	}
-
-	return pPrinter, nil
-}
-
 func (hPrinter HANDLE) DocumentPropertiesGet(deviceName string) (*DevMode, error) {
 	pDeviceName, err := syscall.UTF16PtrFromString(deviceName)
 	if err != nil {
@@ -750,6 +734,28 @@ func (hPrinter HANDLE) GetJob(jobID int32) (*JobInfo1, error) {
 	var ji1 JobInfo1 = *(*JobInfo1)(unsafe.Pointer(&pJob[0]))
 
 	return &ji1, nil
+}
+
+// SetJob command values.
+const (
+	JOB_CONTROL_PAUSE             uint32 = 1
+	JOB_CONTROL_RESUME            uint32 = 2
+	JOB_CONTROL_CANCEL            uint32 = 3
+	JOB_CONTROL_RESTART           uint32 = 4
+	JOB_CONTROL_DELETE            uint32 = 5
+	JOB_CONTROL_SENT_TO_PRINTER   uint32 = 6
+	JOB_CONTROL_LAST_PAGE_EJECTED uint32 = 7
+	JOB_CONTROL_RETAIN            uint32 = 8
+	JOB_CONTROL_RELEASE           uint32 = 9
+)
+
+func (hPrinter HANDLE) SetJob(jobID int32, command uint32) error {
+	_, _, err := setJobProc.Call(uintptr(hPrinter), uintptr(jobID), 0, 0, uintptr(command))
+	if err != NO_ERROR {
+		return err
+	}
+
+	return nil
 }
 
 type HDC uintptr

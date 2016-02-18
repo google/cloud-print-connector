@@ -445,7 +445,7 @@ func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, job
 			log.InfoJobf(jobID, "State: %s", state.State.Type)
 		}
 
-		if state.State.Type != cdd.JobStateInProgress {
+		if state.State.Type != cdd.JobStateInProgress && state.State.Type != cdd.JobStateStopped {
 			if state.State.Type == cdd.JobStateDone {
 				pm.incrementJobsProcessed(true)
 			} else {
