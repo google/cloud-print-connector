@@ -11,9 +11,9 @@ package log
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/google/cups-connector/lib"
+	"golang.org/x/sys/windows/svc/debug"
 	"golang.org/x/sys/windows/svc/eventlog"
 )
 
@@ -26,7 +26,7 @@ const (
 
 var logger struct {
 	level LogLevel
-	elog  *eventlog.Log
+	elog  debug.Log
 }
 
 func init() {
@@ -38,24 +38,33 @@ func SetLevel(l LogLevel) {
 	logger.level = l
 }
 
-func SetLogToEventLog(b bool) error {
-	if b && logger.elog == nil {
+func Start(logToConsole bool) error {
+	if logToConsole {
+		logger.elog = debug.New(lib.ConnectorName)
+
+	} else {
 		l, err := eventlog.Open(lib.ConnectorName)
 		if err != nil {
 			return err
 		}
 		logger.elog = l
-	} else if !b && logger.elog != nil {
-		err := logger.elog.Close()
-		if err != nil {
-			return err
-		}
-		logger.elog = nil
 	}
+
 	return nil
 }
 
+func Stop() {
+	err := logger.elog.Close()
+	if err != nil {
+		panic("Failed to close log")
+	}
+}
+
 func log(level LogLevel, printerID, jobID, format string, args ...interface{}) {
+	if logger.elog == nil {
+		panic("Attempted to log without first calling Start()")
+	}
+
 	if level > logger.level {
 		return
 	}
@@ -73,23 +82,17 @@ func log(level LogLevel, printerID, jobID, format string, args ...interface{}) {
 		message = fmt.Sprintf(logJobFormat, jobID, message)
 	}
 
-	if logger.elog == nil {
-		dateTime := time.Now().Format(dateTimeFormat)
-		levelValue := stringByLevel[level]
-		fmt.Println(dateTime, levelValue, message)
-	} else {
-		if level == DEBUG || level == FATAL {
-			// Windows Event Log only has three levels; these two extra information prepended.
-			message = fmt.Sprintf("%s %s", stringByLevel[level], message)
-		}
+	if level == DEBUG || level == FATAL {
+		// Windows Event Log only has three levels; these two extra information prepended.
+		message = fmt.Sprintf("%s %s", stringByLevel[level], message)
+	}
 
-		switch level {
-		case FATAL, ERROR:
-			logger.elog.Error(1, message)
-		case WARNING:
-			logger.elog.Warning(2, message)
-		case INFO, DEBUG:
-			logger.elog.Info(3, message)
-		}
+	switch level {
+	case FATAL, ERROR:
+		logger.elog.Error(1, message)
+	case WARNING:
+		logger.elog.Warning(2, message)
+	case INFO, DEBUG:
+		logger.elog.Info(3, message)
 	}
 }

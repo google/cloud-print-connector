@@ -43,21 +43,30 @@ func main() {
 }
 
 func connector(context *cli.Context) int {
-	config, configFilename, err := lib.GetConfig(context)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read config file: %s\n", err)
-		return 1
-	}
-
 	if interactive, err := svc.IsAnInteractiveSession(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to detect interactive session: %s\n", err)
 		return 1
-	} else if !interactive {
-		err = log.SetLogToEventLog(true)
+
+	} else if interactive {
+		err = log.Start(true)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to start event log: %s\n", err)
 			return 1
 		}
+
+	} else {
+		err = log.Start(false)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to start event log: %s\n", err)
+			return 1
+		}
+	}
+	defer log.Stop()
+
+	config, configFilename, err := lib.GetConfig(context)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read config file: %s\n", err)
+		return 1
 	}
 
 	logLevel, ok := log.LevelFromString(config.LogLevel)
