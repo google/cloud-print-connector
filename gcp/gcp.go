@@ -376,6 +376,14 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff) error {
 		form.Set("remove_tag", gcpTagPrefix+".*")
 	}
 
+	if diff.QuotaEnabledChanged {
+		form.Set("quota_enabled", strconv.FormatBool(diff.Printer.QuotaEnabled))
+	}
+
+	if diff.DailyQuotaChanged {
+		form.Set("daily_quota", strconv.Itoa(diff.Printer.DailyQuota))
+	}
+
 	if _, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"update", form); err != nil {
 		return err
 	}

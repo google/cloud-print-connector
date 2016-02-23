@@ -130,6 +130,29 @@ var commonCommands = []cli.Command{
 			},
 		},
 	},
+	cli.Command{
+		Name:   "update-gcp-printer",
+		Usage:  "Modifies settings for a printer.",
+		Action: updateGCPPrinter,
+		Flags: []cli.Flag{
+			cli.StringFlag{
+				Name:  "printer-id",
+				Usage: "Printer to update.",
+			},
+			cli.BoolFlag{
+				Name:  "enable-quota",
+				Usage: "Set a daily per-user quota.",
+			},
+			cli.BoolFlag{
+				Name:  "disable-quota",
+				Usage: "Disable daily per-user quota.",
+			},
+			cli.IntFlag{
+				Name:  "daily-quota",
+				Usage: "Pages per-user per-day.",
+			},
+		},
+	},
 }
 
 // getConfig returns a config object
@@ -529,5 +552,32 @@ func unshareGCPPrinter(context *cli.Context) {
 		fmt.Printf("Failed to unshare GCP printer %s with %s: %s\n", context.String("printer-id"), sharedWith, err)
 	} else {
 		fmt.Printf("Unshared GCP printer %s with %s\n", context.String("printer-id"), sharedWith)
+	}
+}
+
+// updateGCPPrinter updates settings for a GCP printer.
+func updateGCPPrinter(context *cli.Context) {
+	config := getConfig(context)
+	gcpConn := getGCP(config)
+
+	var diff lib.PrinterDiff
+	diff.Printer = lib.Printer{GCPID: context.String("printer-id")}
+
+	if context.Bool("enable-quota") {
+		diff.Printer.QuotaEnabled = true
+		diff.QuotaEnabledChanged = true
+	} else if context.Bool("disable-quota") {
+		diff.Printer.QuotaEnabled = false
+		diff.QuotaEnabledChanged = true
+	}
+	if context.Int("daily-quota") > 0 {
+		diff.Printer.DailyQuota = context.Int("daily-quota")
+		diff.DailyQuotaChanged = true
+	}
+	err := gcpConn.Update(&diff)
+	if err != nil {
+		fmt.Printf("Failed to update GCP printer %s: %s", context.String("printer-id"), err)
+	} else {
+		fmt.Printf("Updated GCP printer %s", context.String("printer-id"))
 	}
 }
