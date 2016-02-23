@@ -1,7 +1,7 @@
-# Google Cloud Print CUPS Connector
+# Google Cloud Print Connector
 
 ## Introduction
-Share Linux printers and OS X printers with ChromeOS and Android devices, using the CUPS Connector. The CUPS Connector is a purpose-built Unix process, maintained from the command line. It can share hundreds of printers on a powerful server, or one printer on a Raspberry Pi.
+Share printers from your Windows, Linux, or OS X computer with ChromeOS and Android devices, using the Cloud Print Connector. The Connector is a purpose-built system process. It can share hundreds of printers on a powerful server, or one printer on a Raspberry Pi.
 
 Lots of help can be found in [the wiki](https://github.com/google/cups-connector/wiki).
 
