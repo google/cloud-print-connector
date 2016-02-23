@@ -255,21 +255,6 @@ func commonUpdateConfig(config *lib.Config, configMap map[string]interface{}) bo
 		fmt.Println("Added display_name_prefix")
 		config.DisplayNamePrefix = lib.DefaultConfig.DisplayNamePrefix
 	}
-	if _, exists := configMap["snmp_enable"]; !exists {
-		dirty = true
-		fmt.Println("Added snmp_enable")
-		config.SNMPEnable = lib.DefaultConfig.SNMPEnable
-	}
-	if _, exists := configMap["snmp_community"]; !exists {
-		dirty = true
-		fmt.Println("Added snmp_community")
-		config.SNMPCommunity = lib.DefaultConfig.SNMPCommunity
-	}
-	if _, exists := configMap["snmp_max_connections"]; !exists {
-		dirty = true
-		fmt.Println("Added snmp_max_connections")
-		config.SNMPMaxConnections = lib.DefaultConfig.SNMPMaxConnections
-	}
 	if _, exists := configMap["printer_blacklist"]; !exists {
 		dirty = true
 		fmt.Println("Added printer_blacklist")

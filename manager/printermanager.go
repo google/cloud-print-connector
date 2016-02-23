@@ -22,7 +22,6 @@ import (
 	"github.com/google/cups-connector/lib"
 	"github.com/google/cups-connector/log"
 	"github.com/google/cups-connector/privet"
-	"github.com/google/cups-connector/snmp"
 	"github.com/google/cups-connector/xmpp"
 )
 
@@ -39,7 +38,6 @@ type PrinterManager struct {
 	gcp    *gcp.GoogleCloudPrint
 	xmpp   *xmpp.XMPP
 	privet *privet.Privet
-	snmp   *snmp.SNMPManager
 
 	printers *lib.ConcurrentPrinterMap
 
@@ -60,7 +58,7 @@ type PrinterManager struct {
 	quit chan struct{}
 }
 
-func NewPrinterManager(native NativePrintSystem, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, snmp *snmp.SNMPManager, printerPollInterval time.Duration, nativeJobQueueSize uint, jobFullUsername bool, shareScope string, jobs <-chan *lib.Job, xmppNotifications <-chan xmpp.PrinterNotification) (*PrinterManager, error) {
+func NewPrinterManager(native NativePrintSystem, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, printerPollInterval time.Duration, nativeJobQueueSize uint, jobFullUsername bool, shareScope string, jobs <-chan *lib.Job, xmppNotifications <-chan xmpp.PrinterNotification) (*PrinterManager, error) {
 	var printers *lib.ConcurrentPrinterMap
 	var queuedJobsCount map[string]uint
 
@@ -86,7 +84,6 @@ func NewPrinterManager(native NativePrintSystem, gcp *gcp.GoogleCloudPrint, priv
 		native: native,
 		gcp:    gcp,
 		privet: privet,
-		snmp:   snmp,
 
 		printers: printers,
 
@@ -167,14 +164,6 @@ func (pm *PrinterManager) syncPrinters(ignorePrivet bool) error {
 	nativePrinters, err := pm.native.GetPrinters()
 	if err != nil {
 		return fmt.Errorf("Sync failed while calling GetPrinters(): %s", err)
-	}
-
-	// Augment native printers with extra information from SNMP.
-	if pm.snmp != nil {
-		err = pm.snmp.AugmentPrinters(nativePrinters)
-		if err != nil {
-			log.Warningf("Failed to augment printers with SNMP data: %s", err)
-		}
 	}
 
 	// Set CapsHash on all printers.

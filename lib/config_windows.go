@@ -84,15 +84,6 @@ type Config struct {
 	// Prefix for all GCP printers hosted by this connector.
 	DisplayNamePrefix string `json:"display_name_prefix"`
 
-	// Enable SNMP to augment native printer information.
-	SNMPEnable bool `json:"snmp_enable"`
-
-	// Community string to use.
-	SNMPCommunity string `json:"snmp_community"`
-
-	// Maximum quantity of open SNMP connections.
-	SNMPMaxConnections uint `json:"snmp_max_connections"`
-
 	// Ignore printers with native names.
 	PrinterBlacklist []string `json:"printer_blacklist"`
 
@@ -125,9 +116,6 @@ var DefaultConfig = Config{
 	NativePrinterPollInterval: "1m",
 	PrefixJobIDToJobTitle:     false,
 	DisplayNamePrefix:         "",
-	SNMPEnable:                false,
-	SNMPCommunity:             "public",
-	SNMPMaxConnections:        100,
 	PrinterBlacklist: []string{
 		"Fax",
 		"CutePDF Writer",

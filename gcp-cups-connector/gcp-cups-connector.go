@@ -26,7 +26,6 @@ import (
 	"github.com/google/cups-connector/manager"
 	"github.com/google/cups-connector/monitor"
 	"github.com/google/cups-connector/privet"
-	"github.com/google/cups-connector/snmp"
 	"github.com/google/cups-connector/xmpp"
 )
 
@@ -162,17 +161,6 @@ func connector(context *cli.Context) int {
 	}
 	defer c.Quit()
 
-	var s *snmp.SNMPManager
-	if config.SNMPEnable {
-		log.Info("SNMP enabled")
-		s, err = snmp.NewSNMPManager(config.SNMPCommunity, config.SNMPMaxConnections)
-		if err != nil {
-			log.Fatal(err)
-			return 1
-		}
-		defer s.Quit()
-	}
-
 	var priv *privet.Privet
 	if config.LocalPrintingEnable {
 		if g == nil {
@@ -192,7 +180,7 @@ func connector(context *cli.Context) int {
 		log.Fatalf("Failed to parse CUPS printer poll interval: %s", err)
 		return 1
 	}
-	pm, err := manager.NewPrinterManager(c, g, priv, s, nativePrinterPollInterval,
+	pm, err := manager.NewPrinterManager(c, g, priv, nativePrinterPollInterval,
 		config.NativeJobQueueSize, config.CUPSJobFullUsername, config.ShareScope,
 		jobs, xmppNotifications)
 	if err != nil {
