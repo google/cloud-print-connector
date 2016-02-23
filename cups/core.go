@@ -80,6 +80,8 @@ func newCUPSCore(maxConnections uint, connectTimeout time.Duration) (*cupsCore, 
 
 	cc := &cupsCore{host, port, encryption, timeout, cs, cp, hostIsLocal}
 
+	log.Infof("Connecting to CUPS server at %s:%d %s", C.GoString(host), int(port), e)
+
 	// This connection isn't used, just checks that a connection is possible
 	// before returning from the constructor.
 	http, err := cc.connect()
@@ -88,7 +90,7 @@ func newCUPSCore(maxConnections uint, connectTimeout time.Duration) (*cupsCore, 
 	}
 	cc.disconnect(http)
 
-	log.Infof("connected to CUPS server %s:%d %s", C.GoString(host), int(port), e)
+	log.Info("Connected to CUPS server successfully")
 
 	return cc, nil
 }

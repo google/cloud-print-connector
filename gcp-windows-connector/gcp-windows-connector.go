@@ -63,6 +63,8 @@ func connector(context *cli.Context) int {
 
 	if configFilename == "" {
 		log.Info("No config file was found, so using defaults")
+	} else {
+		log.Infof("Using config file %s", configFilename)
 	}
 
 	log.Info(lib.FullName)
