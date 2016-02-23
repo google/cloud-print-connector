@@ -11,8 +11,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/codegangsta/cli"
@@ -23,10 +21,8 @@ import (
 	"github.com/google/cups-connector/winspool"
 	"github.com/google/cups-connector/xmpp"
 	"golang.org/x/sys/windows/svc"
+	"golang.org/x/sys/windows/svc/debug"
 )
-
-// TODO: Windows Service.
-// TODO: Event Log.
 
 func main() {
 	app := cli.NewApp()
@@ -36,43 +32,66 @@ func main() {
 	app.Flags = []cli.Flag{
 		lib.ConfigFilenameFlag,
 	}
-	app.Action = func(context *cli.Context) {
-		os.Exit(connector(context))
-	}
-	app.RunAndExitOnError()
+	app.Action = RunService
+	app.Run(os.Args)
 }
 
-func connector(context *cli.Context) int {
-	if interactive, err := svc.IsAnInteractiveSession(); err != nil {
+var (
+	runningStatus = svc.Status{
+		State:   svc.Running,
+		Accepts: svc.AcceptStop,
+	}
+	stoppingStatus = svc.Status{
+		State:   svc.StopPending,
+		Accepts: svc.AcceptStop,
+	}
+)
+
+type service struct {
+	context     *cli.Context
+	interactive bool
+}
+
+func RunService(context *cli.Context) {
+	interactive, err := svc.IsAnInteractiveSession()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to detect interactive session: %s\n", err)
-		return 1
+		os.Exit(1)
+	}
 
-	} else if interactive {
-		err = log.Start(true)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to start event log: %s\n", err)
-			return 1
-		}
+	s := service{context, interactive}
 
+	if interactive {
+		debug.Run(lib.ConnectorName, &s)
 	} else {
-		err = log.Start(false)
-		if err != nil {
+		svc.Run(lib.ConnectorName, &s)
+	}
+}
+
+func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s chan<- svc.Status) (bool, uint32) {
+	if service.interactive {
+		if err := log.Start(true); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to start event log: %s\n", err)
-			return 1
+			return false, 1
+		}
+	} else {
+		if err := log.Start(false); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to start event log: %s\n", err)
+			return false, 1
 		}
 	}
 	defer log.Stop()
 
-	config, configFilename, err := lib.GetConfig(context)
+	config, configFilename, err := lib.GetConfig(service.context)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read config file: %s\n", err)
-		return 1
+		return false, 1
 	}
 
 	logLevel, ok := log.LevelFromString(config.LogLevel)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Log level %s is not recognized\n", config.LogLevel)
-		return 1
+		return false, 1
 	}
 	log.SetLevel(logLevel)
 
@@ -84,10 +103,10 @@ func connector(context *cli.Context) int {
 
 	if !config.CloudPrintingEnable && !config.LocalPrintingEnable {
 		log.Fatal("Cannot run connector with both local_printing_enable and cloud_printing_enable set to false")
-		return 1
+		return false, 1
 	} else if config.LocalPrintingEnable {
 		log.Fatal("Local printing has not been implemented in this version of the Windows connector.")
-		return 1
+		return false, 1
 	}
 
 	jobs := make(chan *lib.Job, 10)
@@ -99,12 +118,12 @@ func connector(context *cli.Context) int {
 		xmppPingTimeout, err := time.ParseDuration(config.XMPPPingTimeout)
 		if err != nil {
 			log.Fatalf("Failed to parse xmpp ping timeout: %s", err)
-			return 1
+			return false, 1
 		}
 		xmppPingInterval, err := time.ParseDuration(config.XMPPPingInterval)
 		if err != nil {
 			log.Fatalf("Failed to parse xmpp ping interval default: %s", err)
-			return 1
+			return false, 1
 		}
 
 		g, err = gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
@@ -113,14 +132,14 @@ func connector(context *cli.Context) int {
 			config.GCPMaxConcurrentDownloads, jobs)
 		if err != nil {
 			log.Fatal(err)
-			return 1
+			return false, 1
 		}
 
 		x, err = xmpp.NewXMPP(config.XMPPJID, config.ProxyName, config.XMPPServer, config.XMPPPort,
 			xmppPingTimeout, xmppPingInterval, g.GetRobotAccessToken, xmppNotifications)
 		if err != nil {
 			log.Fatal(err)
-			return 1
+			return false, 1
 		}
 		defer x.Quit()
 	}
@@ -128,19 +147,19 @@ func connector(context *cli.Context) int {
 	ws, err := winspool.NewWinSpool(config.PrefixJobIDToJobTitle, config.DisplayNamePrefix, config.PrinterBlacklist)
 	if err != nil {
 		log.Fatal(err)
-		return 1
+		return false, 1
 	}
 
 	nativePrinterPollInterval, err := time.ParseDuration(config.NativePrinterPollInterval)
 	if err != nil {
 		log.Fatalf("Failed to parse printer poll interval: %s", err)
-		return 1
+		return false, 1
 	}
 	pm, err := manager.NewPrinterManager(ws, g, nil, nil, nativePrinterPollInterval,
 		config.NativeJobQueueSize, false, false, config.ShareScope, jobs, xmppNotifications)
 	if err != nil {
 		log.Fatal(err)
-		return 1
+		return false, 1
 	}
 	defer pm.Quit()
 
@@ -154,23 +173,25 @@ func connector(context *cli.Context) int {
 		log.Info("Ready to rock in local-only mode")
 	}
 
-	waitIndefinitely()
+	s <- runningStatus
+	for {
+		request := <-r
+		switch request.Cmd {
+		case svc.Interrogate:
+			s <- runningStatus
 
-	log.Info("Shutting down")
+		case svc.Stop:
+			s <- stoppingStatus
+			log.Info("Shutting down")
+			time.AfterFunc(time.Second*30, func() {
+				log.Fatal("Failed to stop quickly; stopping forcefully")
+				os.Exit(1)
+			})
 
-	return 0
-}
+			return false, 0
 
-// Blocks until Ctrl-C or SIGTERM.
-func waitIndefinitely() {
-	ch := make(chan os.Signal)
-	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-	<-ch
-
-	go func() {
-		// In case the process doesn't die quickly, wait for a second termination request.
-		<-ch
-		log.Info("Second termination request received")
-		os.Exit(1)
-	}()
+		default:
+			log.Errorf("Received unsupported service command from service control manager: %d", request.Cmd)
+		}
+	}
 }

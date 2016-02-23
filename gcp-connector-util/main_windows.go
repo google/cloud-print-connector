@@ -12,29 +12,52 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/codegangsta/cli"
 	"github.com/google/cups-connector/lib"
+	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/eventlog"
+	"golang.org/x/sys/windows/svc/mgr"
 )
 
 var windowsCommands = []cli.Command{
 	cli.Command{
 		Name:      "init",
 		ShortName: "i",
-		Usage:     "Creates a config file",
+		Usage:     "Create a config file",
 		Action:    initConfigFile,
 		Flags:     commonInitFlags,
 	},
 	cli.Command{
 		Name:   "install-event-log",
-		Usage:  "Installs registry entries for the event log",
+		Usage:  "Install registry entries for the event log",
 		Action: installEventLog,
 	},
 	cli.Command{
 		Name:   "remove-event-log",
-		Usage:  "Removes registry entries for the event log",
+		Usage:  "Remove registry entries for the event log",
 		Action: removeEventLog,
+	},
+	cli.Command{
+		Name:   "create-service",
+		Usage:  "Create a service in the local service control manager",
+		Action: createService,
+	},
+	cli.Command{
+		Name:   "delete-service",
+		Usage:  "Delete an existing service in the local service control manager",
+		Action: deleteService,
+	},
+	cli.Command{
+		Name:   "start-service",
+		Usage:  "Start the service in the local service control manager",
+		Action: startService,
+	},
+	cli.Command{
+		Name:   "stop-service",
+		Usage:  "Stop the service in the local service control manager",
+		Action: stopService,
 	},
 }
 
@@ -58,6 +81,108 @@ func removeEventLog(c *cli.Context) {
 		os.Exit(1)
 	}
 	fmt.Println("Event log registry entries removed successfully")
+}
+
+func createService(c *cli.Context) {
+	exePath, err := filepath.Abs("gcp-windows-connector.exe")
+	if err != nil {
+		fmt.Printf("Failed to find the connector executable: %s\n", err)
+		os.Exit(1)
+	}
+
+	m, err := mgr.Connect()
+	if err != nil {
+		fmt.Printf("Failed to connect to service control manager: %s\n", err)
+		os.Exit(1)
+	}
+	defer m.Disconnect()
+
+	config := mgr.Config{
+		DisplayName:  lib.ConnectorName,
+		Description:  "Shares printers with Google Cloud Print",
+		Dependencies: []string{"Spooler"},
+		StartType:    mgr.StartAutomatic,
+	}
+	service, err := m.CreateService(lib.ConnectorName, exePath, config)
+	if err != nil {
+		fmt.Printf("Failed to create service: %s\n", err)
+		os.Exit(1)
+	}
+	defer service.Close()
+
+	fmt.Println("Service created successfully")
+}
+
+func deleteService(c *cli.Context) {
+	m, err := mgr.Connect()
+	if err != nil {
+		fmt.Printf("Failed to connect to service control manager: %s\n", err)
+		os.Exit(1)
+	}
+	defer m.Disconnect()
+
+	service, err := m.OpenService(lib.ConnectorName)
+	if err != nil {
+		fmt.Printf("Failed to open service: %s\n", err)
+		os.Exit(1)
+	}
+	defer service.Close()
+
+	err = service.Delete()
+	if err != nil {
+		fmt.Printf("Failed to delete service: %s\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Service deleted successfully")
+}
+
+func startService(c *cli.Context) {
+	m, err := mgr.Connect()
+	if err != nil {
+		fmt.Printf("Failed to connect to service control manager: %s\n", err)
+		os.Exit(1)
+	}
+	defer m.Disconnect()
+
+	service, err := m.OpenService(lib.ConnectorName)
+	if err != nil {
+		fmt.Printf("Failed to open service: %s\n", err)
+		os.Exit(1)
+	}
+	defer service.Close()
+
+	err = service.Start()
+	if err != nil {
+		fmt.Printf("Failed to start service: %s\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Service started successfully")
+}
+
+func stopService(c *cli.Context) {
+	m, err := mgr.Connect()
+	if err != nil {
+		fmt.Printf("Failed to connect to service control manager: %s\n", err)
+		os.Exit(1)
+	}
+	defer m.Disconnect()
+
+	service, err := m.OpenService(lib.ConnectorName)
+	if err != nil {
+		fmt.Printf("Failed to open service: %s\n", err)
+		os.Exit(1)
+	}
+	defer service.Close()
+
+	_, err = service.Control(svc.Stop)
+	if err != nil {
+		fmt.Printf("Failed to stop service: %s\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Service stopped successfully")
 }
 
 func main() {
