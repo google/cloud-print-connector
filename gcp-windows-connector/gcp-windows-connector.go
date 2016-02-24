@@ -156,7 +156,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 		return false, 1
 	}
 	pm, err := manager.NewPrinterManager(ws, g, nil, nil, nativePrinterPollInterval,
-		config.NativeJobQueueSize, false, false, config.ShareScope, jobs, xmppNotifications)
+		config.NativeJobQueueSize, false, config.ShareScope, jobs, xmppNotifications)
 	if err != nil {
 		log.Fatal(err)
 		return false, 1
