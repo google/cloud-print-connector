@@ -97,6 +97,8 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 
 	if configFilename == "" {
 		log.Info("No config file was found, so using defaults")
+	} else {
+		log.Infof("Using config file %s", configFilename)
 	}
 
 	log.Info(lib.FullName)
