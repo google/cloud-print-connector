@@ -9,6 +9,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -54,7 +55,7 @@ func connector(context *cli.Context) int {
 		return 1
 	}
 
-	logToJournal := config.LogToJournal && journal.Enabled()
+	logToJournal := *config.LogToJournal && journal.Enabled()
 	logToConsole := context.Bool("log-to-console")
 
 	if logToJournal {
@@ -91,6 +92,8 @@ func connector(context *cli.Context) int {
 	} else {
 		log.Infof("Using config file %s", configFilename)
 	}
+	completeConfig, _ := json.MarshalIndent(config, "", " ")
+	log.Debugf("Config: %s", string(completeConfig))
 
 	log.Info(lib.FullName)
 	fmt.Println(lib.FullName)
@@ -151,10 +154,10 @@ func connector(context *cli.Context) int {
 		log.Fatalf("Failed to parse CUPS connect timeout: %s", err)
 		return 1
 	}
-	c, err := cups.NewCUPS(config.CUPSCopyPrinterInfoToDisplayName, config.PrefixJobIDToJobTitle,
+	c, err := cups.NewCUPS(*config.CUPSCopyPrinterInfoToDisplayName, *config.PrefixJobIDToJobTitle,
 		config.DisplayNamePrefix, config.CUPSPrinterAttributes, config.CUPSMaxConnections,
-		cupsConnectTimeout, config.PrinterBlacklist, config.CUPSIgnoreRawPrinters,
-		config.CUPSIgnoreClassPrinters)
+		cupsConnectTimeout, config.PrinterBlacklist, *config.CUPSIgnoreRawPrinters,
+		*config.CUPSIgnoreClassPrinters)
 	if err != nil {
 		log.Fatal(err)
 		return 1
@@ -181,7 +184,7 @@ func connector(context *cli.Context) int {
 		return 1
 	}
 	pm, err := manager.NewPrinterManager(c, g, priv, nativePrinterPollInterval,
-		config.NativeJobQueueSize, config.CUPSJobFullUsername, config.ShareScope,
+		config.NativeJobQueueSize, *config.CUPSJobFullUsername, config.ShareScope,
 		jobs, xmppNotifications)
 	if err != nil {
 		log.Fatal(err)

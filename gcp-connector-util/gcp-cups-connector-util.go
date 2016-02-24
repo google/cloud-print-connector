@@ -29,9 +29,14 @@ var commonCommands = []cli.Command{
 		Action: deleteAllGCPPrinters,
 	},
 	cli.Command{
-		Name:   "update-config-file",
-		Usage:  "Add new options to config file after update",
-		Action: updateConfigFile,
+		Name:   "backfill-config-file",
+		Usage:  "Add all keys, with default values, to the config file",
+		Action: backfillConfigFile,
+	},
+	cli.Command{
+		Name:   "sparse-config-file",
+		Usage:  "Remove all keys, with non-default values, from the config file",
+		Action: sparseConfigFile,
 	},
 	cli.Command{
 		Name:   "delete-gcp-job",
@@ -176,128 +181,20 @@ func getGCP(config *lib.Config) *gcp.GoogleCloudPrint {
 	return gcp
 }
 
-// commonUpdateConfig updates the config object, with the help of configMap,
-// which can indicate the absence of a value.
-// Returns true if config was changed.
-//
-// Each platform should define a function updateConfig(*lib.Config, map[string]interface{})
-// which may call this function.
-func commonUpdateConfig(config *lib.Config, configMap map[string]interface{}) bool {
-	dirty := false
-
-	if _, exists := configMap["xmpp_server"]; !exists {
-		dirty = true
-		fmt.Println("Added xmpp_server")
-		config.XMPPServer = lib.DefaultConfig.XMPPServer
-	}
-	if _, exists := configMap["xmpp_port"]; !exists {
-		dirty = true
-		fmt.Println("Added xmpp_port")
-		config.XMPPPort = lib.DefaultConfig.XMPPPort
-	}
-	if _, exists := configMap["gcp_xmpp_ping_timeout"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_xmpp_ping_timeout")
-		config.XMPPPingTimeout = lib.DefaultConfig.XMPPPingTimeout
-	}
-	if _, exists := configMap["gcp_xmpp_ping_interval_default"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_xmpp_ping_interval_default")
-		config.XMPPPingInterval = lib.DefaultConfig.XMPPPingInterval
-	}
-	if _, exists := configMap["gcp_base_url"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_base_url")
-		config.GCPBaseURL = lib.DefaultConfig.GCPBaseURL
-	}
-	if _, exists := configMap["gcp_oauth_client_id"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_oauth_client_id")
-		config.GCPOAuthClientID = lib.DefaultConfig.GCPOAuthClientID
-	}
-	if _, exists := configMap["gcp_oauth_client_secret"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_oauth_client_secret")
-		config.GCPOAuthClientSecret = lib.DefaultConfig.GCPOAuthClientSecret
-	}
-	if _, exists := configMap["gcp_oauth_auth_url"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_oauth_auth_url")
-		config.GCPOAuthAuthURL = lib.DefaultConfig.GCPOAuthAuthURL
-	}
-	if _, exists := configMap["gcp_oauth_token_url"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_oauth_token_url")
-		config.GCPOAuthTokenURL = lib.DefaultConfig.GCPOAuthTokenURL
-	}
-	if _, exists := configMap["gcp_max_concurrent_downloads"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_max_concurrent_downloads")
-		config.GCPMaxConcurrentDownloads = lib.DefaultConfig.GCPMaxConcurrentDownloads
-	}
-	if _, exists := configMap["cups_job_queue_size"]; !exists {
-		dirty = true
-		fmt.Println("Added cups_job_queue_size")
-		config.NativeJobQueueSize = lib.DefaultConfig.NativeJobQueueSize
-	}
-	if _, exists := configMap["cups_printer_poll_interval"]; !exists {
-		dirty = true
-		fmt.Println("Added cups_printer_poll_interval")
-		config.NativePrinterPollInterval = lib.DefaultConfig.NativePrinterPollInterval
-	}
-	if _, exists := configMap["prefix_job_id_to_job_title"]; !exists {
-		dirty = true
-		fmt.Println("Added prefix_job_id_to_job_title")
-		config.PrefixJobIDToJobTitle = lib.DefaultConfig.PrefixJobIDToJobTitle
-	}
-	if _, exists := configMap["display_name_prefix"]; !exists {
-		dirty = true
-		fmt.Println("Added display_name_prefix")
-		config.DisplayNamePrefix = lib.DefaultConfig.DisplayNamePrefix
-	}
-	if _, exists := configMap["printer_blacklist"]; !exists {
-		dirty = true
-		fmt.Println("Added printer_blacklist")
-		config.PrinterBlacklist = lib.DefaultConfig.PrinterBlacklist
-	}
-	if _, exists := configMap["local_printing_enable"]; !exists {
-		dirty = true
-		fmt.Println("Added local_printing_enable")
-		config.LocalPrintingEnable = lib.DefaultConfig.LocalPrintingEnable
-	}
-	if _, exists := configMap["cloud_printing_enable"]; !exists {
-		dirty = true
-		_, robot_token_exists := configMap["robot_refresh_token"]
-		fmt.Println("Added cloud_printing_enable")
-		if robot_token_exists {
-			config.CloudPrintingEnable = true
-		} else {
-			config.CloudPrintingEnable = lib.DefaultConfig.CloudPrintingEnable
-		}
-	}
-	if _, exists := configMap["log_level"]; !exists {
-		dirty = true
-		fmt.Println("Added log_level")
-		config.LogLevel = lib.DefaultConfig.LogLevel
-	}
-
-	return dirty
-}
-
-// updateConfigFile opens the config file, adds any missing fields,
-// writes the config file back.
-func updateConfigFile(context *cli.Context) {
-	config, configFilename, err := lib.GetConfig(context)
+// backfillConfigFile opens the config file, adds all missing keys
+// and default values, then writes the config file back.
+func backfillConfigFile(context *cli.Context) {
+	config, cfBefore, err := lib.GetConfig(context)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	if configFilename == "" {
-		fmt.Println("Could not find a config file to update")
+	if cfBefore == "" {
+		fmt.Println("Could not find a config file to backfill")
 		return
 	}
 
 	// Same config in []byte format.
-	configRaw, err := ioutil.ReadFile(configFilename)
+	configRaw, err := ioutil.ReadFile(cfBefore)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -308,13 +205,29 @@ func updateConfigFile(context *cli.Context) {
 		log.Fatalln(err)
 	}
 
-	dirty := updateConfig(config, configMap)
-
-	if dirty {
-		config.ToFile(context)
-		fmt.Printf("Wrote %s\n", configFilename)
+	if cfWritten, err := config.Backfill(configMap).ToFile(context); err != nil {
+		fmt.Printf("Failed to write config file: %s\n", err)
 	} else {
-		fmt.Println("Nothing to update")
+		fmt.Printf("Wrote %s\n", cfWritten)
+	}
+}
+
+// sparseConfigFile opens the config file, removes most keys
+// that have default values, then writes the config file back.
+func sparseConfigFile(context *cli.Context) {
+	config, cfBefore, err := lib.GetConfig(context)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	if cfBefore == "" {
+		fmt.Println("Could not find a config file to sparse")
+		return
+	}
+
+	if cfWritten, err := config.Sparse(context).ToFile(context); err != nil {
+		fmt.Printf("Failed to write config file: %s\n", err)
+	} else {
+		fmt.Printf("Wrote %s\n", cfWritten)
 	}
 }
 

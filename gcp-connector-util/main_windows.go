@@ -61,10 +61,6 @@ var windowsCommands = []cli.Command{
 	},
 }
 
-func updateConfig(config *lib.Config, configMap map[string]interface{}) bool {
-	return commonUpdateConfig(config, configMap)
-}
-
 func installEventLog(c *cli.Context) {
 	err := eventlog.InstallAsEventCreate(lib.ConnectorName, eventlog.Error|eventlog.Warning|eventlog.Info)
 	if err != nil {
@@ -204,6 +200,9 @@ func main() {
 // createCloudConfig creates a config object that supports cloud and (optionally) local mode.
 func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string, localEnable bool) *lib.Config {
 	return &lib.Config{
+		LocalPrintingEnable: localEnable,
+		CloudPrintingEnable: true,
+
 		XMPPJID:                   xmppJID,
 		RobotRefreshToken:         robotRefreshToken,
 		UserRefreshToken:          userRefreshToken,
@@ -222,11 +221,9 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 
 		NativeJobQueueSize:        uint(context.Int("native-job-queue-size")),
 		NativePrinterPollInterval: context.String("native-printer-poll-interval"),
-		PrefixJobIDToJobTitle:     context.Bool("prefix-job-id-to-job-title"),
+		PrefixJobIDToJobTitle:     lib.PointerToBool(context.Bool("prefix-job-id-to-job-title")),
 		DisplayNamePrefix:         context.String("display-name-prefix"),
 		PrinterBlacklist:          lib.DefaultConfig.PrinterBlacklist,
-		LocalPrintingEnable:       localEnable,
-		CloudPrintingEnable:       true,
 		LogLevel:                  context.String("log-level"),
 	}
 }
@@ -234,13 +231,14 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 // createLocalConfig creates a config object that supports local mode.
 func createLocalConfig(context *cli.Context) *lib.Config {
 	return &lib.Config{
+		LocalPrintingEnable: true,
+		CloudPrintingEnable: false,
+
 		NativeJobQueueSize:        uint(context.Int("native-job-queue-size")),
 		NativePrinterPollInterval: context.String("native-printer-poll-interval"),
-		PrefixJobIDToJobTitle:     context.Bool("prefix-job-id-to-job-title"),
+		PrefixJobIDToJobTitle:     lib.PointerToBool(context.Bool("prefix-job-id-to-job-title")),
 		DisplayNamePrefix:         context.String("display-name-prefix"),
 		PrinterBlacklist:          lib.DefaultConfig.PrinterBlacklist,
-		LocalPrintingEnable:       true,
-		CloudPrintingEnable:       false,
 		LogLevel:                  context.String("log-level"),
 	}
 }

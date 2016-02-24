@@ -100,7 +100,7 @@ var commonInitFlags = []cli.Flag{
 	},
 	cli.StringFlag{
 		Name:  "log-level",
-		Usage: "Minimum event severity to log: PANIC, ERROR, WARN, INFO, DEBUG, VERBOSE",
+		Usage: "Minimum event severity to log: FATAL, ERROR, WARNING, INFO, DEBUG",
 		Value: lib.DefaultConfig.LogLevel,
 	},
 }
@@ -262,7 +262,7 @@ func createRobotAccount(context *cli.Context, userClient *http.Client) (string, 
 }
 
 func writeConfigFile(context *cli.Context, config *lib.Config) string {
-	if configFilename, err := config.ToFile(context); err != nil {
+	if configFilename, err := config.Sparse(context).ToFile(context); err != nil {
 		log.Fatalln(err)
 	} else {
 		return configFilename

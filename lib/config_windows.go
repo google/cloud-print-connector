@@ -22,6 +22,12 @@ const (
 )
 
 type Config struct {
+	// Enable local discovery and printing.
+	LocalPrintingEnable bool `json:"local_printing_enable"`
+
+	// Enable cloud discovery and printing.
+	CloudPrintingEnable bool `json:"cloud_printing_enable"`
+
 	// Associated with root account. XMPP credential.
 	XMPPJID string `json:"xmpp_jid,omitempty"`
 
@@ -70,28 +76,22 @@ type Config struct {
 	// Maximum quantity of jobs (data) to download concurrently.
 	GCPMaxConcurrentDownloads uint `json:"gcp_max_concurrent_downloads,omitempty"`
 
-	// CUPS job queue size.
+	// Windows Spooler job queue size, must be greater than zero.
 	// TODO: rename without cups_ prefix
-	NativeJobQueueSize uint `json:"cups_job_queue_size"`
+	NativeJobQueueSize uint `json:"cups_job_queue_size,omitempty"`
 
-	// Interval (eg 10s, 1m) between CUPS printer state polls.
+	// Interval (eg 10s, 1m) between Windows Spooler printer state polls.
 	// TODO: rename without cups_ prefix
-	NativePrinterPollInterval string `json:"cups_printer_poll_interval"`
+	NativePrinterPollInterval string `json:"cups_printer_poll_interval,omitempty"`
 
 	// Add the job ID to the beginning of the job title. Useful for debugging.
-	PrefixJobIDToJobTitle bool `json:"prefix_job_id_to_job_title"`
+	PrefixJobIDToJobTitle *bool `json:"prefix_job_id_to_job_title,omitempty"`
 
 	// Prefix for all GCP printers hosted by this connector.
-	DisplayNamePrefix string `json:"display_name_prefix"`
+	DisplayNamePrefix string `json:"display_name_prefix,omitempty"`
 
 	// Ignore printers with native names.
-	PrinterBlacklist []string `json:"printer_blacklist"`
-
-	// Enable local discovery and printing.
-	LocalPrintingEnable bool `json:"local_printing_enable"`
-
-	// Enable cloud discovery and printing.
-	CloudPrintingEnable bool `json:"cloud_printing_enable"`
+	PrinterBlacklist []string `json:"printer_blacklist,omitempty"`
 
 	// Least severity to log.
 	LogLevel string `json:"log_level"`
@@ -114,7 +114,7 @@ var DefaultConfig = Config{
 
 	NativeJobQueueSize:        3,
 	NativePrinterPollInterval: "1m",
-	PrefixJobIDToJobTitle:     false,
+	PrefixJobIDToJobTitle:     PointerToBool(false),
 	DisplayNamePrefix:         "",
 	PrinterBlacklist: []string{
 		"Fax",
@@ -161,4 +161,14 @@ func getConfigFilename(context *cli.Context) (string, bool) {
 
 	// This is probably what the user expects if it wasn't found anywhere else.
 	return absCF, false
+}
+
+// Backfill returns a copy of this config with all missing keys set to default values.
+func (c *Config) Backfill(configMap map[string]interface{}) *Config {
+	return c.commonBackfill(configMap)
+}
+
+// Sparse returns a copy of this config with obvious values removed.
+func (c *Config) Sparse(context *cli.Context) *Config {
+	return c.commonSparse(context)
 }
