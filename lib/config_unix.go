@@ -16,7 +16,11 @@ import (
 	"launchpad.net/go-xdg/v0"
 )
 
-const defaultConfigFilename = "gcp-cups-connector.config.json"
+const (
+	platformName = "CUPS"
+
+	defaultConfigFilename = "gcp-cups-connector.config.json"
+)
 
 type Config struct {
 	// Associated with root account. XMPP credential.
@@ -213,7 +217,7 @@ var DefaultConfig = Config{
 // If the ConfigFilename exists in a valid XDG path, then it is returned.
 // If neither of those exist, the (relative or absolute) ConfigFilename is returned.
 func getConfigFilename(context *cli.Context) (string, bool) {
-	cf := context.GlobalString("config-filename")
+	cf := context.String("config-filename")
 
 	if filepath.IsAbs(cf) {
 		// Absolute path specified; user knows what they want.

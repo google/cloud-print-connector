@@ -15,7 +15,11 @@ import (
 	"github.com/codegangsta/cli"
 )
 
-const defaultConfigFilename = "gcp-windows-connector.config.json"
+const (
+	platformName = "Windows"
+
+	defaultConfigFilename = "gcp-windows-connector.config.json"
+)
 
 type Config struct {
 	// Associated with root account. XMPP credential.
@@ -138,10 +142,10 @@ var DefaultConfig = Config{
 // getConfigFilename gets the absolute filename of the config file specified by
 // the ConfigFilename flag, and whether it exists.
 //
-// If the (relative or absolute) ConfigFilename exists, then it is returned.
-// If neither of those exist, the (relative or absolute) ConfigFilename is returned.
+// If the ConfigFilename exists, then it is returned as an absolute path.
+// If neither of those exist, the absolute ConfigFilename is returned.
 func getConfigFilename(context *cli.Context) (string, bool) {
-	cf := context.GlobalString("config-filename")
+	cf := context.String("config-filename")
 
 	if filepath.IsAbs(cf) {
 		// Absolute path specified; user knows what they want.
@@ -159,7 +163,14 @@ func getConfigFilename(context *cli.Context) (string, bool) {
 		return absCF, true
 	}
 
-	// Default to relative path. This is probably what the user expects if
-	// it wasn't found anywhere else.
+	// Check for config file on path relative to executable.
+	exeFile := os.Args[0]
+	exeDir := filepath.Dir(exeFile)
+	absCF = filepath.Join(exeDir, cf)
+	if _, err := os.Stat(absCF); err == nil {
+		return absCF, true
+	}
+
+	// This is probably what the user expects if it wasn't found anywhere else.
 	return absCF, false
 }

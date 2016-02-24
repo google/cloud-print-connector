@@ -628,7 +628,7 @@ func newJobContext(printerName, fileName, title string) (*jobContext, error) {
 		pDoc.Unref()
 		return nil, err
 	}
-	hDC, err := CreateDC(devMode.GetDeviceName(), devMode)
+	hDC, err := CreateDC(printerName, devMode)
 	if err != nil {
 		hPrinter.ClosePrinter()
 		pDoc.Unref()

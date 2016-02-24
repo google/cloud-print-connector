@@ -364,7 +364,7 @@ func initConfigFile(context *cli.Context) {
 		if context.IsSet("proxy-name") {
 			proxyName = context.String("proxy-name")
 		} else {
-			proxyName = scanNonEmptyString("Proxy name for this GCP CUPS Connector:")
+			proxyName = scanNonEmptyString("Proxy name for this connector:")
 		}
 
 		var userClient *http.Client
