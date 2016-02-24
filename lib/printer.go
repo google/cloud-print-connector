@@ -37,6 +37,8 @@ type Printer struct {
 	CapsHash           string                         // CUPS: hash of PPD;                 GCP: capsHash field
 	Tags               map[string]string              // CUPS: all printer attributes;      GCP: repeated tag field
 	NativeJobSemaphore *Semaphore
+	QuotaEnabled       bool
+	DailyQuota         int
 }
 
 var rDeviceURIHostname *regexp.Regexp = regexp.MustCompile(
@@ -83,6 +85,8 @@ type PrinterDiff struct {
 	DescriptionChanged        bool
 	CapsHashChanged           bool
 	TagsChanged               bool
+	QuotaEnabledChanged       bool
+	DailyQuotaChanged         bool
 }
 
 func printerSliceToMapByName(s []Printer) map[string]Printer {
@@ -204,10 +208,19 @@ func diffPrinter(pn, pg *Printer) PrinterDiff {
 		d.TagsChanged = true
 	}
 
+	if pg.QuotaEnabled != pn.QuotaEnabled {
+		d.QuotaEnabledChanged = true
+	}
+
+	if pg.DailyQuota != pn.DailyQuota {
+		d.DailyQuotaChanged = true
+	}
+
 	if d.DefaultDisplayNameChanged || d.ManufacturerChanged || d.ModelChanged ||
 		d.GCPVersionChanged || d.SetupURLChanged || d.SupportURLChanged ||
 		d.UpdateURLChanged || d.ConnectorVersionChanged || d.StateChanged ||
-		d.DescriptionChanged || d.CapsHashChanged || d.TagsChanged {
+		d.DescriptionChanged || d.CapsHashChanged || d.TagsChanged ||
+		d.QuotaEnabledChanged || d.DailyQuotaChanged {
 		return d
 	}
 
