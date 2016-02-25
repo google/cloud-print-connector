@@ -157,7 +157,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 		log.Fatalf("Failed to parse printer poll interval: %s", err)
 		return false, 1
 	}
-	pm, err := manager.NewPrinterManager(ws, g, nil, nil, nativePrinterPollInterval,
+	pm, err := manager.NewPrinterManager(ws, g, nil, nativePrinterPollInterval,
 		config.NativeJobQueueSize, false, config.ShareScope, jobs, xmppNotifications)
 	if err != nil {
 		log.Fatal(err)
