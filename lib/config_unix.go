@@ -205,7 +205,7 @@ var DefaultConfig = Config{
 // If the ConfigFilename exists in a valid XDG path, then it is returned.
 // If neither of those exist, the (relative or absolute) ConfigFilename is returned.
 func getConfigFilename(context *cli.Context) (string, bool) {
-	cf := context.String("config-filename")
+	cf := context.GlobalString("config-filename")
 
 	if filepath.IsAbs(cf) {
 		// Absolute path specified; user knows what they want.
