@@ -9,6 +9,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -100,6 +101,8 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 	} else {
 		log.Infof("Using config file %s", configFilename)
 	}
+	completeConfig, _ := json.MarshalIndent(config, "", " ")
+	log.Debugf("Config: %s", string(completeConfig))
 
 	log.Info(lib.FullName)
 
@@ -146,7 +149,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 		defer x.Quit()
 	}
 
-	ws, err := winspool.NewWinSpool(config.PrefixJobIDToJobTitle, config.DisplayNamePrefix, config.PrinterBlacklist)
+	ws, err := winspool.NewWinSpool(*config.PrefixJobIDToJobTitle, config.DisplayNamePrefix, config.PrinterBlacklist)
 	if err != nil {
 		log.Fatal(err)
 		return false, 1
