@@ -43,7 +43,7 @@ func NewPrivet(jobs chan<- *lib.Job, portLow, portHigh uint16, gcpBaseURL string
 		xsrf: newXSRFSecret(),
 		apis: make(map[string]*privetAPI),
 		zc:   zc,
-		pm:   &portManager{portLow, portHigh},
+		pm:   newPortManager(portLow, portHigh),
 
 		jobs: jobs,
 		jc:   *newJobCache(),
