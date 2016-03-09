@@ -4,11 +4,12 @@
 // license that can be found in the LICENSE file or at
 // https://developers.google.com/open-source/licenses/bsd
 
-// +build linux
+// +build linux freebsd
 
 package privet
 
-// #cgo LDFLAGS: -lavahi-client -lavahi-common
+// #cgo CFLAGS: -I%%PREFIX%%/include
+// #cgo LDFLAGS: -L%%PREFIX%%/lib -lavahi-client -lavahi-common
 // #include "avahi.h"
 import "C"
 import (
