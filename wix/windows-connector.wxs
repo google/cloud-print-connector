@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+      Id="*"
+      Name="Google Cloud Print Windows Connector"
+      Language="1033"
+      Version="1.0.0.0"
+      Manufacturer="Google, Inc."
+      UpgradeCode="15C3FD61-B03C-4C04-A56D-CD8424C99D7F">
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Variable used by WIX at build time to find the built files -->
+    <?if $(env.GOPATH) ?>
+      <WixVariable Id="SourceDir" Overridable="yes" Value="$(env.GOPATH)\bin"/>
+    <?else?>
+      <WixVariable Id="SourceDir" Overridable="yes" Value="C:\go\bin"/>
+    <?endif?>
+    <!-- Variable used by WIX at build time to locate the dependency dlls -->
+    <WixVariable Id="DependencyDir" Overridable="yes" Value="C:\msys64\mingw64\bin"/>
+
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf" />
+    <UIRef Id="WixUI_InstallDir" />
+    
+    <Feature Id="connector" Title="Google Cloud Print Windows Connector" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentGroupRef Id="Dependencies" />
+    </Feature>
+  </Product>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="GoogleFolder" Name="Google">
+          <Directory Id="INSTALLFOLDER" Name="Cloud Print Windows Connector" />
+        </Directory>
+      </Directory>
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+    <!-- Group of components that are our main application items -->
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER" Source="!(wix.SourceDir)">
+      <Component Id="CUPS_Connector_exe">
+        <File Name="gcp-windows-connector.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="CUPS_Connector_Util_exe">
+        <File Id="ConnectorUtil" Name="gcp-connector-util.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <InstallUISequence>
+      <ExecuteAction />
+      <Custom Action="ManualInit" After="ExecuteAction">NOT INITCMD</Custom>
+    </InstallUISequence>
+
+    <InstallExecuteSequence>
+      <RegisterProduct/>
+      <RemoveFiles/>
+      <Custom Action="SilentInit" Before="RegisterProduct">INITCMD</Custom>
+      <Custom Action="InstallService" After="SilentInit">NOT NO_INSTALL_SERVICE AND NOT Installed</Custom>
+      <Custom Action="StartService" After="InstallService">$CUPS_Connector_exe=3 AND NOT (NO_INSTALL_SERVICE OR NO_START_SERVICE)</Custom>
+      <Custom Action="StopService" Before="RemoveFiles">?CUPS_Connector_exe=3</Custom>
+      <Custom Action="UninstallService" After="StopService">$CUPS_Connector_exe=2</Custom>
+    </InstallExecuteSequence>
+
+    <CustomAction Id="SilentInit" FileKey="ConnectorUtil" Execute="deferred" ExeCommand="[INITCMD]" />
+    <CustomAction Id="ManualInit" FileKey="ConnectorUtil" Execute="immediate" ExeCommand="init" />
+    <CustomAction Id="InstallService" FileKey="ConnectorUtil" Execute="deferred" ExeCommand="create-service" />
+    <CustomAction Id="UninstallService" FileKey="ConnectorUtil" Execute="deferred" ExeCommand="delete-service" />
+    <CustomAction Id="StartService" FileKey="ConnectorUtil" Execute="deferred" ExeCommand="start-service" />
+    <CustomAction Id="StopService" FileKey="ConnectorUtil" Execute="deferred" ExeCommand="stop-service" />
+  </Fragment>
+
+  <Fragment>
+    <!-- Group of components of all the dependency dlls -->
+    <ComponentGroup Id="Dependencies" Directory="INSTALLFOLDER" Source="!(wix.DependencyDir)">
+      <Component>
+        <File Name="libcairo-2.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libglib-2.0-0.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libgobject-2.0-0.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libpoppler-glib-8.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libgcc_s_seh-1.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libfontconfig-1.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libfreetype-6.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libpixman-1-0.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libpng16-16.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="zlib1.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libintl-8.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libwinpthread-1.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libffi-6.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libpoppler-58.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libstdc++-6.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libgio-2.0-0.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libexpat-1.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libiconv-2.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libbz2-1.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libharfbuzz-0.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libcurl-4.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libjpeg-8.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="liblcms2-2.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libopenjpeg-5.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libtiff-5.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libgmodule-2.0-0.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="LIBEAY32.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libidn-11.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="librtmp-1.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libssh2-1.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="SSLEAY32.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="liblzma-5.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libgmp-10.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libgnutls-30.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libhogweed-4-1.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libnettle-6-1.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libp11-kit-0.dll" KeyPath="yes"/>
+      </Component>
+      <Component>
+        <File Name="libtasn1-6.dll" KeyPath="yes"/>
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>
