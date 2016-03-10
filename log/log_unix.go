@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://developers.google.com/open-source/licenses/bsd
 
-// +build linux darwin
+// +build linux darwin freebsd
 
 // The log package logs to an io.Writer using the same log format that CUPS uses.
 package log

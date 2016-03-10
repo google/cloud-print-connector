@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://developers.google.com/open-source/licenses/bsd
 
-// +build linux
+// +build linux freebsd
 
 #include "avahi.h"
 #include "_cgo_export.h"
