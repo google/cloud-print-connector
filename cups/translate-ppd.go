@@ -88,6 +88,7 @@ var (
 		`(hpcups|hpijs|HPLIP),?\s+\d+(\.\d+)*|requires proprietary plugin` +
 		`)\s*$`)
 	rPageSize              = regexp.MustCompile(`([\d.]+)(?:mm|in)?x([\d.]+)(mm|in)?`)
+	rPageSizeInPoints      = regexp.MustCompile(`w([\d.]+)h([\d.]+)`)
 	rColor                 = regexp.MustCompile(`(?i)^(?:cmy|rgb|color)`)
 	rGray                  = regexp.MustCompile(`(?i)^(?:gray|black|mono)`)
 	rCMAndResolutionPrefix = regexp.MustCompile(`(?i)^(?:on|off)\s*-?\s*`)
@@ -391,7 +392,7 @@ func convertMargins(hwMargins string) *cdd.Margins {
 		if intValue > 0 {
 			marginsType = cdd.MarginsStandard
 		}
-		marginsMicrons[i-1] = pointsToMicrons(intValue)
+		marginsMicrons[i-1] = pointsToMicrons(float32(intValue))
 	}
 
 	// HWResolution format: left, bottom, right, top.
@@ -718,6 +719,13 @@ func getCustomMediaSizeOption(optionKeyword, translation string) *cdd.MediaSizeO
 		found = rPageSize.FindStringSubmatch(translation)
 	}
 	if found == nil {
+		found = rPageSizeInPoints.FindStringSubmatch(optionKeyword)
+		if found == nil {
+			return nil
+		}
+		found = append(found, "points")
+	}
+	if len(found) != 4 {
 		return nil
 	}
 
@@ -730,22 +738,21 @@ func getCustomMediaSizeOption(optionKeyword, translation string) *cdd.MediaSizeO
 		return nil
 	}
 
-	if found[3] == "mm" {
-		return &cdd.MediaSizeOption{
-			Name:                       cdd.MediaSizeCustom,
-			WidthMicrons:               mmToMicrons(float32(width)),
-			HeightMicrons:              mmToMicrons(float32(height)),
-			VendorID:                   optionKeyword,
-			CustomDisplayNameLocalized: cdd.NewLocalizedString(translation),
-		}
-	} else {
-		return &cdd.MediaSizeOption{
-			Name:                       cdd.MediaSizeCustom,
-			WidthMicrons:               inchesToMicrons(float32(width)),
-			HeightMicrons:              inchesToMicrons(float32(height)),
-			VendorID:                   optionKeyword,
-			CustomDisplayNameLocalized: cdd.NewLocalizedString(translation),
-		}
+	var toMicrons func(float32) int32
+	switch found[3] {
+	case "mm":
+		toMicrons = mmToMicrons
+	case "points":
+		toMicrons = pointsToMicrons
+	default:
+		toMicrons = inchesToMicrons
+	}
+	return &cdd.MediaSizeOption{
+		Name:                       cdd.MediaSizeCustom,
+		WidthMicrons:               toMicrons(float32(width)),
+		HeightMicrons:              toMicrons(float32(height)),
+		VendorID:                   optionKeyword,
+		CustomDisplayNameLocalized: cdd.NewLocalizedString(translation),
 	}
 }
 
@@ -757,8 +764,8 @@ func mmToMicrons(mm float32) int32 {
 	return int32(mm*1000 + 0.5)
 }
 
-func pointsToMicrons(points int64) int32 {
-	return int32(float32(points*25400)/72 + 0.5)
+func pointsToMicrons(points float32) int32 {
+	return int32(points*25400/72 + 0.5)
 }
 
 var ppdMediaSizes = map[string]cdd.MediaSizeOption{

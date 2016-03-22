@@ -50,6 +50,7 @@ func TestTrMediaSize(t *testing.T) {
 *PageSize B5/B5 - JIS: ""
 *PageSize Letter/Letter: ""
 *PageSize HalfLetter/5.5x8.5: ""
+*PageSize w81h252/Address - 1 1/8 x 3 1/2":         "<</PageSize[81 252]/ImagingBBox null>>setpagedevice"
 *CloseUI: *PageSize`
 	expected := &cdd.PrinterDescriptionSection{
 		MediaSize: &cdd.MediaSize{
@@ -59,6 +60,7 @@ func TestTrMediaSize(t *testing.T) {
 				cdd.MediaSizeOption{cdd.MediaSizeJISB5, mmToMicrons(182), mmToMicrons(257), false, false, "", "B5", cdd.NewLocalizedString("B5 (JIS)")},
 				cdd.MediaSizeOption{cdd.MediaSizeNALetter, inchesToMicrons(8.5), inchesToMicrons(11), false, true, "", "Letter", cdd.NewLocalizedString("Letter")},
 				cdd.MediaSizeOption{cdd.MediaSizeCustom, inchesToMicrons(5.5), inchesToMicrons(8.5), false, false, "", "HalfLetter", cdd.NewLocalizedString("5.5x8.5")},
+				cdd.MediaSizeOption{cdd.MediaSizeCustom, pointsToMicrons(81), pointsToMicrons(252), false, false, "", "w81h252", cdd.NewLocalizedString(`Address - 1 1/8 x 3 1/2"`)},
 			},
 		},
 	}
