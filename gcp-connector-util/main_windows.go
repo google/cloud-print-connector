@@ -225,6 +225,9 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 		DisplayNamePrefix:         context.String("display-name-prefix"),
 		PrinterBlacklist:          lib.DefaultConfig.PrinterBlacklist,
 		LogLevel:                  context.String("log-level"),
+
+		LocalPortLow:  uint16(context.Int("local-port-low")),
+		LocalPortHigh: uint16(context.Int("local-port-high")),
 	}
 }
 
@@ -240,5 +243,8 @@ func createLocalConfig(context *cli.Context) *lib.Config {
 		DisplayNamePrefix:         context.String("display-name-prefix"),
 		PrinterBlacklist:          lib.DefaultConfig.PrinterBlacklist,
 		LogLevel:                  context.String("log-level"),
+
+		LocalPortLow:  uint16(context.Int("local-port-low")),
+		LocalPortHigh: uint16(context.Int("local-port-high")),
 	}
 }

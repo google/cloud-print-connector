@@ -11,7 +11,6 @@ package privet
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
@@ -85,11 +84,7 @@ type privetAPI struct {
 	startTime time.Time
 }
 
-func newPrivetAPI(gcpID, name, gcpBaseURL string, xsrf xsrfSecret, online bool, jc *jobCache, jobs chan<- *lib.Job, getPrinter func(string) (lib.Printer, bool), getProximityToken func(string, string) ([]byte, int, error)) (*privetAPI, error) {
-	l, err := newQuittableListener()
-	if err != nil {
-		return nil, err
-	}
+func newPrivetAPI(gcpID, name, gcpBaseURL string, xsrf xsrfSecret, online bool, jc *jobCache, jobs chan<- *lib.Job, getPrinter func(string) (lib.Printer, bool), getProximityToken func(string, string) ([]byte, int, error), listener *quittableListener) (*privetAPI, error) {
 	api := &privetAPI{
 		gcpID:      gcpID,
 		name:       name,
@@ -102,7 +97,7 @@ func newPrivetAPI(gcpID, name, gcpBaseURL string, xsrf xsrfSecret, online bool, 
 		getPrinter:        getPrinter,
 		getProximityToken: getProximityToken,
 
-		listener:  l,
+		listener:  listener,
 		startTime: time.Now(),
 	}
 	go api.serve()
@@ -493,44 +488,4 @@ func (api *privetAPI) jobstate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Write(jobState)
-}
-
-type quittableListener struct {
-	*net.TCPListener
-	// When q is closed, the listener is quitting.
-	q chan struct{}
-}
-
-func newQuittableListener() (*quittableListener, error) {
-	l, err := net.ListenTCP("tcp", nil)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to start Privet API listener: %s", err)
-	}
-	return &quittableListener{l, make(chan struct{}, 0)}, nil
-}
-
-func (l *quittableListener) Accept() (net.Conn, error) {
-	conn, err := l.AcceptTCP()
-
-	select {
-	case <-l.q:
-		if err == nil {
-			conn.Close()
-		}
-		// The listener was closed on purpose.
-		// Returning an error that is not a net.Error causes net.Server.Serve() to return.
-		return nil, closed
-	default:
-	}
-
-	// Clean up zombie connections.
-	conn.SetKeepAlive(true)
-	conn.SetKeepAlivePeriod(time.Minute)
-
-	return conn, err
-}
-
-func (l *quittableListener) quit() {
-	close(l.q)
-	l.Close()
 }

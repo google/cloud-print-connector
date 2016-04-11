@@ -95,6 +95,12 @@ type Config struct {
 
 	// Least severity to log.
 	LogLevel string `json:"log_level"`
+
+	// Local only: HTTP API port range, low.
+	LocalPortLow uint16 `json:"local_port_low,omitempty"`
+
+	// Local only: HTTP API port range, high.
+	LocalPortHigh uint16 `json:"local_port_high,omitempty"`
 }
 
 // DefaultConfig represents reasonable default values for Config fields.
@@ -125,6 +131,9 @@ var DefaultConfig = Config{
 	LocalPrintingEnable: true,
 	CloudPrintingEnable: false,
 	LogLevel:            "INFO",
+
+	LocalPortLow:  26000,
+	LocalPortHigh: 26999,
 }
 
 // getConfigFilename gets the absolute filename of the config file specified by
