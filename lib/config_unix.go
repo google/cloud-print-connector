@@ -98,6 +98,12 @@ type Config struct {
 	// Least severity to log.
 	LogLevel string `json:"log_level"`
 
+	// Local only: HTTP API port range, low.
+	LocalPortLow uint16 `json:"local_port_low,omitempty"`
+
+	// Local only: HTTP API port range, high.
+	LocalPortHigh uint16 `json:"local_port_high,omitempty"`
+
 	// CUPS only: Where to place log file.
 	LogFileName string `json:"log_file_name"`
 
@@ -160,6 +166,9 @@ var DefaultConfig = Config{
 	DisplayNamePrefix:         "",
 	PrinterBlacklist:          []string{},
 	LogLevel:                  "INFO",
+
+	LocalPortLow:  26000,
+	LocalPortHigh: 26999,
 
 	LogFileName:         "/tmp/cups-connector",
 	LogFileMaxMegabytes: 1,

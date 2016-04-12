@@ -103,6 +103,16 @@ var commonInitFlags = []cli.Flag{
 		Usage: "Minimum event severity to log: FATAL, ERROR, WARNING, INFO, DEBUG",
 		Value: lib.DefaultConfig.LogLevel,
 	},
+	cli.IntFlag{
+		Name:  "local-port-low",
+		Usage: "Local HTTP API server port range, low",
+		Value: int(lib.DefaultConfig.LocalPortLow),
+	},
+	cli.IntFlag{
+		Name:  "local-port-high",
+		Usage: "Local HTTP API server port range, high",
+		Value: int(lib.DefaultConfig.LocalPortHigh),
+	},
 }
 
 // getUserClientFromUser follows the token acquisition steps outlined here:

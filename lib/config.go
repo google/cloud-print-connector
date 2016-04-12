@@ -144,6 +144,14 @@ func (c *Config) commonSparse(context *cli.Context) *Config {
 		s.DisplayNamePrefix == DefaultConfig.DisplayNamePrefix {
 		s.DisplayNamePrefix = ""
 	}
+	if !context.IsSet("local-port-low") &&
+		s.LocalPortLow == DefaultConfig.LocalPortLow {
+		s.LocalPortLow = 0
+	}
+	if !context.IsSet("local-port-high") &&
+		s.LocalPortHigh == DefaultConfig.LocalPortHigh {
+		s.LocalPortHigh = 0
+	}
 
 	return &s
 }
@@ -204,6 +212,12 @@ func (c *Config) commonBackfill(configMap map[string]interface{}) *Config {
 	}
 	if _, exists := configMap["log_level"]; !exists {
 		b.LogLevel = DefaultConfig.LogLevel
+	}
+	if _, exists := configMap["local_port_low"]; !exists {
+		b.LocalPortLow = DefaultConfig.LocalPortLow
+	}
+	if _, exists := configMap["local_port_high"]; !exists {
+		b.LocalPortHigh = DefaultConfig.LocalPortHigh
 	}
 
 	return &b

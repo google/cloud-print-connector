@@ -138,6 +138,9 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 		PrinterBlacklist:          lib.DefaultConfig.PrinterBlacklist,
 		LogLevel:                  context.String("log-level"),
 
+		LocalPortLow:  uint16(context.Int("local-port-low")),
+		LocalPortHigh: uint16(context.Int("local-port-high")),
+
 		LogFileName:                      context.String("log-file-name"),
 		LogFileMaxMegabytes:              uint(context.Int("log-file-max-megabytes")),
 		LogMaxFiles:                      uint(context.Int("log-max-files")),
@@ -165,6 +168,9 @@ func createLocalConfig(context *cli.Context) *lib.Config {
 		DisplayNamePrefix:         context.String("display-name-prefix"),
 		PrinterBlacklist:          lib.DefaultConfig.PrinterBlacklist,
 		LogLevel:                  context.String("log-level"),
+
+		LocalPortLow:  uint16(context.Int("local-port-low")),
+		LocalPortHigh: uint16(context.Int("local-port-high")),
 
 		LogFileName:                      context.String("log-file-name"),
 		LogFileMaxMegabytes:              uint(context.Int("log-file-max-megabytes")),
