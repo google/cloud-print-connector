@@ -84,6 +84,15 @@ type Config struct {
 	// TODO: rename without cups_ prefix
 	NativePrinterPollInterval string `json:"cups_printer_poll_interval,omitempty"`
 
+	// Use the full username (joe@example.com) in job.
+	// TODO: rename without cups_ prefix
+	CUPSJobFullUsername *bool `json:"cups_job_full_username,omitempty"`
+
+	// When the job finishes spooling, mark it as done.
+	// This is for compatibility with other products that pause jobs to process them.
+	// TODO: this is only in the Windows build for now - decide whether useful in Unix
+	JobSpooledIsDone *bool `json:"job_spooled_is_done,omitempty"`
+
 	// Add the job ID to the beginning of the job title. Useful for debugging.
 	PrefixJobIDToJobTitle *bool `json:"prefix_job_id_to_job_title,omitempty"`
 
@@ -95,12 +104,6 @@ type Config struct {
 
 	// Least severity to log.
 	LogLevel string `json:"log_level"`
-
-	// Local only: HTTP API port range, low.
-	LocalPortLow uint16 `json:"local_port_low,omitempty"`
-
-	// Local only: HTTP API port range, high.
-	LocalPortHigh uint16 `json:"local_port_high,omitempty"`
 }
 
 // DefaultConfig represents reasonable default values for Config fields.
@@ -120,6 +123,8 @@ var DefaultConfig = Config{
 
 	NativeJobQueueSize:        3,
 	NativePrinterPollInterval: "1m",
+	CUPSJobFullUsername:       PointerToBool(false),
+	JobSpooledIsDone:          PointerToBool(false),
 	PrefixJobIDToJobTitle:     PointerToBool(false),
 	DisplayNamePrefix:         "",
 	PrinterBlacklist: []string{
@@ -131,9 +136,6 @@ var DefaultConfig = Config{
 	LocalPrintingEnable: true,
 	CloudPrintingEnable: false,
 	LogLevel:            "INFO",
-
-	LocalPortLow:  26000,
-	LocalPortHigh: 26999,
 }
 
 // getConfigFilename gets the absolute filename of the config file specified by

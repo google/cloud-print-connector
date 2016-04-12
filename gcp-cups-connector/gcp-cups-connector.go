@@ -167,9 +167,9 @@ func connector(context *cli.Context) int {
 	var priv *privet.Privet
 	if config.LocalPrintingEnable {
 		if g == nil {
-			priv, err = privet.NewPrivet(jobs, config.LocalPortLow, config.LocalPortHigh, config.GCPBaseURL, nil)
+			priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, nil)
 		} else {
-			priv, err = privet.NewPrivet(jobs, config.LocalPortLow, config.LocalPortHigh, config.GCPBaseURL, g.ProximityToken)
+			priv, err = privet.NewPrivet(jobs, config.GCPBaseURL, g.ProximityToken)
 		}
 		if err != nil {
 			log.Fatal(err)
@@ -184,7 +184,7 @@ func connector(context *cli.Context) int {
 		return 1
 	}
 	pm, err := manager.NewPrinterManager(c, g, priv, nativePrinterPollInterval,
-		config.NativeJobQueueSize, *config.CUPSJobFullUsername, config.ShareScope,
+		config.NativeJobQueueSize, *config.CUPSJobFullUsername, false, config.ShareScope,
 		jobs, xmppNotifications)
 	if err != nil {
 		log.Fatal(err)

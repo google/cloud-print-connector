@@ -535,7 +535,7 @@ func convertMediaSize(printerName, portName string, devMode *DevMode) (*cdd.Medi
 	return &ms, nil
 }
 
-func convertJobState(wsStatus uint32) *cdd.JobState {
+func convertJobState(wsStatus uint32, jobSpooledIsDone bool) *cdd.JobState {
 	var state cdd.JobState
 
 	if wsStatus&(JOB_STATUS_SPOOLING|JOB_STATUS_PRINTING) != 0 {
@@ -545,9 +545,12 @@ func convertJobState(wsStatus uint32) *cdd.JobState {
 		state.Type = cdd.JobStateDone
 
 	} else if wsStatus&JOB_STATUS_PAUSED != 0 || wsStatus == 0 {
-		state.Type = cdd.JobStateStopped
-		state.UserActionCause = &cdd.UserActionCause{cdd.UserActionCausePaused}
-
+		if jobSpooledIsDone {
+			state.Type = cdd.JobStateDone
+		} else {
+			state.Type = cdd.JobStateStopped
+			state.UserActionCause = &cdd.UserActionCause{cdd.UserActionCausePaused}
+		}
 	} else if wsStatus&JOB_STATUS_ERROR != 0 {
 		state.Type = cdd.JobStateAborted
 		state.DeviceActionCause = &cdd.DeviceActionCause{cdd.DeviceActionCausePrintFailure}
@@ -570,7 +573,7 @@ func convertJobState(wsStatus uint32) *cdd.JobState {
 }
 
 // GetJobState gets the current state of the job indicated by jobID.
-func (ws *WinSpool) GetJobState(printerName string, jobID uint32) (*cdd.PrintJobStateDiff, error) {
+func (ws *WinSpool) GetJobState(printerName string, jobID uint32, jobSpooledIsDone bool) (*cdd.PrintJobStateDiff, error) {
 	hPrinter, err := OpenPrinter(printerName)
 	if err != nil {
 		return nil, err
@@ -591,7 +594,7 @@ func (ws *WinSpool) GetJobState(printerName string, jobID uint32) (*cdd.PrintJob
 	}
 
 	jobState := cdd.PrintJobStateDiff{
-		State: convertJobState(ji1.GetStatus()),
+		State: convertJobState(ji1.GetStatus(), jobSpooledIsDone),
 	}
 	return &jobState, nil
 }
@@ -606,7 +609,7 @@ type jobContext struct {
 	cContext CairoContext
 }
 
-func newJobContext(printerName, fileName, title string) (*jobContext, error) {
+func newJobContext(printerName, fileName, title, user string) (*jobContext, error) {
 	pDoc, err := PopplerDocumentNewFromFile(fileName)
 	if err != nil {
 		return nil, err
@@ -641,7 +644,7 @@ func newJobContext(printerName, fileName, title string) (*jobContext, error) {
 		pDoc.Unref()
 		return nil, err
 	}
-	err = hPrinter.SetJob(jobID, JOB_CONTROL_RETAIN)
+	err = hPrinter.SetJobCommand(jobID, JOB_CONTROL_RETAIN)
 	if err != nil {
 		hDC.EndDoc()
 		hDC.DeleteDC()
@@ -649,6 +652,7 @@ func newJobContext(printerName, fileName, title string) (*jobContext, error) {
 		pDoc.Unref()
 		return nil, err
 	}
+	hPrinter.SetJobUserName(jobID, user)
 	cSurface, err := CairoWin32PrintingSurfaceCreate(hDC)
 	if err != nil {
 		hDC.EndDoc()
@@ -680,7 +684,7 @@ func (c *jobContext) free() error {
 	if err != nil {
 		return err
 	}
-	err = c.hPrinter.SetJob(c.jobID, JOB_CONTROL_RELEASE)
+	err = c.hPrinter.SetJobCommand(c.jobID, JOB_CONTROL_RELEASE)
 	if err != nil {
 		return err
 	}
@@ -829,7 +833,7 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 		return 0, errors.New("Print() called with nil ticket")
 	}
 
-	jobContext, err := newJobContext(printer.Name, fileName, title)
+	jobContext, err := newJobContext(printer.Name, fileName, title, user)
 	if err != nil {
 		return 0, err
 	}

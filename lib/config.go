@@ -136,6 +136,14 @@ func (c *Config) commonSparse(context *cli.Context) *Config {
 		s.NativePrinterPollInterval == DefaultConfig.NativePrinterPollInterval {
 		s.NativePrinterPollInterval = ""
 	}
+	if !context.IsSet("cups-job-full-username") &&
+		reflect.DeepEqual(s.CUPSJobFullUsername, DefaultConfig.CUPSJobFullUsername) {
+		s.CUPSJobFullUsername = nil
+	}
+	if !context.IsSet("job-spooled-is-done") &&
+		reflect.DeepEqual(s.JobSpooledIsDone, DefaultConfig.JobSpooledIsDone) {
+		s.JobSpooledIsDone = nil
+	}
 	if !context.IsSet("prefix-job-id-to-job-title") &&
 		reflect.DeepEqual(s.PrefixJobIDToJobTitle, DefaultConfig.PrefixJobIDToJobTitle) {
 		s.PrefixJobIDToJobTitle = nil
@@ -143,14 +151,6 @@ func (c *Config) commonSparse(context *cli.Context) *Config {
 	if !context.IsSet("display-name-prefix") &&
 		s.DisplayNamePrefix == DefaultConfig.DisplayNamePrefix {
 		s.DisplayNamePrefix = ""
-	}
-	if !context.IsSet("local-port-low") &&
-		s.LocalPortLow == DefaultConfig.LocalPortLow {
-		s.LocalPortLow = 0
-	}
-	if !context.IsSet("local-port-high") &&
-		s.LocalPortHigh == DefaultConfig.LocalPortHigh {
-		s.LocalPortHigh = 0
 	}
 
 	return &s
@@ -195,6 +195,12 @@ func (c *Config) commonBackfill(configMap map[string]interface{}) *Config {
 	if _, exists := configMap["cups_printer_poll_interval"]; !exists {
 		b.NativePrinterPollInterval = DefaultConfig.NativePrinterPollInterval
 	}
+	if _, exists := configMap["cups_job_full_username"]; !exists {
+		b.CUPSJobFullUsername = DefaultConfig.CUPSJobFullUsername
+	}
+	if _, exists := configMap["job_spooled_is_done"]; !exists {
+		b.JobSpooledIsDone = DefaultConfig.JobSpooledIsDone
+	}
 	if _, exists := configMap["prefix_job_id_to_job_title"]; !exists {
 		b.PrefixJobIDToJobTitle = DefaultConfig.PrefixJobIDToJobTitle
 	}
@@ -212,12 +218,6 @@ func (c *Config) commonBackfill(configMap map[string]interface{}) *Config {
 	}
 	if _, exists := configMap["log_level"]; !exists {
 		b.LogLevel = DefaultConfig.LogLevel
-	}
-	if _, exists := configMap["local_port_low"]; !exists {
-		b.LocalPortLow = DefaultConfig.LocalPortLow
-	}
-	if _, exists := configMap["local_port_high"]; !exists {
-		b.LocalPortHigh = DefaultConfig.LocalPortHigh
 	}
 
 	return &b
