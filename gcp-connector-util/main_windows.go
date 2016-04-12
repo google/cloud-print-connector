@@ -221,13 +221,12 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 
 		NativeJobQueueSize:        uint(context.Int("native-job-queue-size")),
 		NativePrinterPollInterval: context.String("native-printer-poll-interval"),
+		CUPSJobFullUsername:       lib.PointerToBool(context.Bool("cups-job-full-username")),
+		JobSpooledIsDone:          lib.PointerToBool(context.Bool("job-spooled-is-done")),
 		PrefixJobIDToJobTitle:     lib.PointerToBool(context.Bool("prefix-job-id-to-job-title")),
 		DisplayNamePrefix:         context.String("display-name-prefix"),
 		PrinterBlacklist:          lib.DefaultConfig.PrinterBlacklist,
 		LogLevel:                  context.String("log-level"),
-
-		LocalPortLow:  uint16(context.Int("local-port-low")),
-		LocalPortHigh: uint16(context.Int("local-port-high")),
 	}
 }
 
@@ -239,12 +238,11 @@ func createLocalConfig(context *cli.Context) *lib.Config {
 
 		NativeJobQueueSize:        uint(context.Int("native-job-queue-size")),
 		NativePrinterPollInterval: context.String("native-printer-poll-interval"),
+		CUPSJobFullUsername:       lib.PointerToBool(context.Bool("cups-job-full-username")),
+		JobSpooledIsDone:          lib.PointerToBool(context.Bool("job-spooled-is-done")),
 		PrefixJobIDToJobTitle:     lib.PointerToBool(context.Bool("prefix-job-id-to-job-title")),
 		DisplayNamePrefix:         context.String("display-name-prefix"),
 		PrinterBlacklist:          lib.DefaultConfig.PrinterBlacklist,
 		LogLevel:                  context.String("log-level"),
-
-		LocalPortLow:  uint16(context.Int("local-port-low")),
-		LocalPortHigh: uint16(context.Int("local-port-high")),
 	}
 }
