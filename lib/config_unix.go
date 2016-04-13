@@ -86,6 +86,15 @@ type Config struct {
 	// TODO: rename without cups_ prefix
 	NativePrinterPollInterval string `json:"cups_printer_poll_interval,omitempty"`
 
+	// Use the full username (joe@example.com) in job.
+	// TODO: rename without cups_ prefix
+	CUPSJobFullUsername *bool `json:"cups_job_full_username,omitempty"`
+
+	// When the job finishes spooling, mark it as done.
+	// This is for compatibility with other products that pause jobs to process them.
+	// TODO: this is only in the Windows build for now - decide whether useful in Unix
+	JobSpooledIsDone *bool `json:"job_spooled_is_done,omitempty"`
+
 	// Add the job ID to the beginning of the job title. Useful for debugging.
 	PrefixJobIDToJobTitle *bool `json:"prefix_job_id_to_job_title,omitempty"`
 
@@ -127,9 +136,6 @@ type Config struct {
 
 	// CUPS only: printer attributes to copy to GCP.
 	CUPSPrinterAttributes []string `json:"cups_printer_attributes,omitempty"`
-
-	// CUPS only: use the full username (joe@example.com) in CUPS job.
-	CUPSJobFullUsername *bool `json:"cups_job_full_username,omitempty"`
 
 	// CUPS only: ignore printers with make/model 'Local Raw Printer'.
 	CUPSIgnoreRawPrinters *bool `json:"cups_ignore_raw_printers,omitempty"`
