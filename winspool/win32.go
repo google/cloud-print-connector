@@ -757,7 +757,7 @@ func (hPrinter HANDLE) SetJobCommand(jobID int32, command uint32) error {
 	return nil
 }
 
-func (hPrinter HANDLE) SetJob1(jobID int32, ji1 *JobInfo1) error {
+func (hPrinter HANDLE) SetJobInfo1(jobID int32, ji1 *JobInfo1) error {
 	r1, _, err := setJobProc.Call(uintptr(hPrinter), uintptr(jobID), 1, uintptr(unsafe.Pointer(ji1)), 0)
 	if r1 == 0 {
 		return err
@@ -778,7 +778,7 @@ func (hPrinter HANDLE) SetJobUserName(jobID int32, userName string) error {
 
 	ji1.pUserName = pUserName;
 	ji1.position = 0; // To prevent a possible access denied error (0 is JOB_POSITION_UNSPECIFIED)
-	err = hPrinter.SetJob1(jobID, ji1)
+	err = hPrinter.SetJobInfo1(jobID, ji1)
 	if err != nil {
 		return err
 	}
