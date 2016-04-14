@@ -184,7 +184,7 @@ func connector(context *cli.Context) int {
 		return 1
 	}
 	pm, err := manager.NewPrinterManager(c, g, priv, nativePrinterPollInterval,
-		config.NativeJobQueueSize, *config.CUPSJobFullUsername, config.ShareScope,
+		config.NativeJobQueueSize, *config.CUPSJobFullUsername, false, config.ShareScope,
 		jobs, xmppNotifications)
 	if err != nil {
 		log.Fatal(err)

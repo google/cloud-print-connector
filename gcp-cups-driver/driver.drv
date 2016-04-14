@@ -1,0 +1,22 @@
+#include <font.defs>
+#include <media.defs>
+
+Manufacturer "Google"
+Version 1.0
+
+*MediaSize Letter
+MediaSize A4
+
+// CDD sections: Color, Duplex, Margins, MediaSize
+
+{
+	Filter application/pdf 0 -
+	PCFileName "gcp-pdf.ppd"
+	ModelName "Cloud Print - PDF"
+}
+
+{
+	Filter image/pwg-raster 0 -
+	PCFileName "gcp-pwg.ppd"
+	ModelName "Cloud Print - PWG Raster"
+}

@@ -27,7 +27,7 @@ import (
 
 type NativePrintSystem interface {
 	GetPrinters() ([]lib.Printer, error)
-	GetJobState(printerName string, jobID uint32) (*cdd.PrintJobStateDiff, error)
+	GetJobState(printerName string, jobID uint32, jobSpooledIsDone bool) (*cdd.PrintJobStateDiff, error)
 	Print(printer *lib.Printer, fileName, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (uint32, error)
 	RemoveCachedPPD(printerName string)
 }
@@ -53,12 +53,13 @@ type PrinterManager struct {
 
 	nativeJobQueueSize uint
 	jobFullUsername    bool
+	jobSpooledIsDone    bool
 	shareScope         string
 
 	quit chan struct{}
 }
 
-func NewPrinterManager(native NativePrintSystem, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, printerPollInterval time.Duration, nativeJobQueueSize uint, jobFullUsername bool, shareScope string, jobs <-chan *lib.Job, xmppNotifications <-chan xmpp.PrinterNotification) (*PrinterManager, error) {
+func NewPrinterManager(native NativePrintSystem, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, printerPollInterval time.Duration, nativeJobQueueSize uint, jobFullUsername bool, jobSpooledIsDone bool, shareScope string, jobs <-chan *lib.Job, xmppNotifications <-chan xmpp.PrinterNotification) (*PrinterManager, error) {
 	var printers *lib.ConcurrentPrinterMap
 	var queuedJobsCount map[string]uint
 
@@ -96,6 +97,7 @@ func NewPrinterManager(native NativePrintSystem, gcp *gcp.GoogleCloudPrint, priv
 
 		nativeJobQueueSize: nativeJobQueueSize,
 		jobFullUsername:    jobFullUsername,
+		jobSpooledIsDone:   jobSpooledIsDone,
 		shareScope:         shareScope,
 
 		quit: make(chan struct{}),
@@ -403,7 +405,7 @@ func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, job
 	defer ticker.Stop()
 
 	for _ = range ticker.C {
-		nativeState, err := pm.native.GetJobState(printer.Name, nativeJobID)
+		nativeState, err := pm.native.GetJobState(printer.Name, nativeJobID, pm.jobSpooledIsDone)
 		if err != nil {
 			log.WarningJobf(jobID, "Failed to get state of native job %d: %s", nativeJobID, err)
 
