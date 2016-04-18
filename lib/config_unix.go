@@ -86,6 +86,10 @@ type Config struct {
 	// TODO: rename without cups_ prefix
 	NativePrinterPollInterval string `json:"cups_printer_poll_interval,omitempty"`
 
+	// Use the full username (joe@example.com) in job.
+	// TODO: rename without cups_ prefix
+	CUPSJobFullUsername *bool `json:"cups_job_full_username,omitempty"`
+
 	// Add the job ID to the beginning of the job title. Useful for debugging.
 	PrefixJobIDToJobTitle *bool `json:"prefix_job_id_to_job_title,omitempty"`
 

@@ -545,8 +545,7 @@ func convertJobState(wsStatus uint32) *cdd.JobState {
 		state.Type = cdd.JobStateDone
 
 	} else if wsStatus&JOB_STATUS_PAUSED != 0 || wsStatus == 0 {
-		state.Type = cdd.JobStateStopped
-		state.UserActionCause = &cdd.UserActionCause{cdd.UserActionCausePaused}
+		state.Type = cdd.JobStateDone
 
 	} else if wsStatus&JOB_STATUS_ERROR != 0 {
 		state.Type = cdd.JobStateAborted
@@ -606,7 +605,7 @@ type jobContext struct {
 	cContext CairoContext
 }
 
-func newJobContext(printerName, fileName, title string) (*jobContext, error) {
+func newJobContext(printerName, fileName, title, user string) (*jobContext, error) {
 	pDoc, err := PopplerDocumentNewFromFile(fileName)
 	if err != nil {
 		return nil, err
@@ -641,7 +640,7 @@ func newJobContext(printerName, fileName, title string) (*jobContext, error) {
 		pDoc.Unref()
 		return nil, err
 	}
-	err = hPrinter.SetJob(jobID, JOB_CONTROL_RETAIN)
+	err = hPrinter.SetJobCommand(jobID, JOB_CONTROL_RETAIN)
 	if err != nil {
 		hDC.EndDoc()
 		hDC.DeleteDC()
@@ -649,6 +648,7 @@ func newJobContext(printerName, fileName, title string) (*jobContext, error) {
 		pDoc.Unref()
 		return nil, err
 	}
+	hPrinter.SetJobUserName(jobID, user)
 	cSurface, err := CairoWin32PrintingSurfaceCreate(hDC)
 	if err != nil {
 		hDC.EndDoc()
@@ -680,7 +680,7 @@ func (c *jobContext) free() error {
 	if err != nil {
 		return err
 	}
-	err = c.hPrinter.SetJob(c.jobID, JOB_CONTROL_RELEASE)
+	err = c.hPrinter.SetJobCommand(c.jobID, JOB_CONTROL_RELEASE)
 	if err != nil {
 		return err
 	}
@@ -829,7 +829,7 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 		return 0, errors.New("Print() called with nil ticket")
 	}
 
-	jobContext, err := newJobContext(printer.Name, fileName, title)
+	jobContext, err := newJobContext(printer.Name, fileName, title, user)
 	if err != nil {
 		return 0, err
 	}
