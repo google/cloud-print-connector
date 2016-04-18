@@ -132,9 +132,6 @@ type Config struct {
 	// CUPS only: printer attributes to copy to GCP.
 	CUPSPrinterAttributes []string `json:"cups_printer_attributes,omitempty"`
 
-	// CUPS only: use the full username (joe@example.com) in CUPS job.
-	CUPSJobFullUsername *bool `json:"cups_job_full_username,omitempty"`
-
 	// CUPS only: ignore printers with make/model 'Local Raw Printer'.
 	CUPSIgnoreRawPrinters *bool `json:"cups_ignore_raw_printers,omitempty"`
 
