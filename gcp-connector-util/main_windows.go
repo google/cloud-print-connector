@@ -221,6 +221,7 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 
 		NativeJobQueueSize:        uint(context.Int("native-job-queue-size")),
 		NativePrinterPollInterval: context.String("native-printer-poll-interval"),
+		CUPSJobFullUsername:       lib.PointerToBool(context.Bool("cups-job-full-username")),
 		PrefixJobIDToJobTitle:     lib.PointerToBool(context.Bool("prefix-job-id-to-job-title")),
 		DisplayNamePrefix:         context.String("display-name-prefix"),
 		PrinterBlacklist:          lib.DefaultConfig.PrinterBlacklist,
@@ -239,6 +240,7 @@ func createLocalConfig(context *cli.Context) *lib.Config {
 
 		NativeJobQueueSize:        uint(context.Int("native-job-queue-size")),
 		NativePrinterPollInterval: context.String("native-printer-poll-interval"),
+		CUPSJobFullUsername:       lib.PointerToBool(context.Bool("cups-job-full-username")),
 		PrefixJobIDToJobTitle:     lib.PointerToBool(context.Bool("prefix-job-id-to-job-title")),
 		DisplayNamePrefix:         context.String("display-name-prefix"),
 		PrinterBlacklist:          lib.DefaultConfig.PrinterBlacklist,

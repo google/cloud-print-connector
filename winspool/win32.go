@@ -573,8 +573,8 @@ func enumPrinters(level uint32) ([]byte, uint32, error) {
 	}
 
 	var pPrinterEnum []byte = make([]byte, cbBuf)
-	_, _, err = enumPrintersProc.Call(PRINTER_ENUM_LOCAL, 0, uintptr(level), uintptr(unsafe.Pointer(&pPrinterEnum[0])), uintptr(cbBuf), uintptr(unsafe.Pointer(&cbBuf)), uintptr(unsafe.Pointer(&pcReturned)))
-	if err != NO_ERROR {
+	r1, _, err := enumPrintersProc.Call(PRINTER_ENUM_LOCAL, 0, uintptr(level), uintptr(unsafe.Pointer(&pPrinterEnum[0])), uintptr(cbBuf), uintptr(unsafe.Pointer(&cbBuf)), uintptr(unsafe.Pointer(&pcReturned)))
+	if r1 == 0 {
 		return nil, 0, err
 	}
 
@@ -606,16 +606,16 @@ func OpenPrinter(printerName string) (HANDLE, error) {
 	}
 
 	var hPrinter HANDLE
-	_, _, err = openPrinterProc.Call(uintptr(unsafe.Pointer(pPrinterName)), uintptr(unsafe.Pointer(&hPrinter)), 0)
-	if err != NO_ERROR {
+	r1, _, err := openPrinterProc.Call(uintptr(unsafe.Pointer(pPrinterName)), uintptr(unsafe.Pointer(&hPrinter)), 0)
+	if r1 == 0 {
 		return 0, err
 	}
 	return hPrinter, nil
 }
 
 func (hPrinter *HANDLE) ClosePrinter() error {
-	_, _, err := closePrinterProc.Call(uintptr(*hPrinter))
-	if err != NO_ERROR {
+	r1, _, err := closePrinterProc.Call(uintptr(*hPrinter))
+	if r1 == 0 {
 		return err
 	}
 	*hPrinter = 0
@@ -726,8 +726,8 @@ func (hPrinter HANDLE) GetJob(jobID int32) (*JobInfo1, error) {
 	}
 
 	var pJob []byte = make([]byte, cbBuf)
-	_, _, err = getJobProc.Call(uintptr(hPrinter), uintptr(jobID), 1, uintptr(unsafe.Pointer(&pJob[0])), uintptr(cbBuf), uintptr(unsafe.Pointer(&cbBuf)))
-	if err != NO_ERROR {
+	r1, _, err := getJobProc.Call(uintptr(hPrinter), uintptr(jobID), 1, uintptr(unsafe.Pointer(&pJob[0])), uintptr(cbBuf), uintptr(unsafe.Pointer(&cbBuf)))
+	if r1 == 0 {
 		return nil, err
 	}
 
@@ -749,12 +749,39 @@ const (
 	JOB_CONTROL_RELEASE           uint32 = 9
 )
 
-func (hPrinter HANDLE) SetJob(jobID int32, command uint32) error {
-	_, _, err := setJobProc.Call(uintptr(hPrinter), uintptr(jobID), 0, 0, uintptr(command))
-	if err != NO_ERROR {
+func (hPrinter HANDLE) SetJobCommand(jobID int32, command uint32) error {
+	r1, _, err := setJobProc.Call(uintptr(hPrinter), uintptr(jobID), 0, 0, uintptr(command))
+	if r1 == 0 {
+		return err
+	}
+	return nil
+}
+
+func (hPrinter HANDLE) SetJobInfo1(jobID int32, ji1 *JobInfo1) error {
+	r1, _, err := setJobProc.Call(uintptr(hPrinter), uintptr(jobID), 1, uintptr(unsafe.Pointer(ji1)), 0)
+	if r1 == 0 {
+		return err
+	}
+	return nil
+}
+
+func (hPrinter HANDLE) SetJobUserName(jobID int32, userName string) error {
+	ji1, err := hPrinter.GetJob(jobID)
+	if err != nil {
 		return err
 	}
 
+	pUserName, err := syscall.UTF16PtrFromString(userName)
+	if err != nil {
+		return err
+	}
+
+	ji1.pUserName = pUserName;
+	ji1.position = 0; // To prevent a possible access denied error (0 is JOB_POSITION_UNSPECIFIED)
+	err = hPrinter.SetJobInfo1(jobID, ji1)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -769,7 +796,6 @@ func CreateDC(deviceName string, devMode *DevMode) (HDC, error) {
 	if r1 == 0 {
 		return 0, err
 	}
-
 	return HDC(r1), nil
 }
 
@@ -806,15 +832,15 @@ func (hDC HDC) StartDoc(docName string) (int32, error) {
 	}
 
 	r1, _, err := startDocProc.Call(uintptr(hDC), uintptr(unsafe.Pointer(&docInfo)))
-	if err != NO_ERROR {
+	if r1 <= 0 {
 		return 0, err
 	}
 	return int32(r1), nil
 }
 
 func (hDC HDC) EndDoc() error {
-	_, _, err := endDocProc.Call(uintptr(hDC))
-	if err != NO_ERROR {
+	r1, _, err := endDocProc.Call(uintptr(hDC))
+	if r1 <= 0 {
 		return err
 	}
 	return nil
@@ -827,16 +853,16 @@ func (hDC HDC) AbortDoc() error {
 }
 
 func (hDC HDC) StartPage() error {
-	_, _, err := startPageProc.Call(uintptr(hDC))
-	if err != NO_ERROR {
+	r1, _, err := startPageProc.Call(uintptr(hDC))
+	if r1 <= 0 {
 		return err
 	}
 	return nil
 }
 
 func (hDC HDC) EndPage() error {
-	_, _, err := endPageProc.Call(uintptr(hDC))
-	if err != NO_ERROR {
+	r1, _, err := endPageProc.Call(uintptr(hDC))
+	if r1 <= 0 {
 		return err
 	}
 	return nil
@@ -848,8 +874,8 @@ const (
 )
 
 func (hDC HDC) SetGraphicsMode(iMode int32) error {
-	_, _, err := setGraphicsModeProc.Call(uintptr(hDC), uintptr(iMode))
-	if err != NO_ERROR {
+	r1, _, err := setGraphicsModeProc.Call(uintptr(hDC), uintptr(iMode))
+	if r1 == 0 {
 		return err
 	}
 	return nil
