@@ -243,7 +243,6 @@ func registerRobotAccount(context *cli.Context, userClient *http.Client, try int
 		// Will be retrying only 10 times.
 		if try > 10 {
 			log.Fatalf("Permanently failed to initialize robot account: %s\n", response.Status)
-			return false
 		} else {
 			retry := try + 1
 			// We'll be waiting in the following manner=> 4, 9, 16, 25, 36, 49, 64, 81, 100, end.
