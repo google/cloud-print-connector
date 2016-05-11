@@ -254,9 +254,8 @@ func registerRobotAccount(context *cli.Context, userClient *http.Client, try int
 			// Calling again
 			return registerRobotAccount(context, userClient, retry)
 		}
-	} else {
-		return response
 	}
+	return response
 }
 
 func verifyRobotAccount(authCode string) string {
