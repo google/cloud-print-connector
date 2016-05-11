@@ -230,7 +230,7 @@ func initRobotAccount(context *cli.Context, userClient *http.Client) (string, st
 }
 
 // registerRobotAccount registers a new robot account with Google.
-func registerRobotAccount(context *cli.Context, userClient *http.Client, try int) (string, string) {
+func registerRobotAccount(context *cli.Context, userClient *http.Client, try int) string {
 	params := url.Values{}
 	params.Set("oauth_client_id", lib.DefaultConfig.GCPOAuthClientID)
 
