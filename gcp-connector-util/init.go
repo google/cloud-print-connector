@@ -250,7 +250,7 @@ func registerRobotAccount(context *cli.Context, userClient *http.Client, try int
 			sleep := retry * retry
 			fmt.Println("Failed: %s, retrying after %d seconds...", response.Status, sleep)
 			go func() {
-				time.Sleep(time.Second * sleep)
+				time.Sleep(time.Second * time.Duration(sleep))
 			}()
 			// Calling again
 			return registerRobotAccount(context, userClient, retry)
