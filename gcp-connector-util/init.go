@@ -223,7 +223,7 @@ func initRobotAccount(context *cli.Context, userClient *http.Client) (string, st
 	}
 
 	response := registerRobotAccount(context, userClient, 1)
-	if err = json.NewDecoder(response.Body).Decode(&robotInit); err != nil {
+	if err := json.NewDecoder(response.Body).Decode(&robotInit); err != nil {
 		log.Fatalln(err)
 	}
 	return robotInit.XMPPJID, robotInit.AuthCode
