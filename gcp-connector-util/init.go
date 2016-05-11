@@ -226,10 +226,6 @@ func initRobotAccount(context *cli.Context, userClient *http.Client) (string, st
 	if err = json.NewDecoder(response.Body).Decode(&robotInit); err != nil {
 		log.Fatalln(err)
 	}
-	if !robotInit.Success {
-		log.Fatalf("Failed to initialize robot account: %s\n", robotInit.Message)
-	}
-
 	return robotInit.XMPPJID, robotInit.AuthCode
 }
 
