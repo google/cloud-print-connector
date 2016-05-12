@@ -219,6 +219,7 @@ func getUserClientFromToken(context *cli.Context) *http.Client {
 func initRobotAccount(context *cli.Context, userClient *http.Client) (string, string) {
 	params := url.Values{}
 	params.Set("oauth_client_id", lib.DefaultConfig.GCPOAuthClientID)
+	url := fmt.Sprintf("%s%s?%s", lib.DefaultConfig.GCPBaseURL, "createrobot", params.Encode())
 
 	var robotInit struct {
 		Success  bool   `json:"success"`
@@ -227,7 +228,6 @@ func initRobotAccount(context *cli.Context, userClient *http.Client) (string, st
 		AuthCode string `json:"authorization_code"`
 	}
 
-	url := fmt.Sprintf("%s%s?%s", lib.DefaultConfig.GCPBaseURL, "createrobot", params.Encode())
 	var response *http.Response
 	attempt := 1
 	for {
