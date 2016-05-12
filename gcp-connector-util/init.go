@@ -11,6 +11,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -218,15 +220,6 @@ func initRobotAccount(context *cli.Context, userClient *http.Client) (string, st
 	params := url.Values{}
 	params.Set("oauth_client_id", lib.DefaultConfig.GCPOAuthClientID)
 
-	url := fmt.Sprintf("%s%s?%s", lib.DefaultConfig.GCPBaseURL, "createrobot", params.Encode())
-	response, err := userClient.Get(url)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	if response.StatusCode != http.StatusOK {
-		log.Fatalf("Failed to initialize robot account: %s\n", response.Status)
-	}
-
 	var robotInit struct {
 		Success  bool   `json:"success"`
 		Message  string `json:"message"`
@@ -234,11 +227,45 @@ func initRobotAccount(context *cli.Context, userClient *http.Client) (string, st
 		AuthCode string `json:"authorization_code"`
 	}
 
-	if err = json.NewDecoder(response.Body).Decode(&robotInit); err != nil {
-		log.Fatalln(err)
-	}
-	if !robotInit.Success {
-		log.Fatalf("Failed to initialize robot account: %s\n", robotInit.Message)
+	url := fmt.Sprintf("%s%s?%s", lib.DefaultConfig.GCPBaseURL, "createrobot", params.Encode())
+	var response *http.Response
+	attempt := 1
+	for {
+		message := "Initializing robot account"
+		if (attempt > 1) {
+			message += fmt.Sprintf(" (attempt %d)", attempt)
+			time.Sleep(5 * time.Second)
+
+			if (response != nil) {
+				// Clean up the response to enable connection re-use
+				io.Copy(ioutil.Discard, response.Body)
+				response.Body.Close()
+			}
+		}
+		log.Println(message)
+		attempt += 1
+
+		response, err := userClient.Get(url)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		
+		if response.StatusCode != http.StatusOK {
+			if response.StatusCode == 500 {
+				log.Println("The server seems busy. Retrying ...")
+				continue;
+			} else {
+				log.Fatalf("Failed to initialize robot account: %s\n", response.Status)
+			}
+		}
+
+		if err = json.NewDecoder(response.Body).Decode(&robotInit); err != nil {
+			log.Fatalln(err)
+		}
+		if !robotInit.Success {
+			log.Fatalf("Failed to initialize robot account: %s\n", robotInit.Message)
+		}
+		break;
 	}
 
 	return robotInit.XMPPJID, robotInit.AuthCode
