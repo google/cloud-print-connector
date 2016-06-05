@@ -133,7 +133,7 @@ func (api *privetAPI) serve() {
 type infoResponse struct {
 	Version         string               `json:"version"`
 	Name            string               `json:"name"`
-	Description     string               `json:"description"`
+	Description     string               `json:"description,omitempty"`
 	URL             string               `json:"url"`
 	Type            []string             `json:"type"`
 	ID              string               `json:"id"`
@@ -141,15 +141,15 @@ type infoResponse struct {
 	ConnectionState string               `json:"connection_state"`
 	Manufacturer    string               `json:"manufacturer"`
 	Model           string               `json:"model"`
-	SerialNumber    string               `json:"serial_number"`
+	SerialNumber    string               `json:"serial_number,omitempty"`
 	Firmware        string               `json:"firmware"`
 	Uptime          uint                 `json:"uptime"`
-	SetupURL        string               `json:"setup_url"`
-	SupportURL      string               `json:"support_url"`
-	UpdateURL       string               `json:"update_url"`
+	SetupURL        string               `json:"setup_url,omitempty"`
+	SupportURL      string               `json:"support_url,omitempty"`
+	UpdateURL       string               `json:"update_url,omitempty"`
 	XPrivetToken    string               `json:"x-privet-token"`
 	API             []string             `json:"api"`
-	SemanticState   cdd.CloudDeviceState `json:"semantic_state"`
+	SemanticState   cdd.CloudDeviceState `json:"semantic_state,omitempty"`
 }
 
 func (api *privetAPI) info(w http.ResponseWriter, r *http.Request) {
