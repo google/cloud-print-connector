@@ -38,7 +38,7 @@ func newZeroconf() (*zeroconf, error) {
 	return &z, nil
 }
 
-func (z *zeroconf) addPrinter(name string, port uint16, ty, url, id string, online bool) error {
+func (z *zeroconf) addPrinter(name string, port uint16, ty, note, url, id string, online bool) error {
 	z.pMutex.RLock()
 	if _, exists := z.printers[name]; exists {
 		z.pMutex.RUnlock()
@@ -52,6 +52,8 @@ func (z *zeroconf) addPrinter(name string, port uint16, ty, url, id string, onli
 	defer C.free(unsafe.Pointer(serviceTypeC))
 	tyC := C.CString(ty)
 	defer C.free(unsafe.Pointer(tyC))
+	noteC := C.CString(note)
+	defer C.free(unsafe.Pointer(noteC))
 	urlC := C.CString(url)
 	defer C.free(unsafe.Pointer(urlC))
 	idC := C.CString(id)
@@ -65,7 +67,7 @@ func (z *zeroconf) addPrinter(name string, port uint16, ty, url, id string, onli
 	defer C.free(unsafe.Pointer(onlineC))
 
 	var errstr *C.char = nil
-	service := C.startBonjour(nameC, serviceTypeC, C.ushort(port), tyC, urlC, idC, onlineC, &errstr)
+	service := C.startBonjour(nameC, serviceTypeC, C.ushort(port), tyC, noteC, urlC, idC, onlineC, &errstr)
 	if errstr != nil {
 		defer C.free(unsafe.Pointer(errstr))
 		return errors.New(C.GoString(errstr))
@@ -79,9 +81,11 @@ func (z *zeroconf) addPrinter(name string, port uint16, ty, url, id string, onli
 }
 
 // updatePrinterTXT updates the advertised TXT record.
-func (z *zeroconf) updatePrinterTXT(name, ty, url, id string, online bool) error {
+func (z *zeroconf) updatePrinterTXT(name, ty, note, url, id string, online bool) error {
 	tyC := C.CString(ty)
 	defer C.free(unsafe.Pointer(tyC))
+	noteC := C.CString(note)
+	defer C.free(unsafe.Pointer(noteC))
 	urlC := C.CString(url)
 	defer C.free(unsafe.Pointer(urlC))
 	idC := C.CString(id)
@@ -98,7 +102,7 @@ func (z *zeroconf) updatePrinterTXT(name, ty, url, id string, online bool) error
 	defer z.pMutex.RUnlock()
 
 	if service, exists := z.printers[name]; exists {
-		C.updateBonjour(service, tyC, urlC, idC, onlineC)
+		C.updateBonjour(service, tyC, noteC, urlC, idC, onlineC)
 	} else {
 		return fmt.Errorf("Bonjour can't update printer %s that hasn't been added", name)
 	}
