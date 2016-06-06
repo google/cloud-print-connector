@@ -434,17 +434,17 @@ func convertCopies(printerTags map[string][]string) *cdd.Copies {
 
 var colorByKeyword = map[string]cdd.ColorOption{
 	"auto": cdd.ColorOption{
-		VendorID: fmt.Sprintf("%s%s%s", attrPrintColorMode, internalKeySeparator, "auto"),
+		VendorID: "auto",
 		Type:     cdd.ColorTypeAuto,
 		CustomDisplayNameLocalized: cdd.NewLocalizedString("Auto"),
 	},
 	"color": cdd.ColorOption{
-		VendorID: fmt.Sprintf("%s%s%s", attrPrintColorMode, internalKeySeparator, "color"),
+		VendorID: "color",
 		Type:     cdd.ColorTypeStandardColor,
 		CustomDisplayNameLocalized: cdd.NewLocalizedString("Color"),
 	},
 	"monochrome": cdd.ColorOption{
-		VendorID: fmt.Sprintf("%s%s%s", attrPrintColorMode, internalKeySeparator, "monochrome"),
+		VendorID: "monochrome",
 		Type:     cdd.ColorTypeStandardMonochrome,
 		CustomDisplayNameLocalized: cdd.NewLocalizedString("Monochrome"),
 	},
@@ -461,13 +461,13 @@ func convertColorAttrs(printerTags map[string][]string) *cdd.Color {
 		colorDefault = colorSupported[:1]
 	}
 
-	var c cdd.Color
+	c := cdd.Color{VendorKey: attrPrintColorMode}
 	for _, color := range colorSupported {
 		var co cdd.ColorOption
 		var exists bool
 		if co, exists = colorByKeyword[color]; !exists {
 			co = cdd.ColorOption{
-				VendorID: fmt.Sprintf("%s%s%s", attrPrintColorMode, internalKeySeparator, color),
+				VendorID: color,
 				Type:     cdd.ColorTypeCustomColor,
 				CustomDisplayNameLocalized: cdd.NewLocalizedString(color),
 			}
