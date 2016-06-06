@@ -133,7 +133,6 @@ func (api *privetAPI) serve() {
 type infoResponse struct {
 	Version         string               `json:"version"`
 	Name            string               `json:"name"`
-	Description     string               `json:"description"`
 	URL             string               `json:"url"`
 	Type            []string             `json:"type"`
 	ID              string               `json:"id"`
