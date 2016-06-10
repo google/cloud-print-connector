@@ -76,7 +76,7 @@ func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func(string) (lib.Pr
 	if online {
 		localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
 	}
-	err = p.zc.addPrinter(printer.Name, api.port(), localDefaultDisplayName, p.gcpBaseURL, printer.GCPID, online)
+	err = p.zc.addPrinter(printer.Name, api.port(), localDefaultDisplayName, "", p.gcpBaseURL, printer.GCPID, online)
 	if err != nil {
 		api.quit()
 		return err
@@ -102,7 +102,7 @@ func (p *Privet) UpdatePrinter(diff *lib.PrinterDiff) error {
 		localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
 	}
 
-	return p.zc.updatePrinterTXT(diff.Printer.GCPID, localDefaultDisplayName, p.gcpBaseURL, diff.Printer.GCPID, online)
+	return p.zc.updatePrinterTXT(diff.Printer.GCPID, localDefaultDisplayName, "", p.gcpBaseURL, diff.Printer.GCPID, online)
 }
 
 // DeletePrinter removes a printer from Privet.

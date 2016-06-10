@@ -14,8 +14,8 @@
 #include <stdlib.h> // free
 
 CFNetServiceRef startBonjour(const char *name, const char *type,
-		unsigned short int port, const char *ty, const char *url, const char *id,
-		const char *cs, char **err);
-void updateBonjour(CFNetServiceRef service, const char *ty, const char *url,
+		unsigned short int port, const char *ty, const char *note, const char *url,
+		const char *id, const char *cs, char **err);
+void updateBonjour(CFNetServiceRef service, const char *ty, const char *note, const char *url,
 		const char *id, const char *cs);
 void stopBonjour(CFNetServiceRef service);
