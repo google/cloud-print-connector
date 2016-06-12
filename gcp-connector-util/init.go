@@ -124,6 +124,24 @@ var commonInitFlags = []cli.Flag{
 	},
 }
 
+func postWithRetry(url string, data url.Values) (*http.Response, error) {
+	backoff := lib.Backoff{}
+	for {
+		response, err := http.PostForm(url, data)
+		if err == nil {
+			return response, err
+		}
+		fmt.Printf("POST to %s failed with error: %s\n", url, err)
+
+		p, retryAgain := backoff.Pause()
+		if !retryAgain {
+			return response, err
+		}
+		fmt.Printf("retrying POST to %s in %s\n", url, p)
+		time.Sleep(p)
+	}
+}
+
 // getUserClientFromUser follows the token acquisition steps outlined here:
 // https://developers.google.com/identity/protocols/OAuth2ForDevices
 func getUserClientFromUser(context *cli.Context) (*http.Client, string) {
@@ -131,7 +149,7 @@ func getUserClientFromUser(context *cli.Context) (*http.Client, string) {
 		"client_id": {context.String("gcp-oauth-client-id")},
 		"scope":     {gcp.ScopeCloudPrint},
 	}
-	response, err := http.PostForm(gcpOAuthDeviceCodeURL, form)
+	response, err := postWithRetry(gcpOAuthDeviceCodeURL, form)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -172,7 +190,7 @@ func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int
 			"code":          {deviceCode},
 			"grant_type":    {gcpOAuthGrantTypeDevice},
 		}
-		response, err := http.PostForm(gcpOAuthTokenPollURL, form)
+		response, err := postWithRetry(gcpOAuthTokenPollURL, form)
 		if err != nil {
 			log.Fatalln(err)
 		}
