@@ -15,8 +15,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/cloud-print-connector/lib"
+	"github.com/google/cloud-print-connector/log"
 
 	"golang.org/x/oauth2"
 )
@@ -58,15 +60,24 @@ func newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, re
 	return client, nil
 }
 
-// getWithRetry calls get() and retries once on HTTP failure
+// getWithRetry calls get() and retries on HTTP failure
 // (response code != 200).
 func getWithRetry(hc *http.Client, url string) (*http.Response, error) {
-	response, err := get(hc, url)
-	if response != nil && response.StatusCode == http.StatusOK {
-		return response, err
-	}
+	backoff := lib.Backoff{}
+	for {
+		response, err := get(hc, url)
+		if response != nil && response.StatusCode == http.StatusOK {
+			return response, err
+		}
 
-	return get(hc, url)
+		p, retryAgain := backoff.Pause()
+		if !retryAgain {
+			log.Debugf("HTTP error %s, retry timeout hit", err, p)
+			return response, err
+		}
+		log.Debugf("HTTP error %s, retrying after %s", err, p)
+		time.Sleep(p)
+	}
 }
 
 // get GETs a URL. Returns the response object (not body), in case the body
@@ -93,15 +104,24 @@ func get(hc *http.Client, url string) (*http.Response, error) {
 	return response, nil
 }
 
-// postWithRetry calls post() and retries once on HTTP failure
+// postWithRetry calls post() and retries on HTTP failure
 // (response code != 200).
 func postWithRetry(hc *http.Client, url string, form url.Values) ([]byte, uint, int, error) {
-	responseBody, gcpErrorCode, httpStatusCode, err := post(hc, url, form)
-	if responseBody != nil && httpStatusCode == http.StatusOK {
-		return responseBody, gcpErrorCode, httpStatusCode, err
-	}
+	backoff := lib.Backoff{}
+	for {
+		responseBody, gcpErrorCode, httpStatusCode, err := post(hc, url, form)
+		if responseBody != nil && httpStatusCode == http.StatusOK {
+			return responseBody, gcpErrorCode, httpStatusCode, err
+		}
 
-	return post(hc, url, form)
+		p, retryAgain := backoff.Pause()
+		if !retryAgain {
+			log.Debugf("HTTP error %s, retry timeout hit", err, p)
+			return responseBody, gcpErrorCode, httpStatusCode, err
+		}
+		log.Debugf("HTTP error %s, retrying after %s", err, p)
+		time.Sleep(p)
+	}
 }
 
 // post POSTs to a URL. Returns the body of the response.
