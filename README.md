@@ -9,7 +9,7 @@ Lots of help can be found in [the wiki](https://github.com/google/cloud-print-co
 Please join the mailing list at https://groups.google.com/forum/#!forum/cloud-print-connector. Anyone can post and view messages.
 
 ## Build Status
-* Linux/OSX: [![Build Status](https://travis-ci.org/google/cups-connector.svg?branch=master)](https://travis-ci.org/google/cups-connector)
+* Linux/OSX: [![Build Status](https://travis-ci.org/google/cloud-print-connector.svg?branch=master)](https://travis-ci.org/google/cloud-print-connector)
 
 * FreeBSD: [![Build Status](http://jenkins.mouf.net/job/cups-connector/badge/icon)](http://jenkins.mouf.net/job/cups-connector/)
 
