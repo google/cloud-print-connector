@@ -11,7 +11,7 @@ Please join the mailing list at https://groups.google.com/forum/#!forum/cloud-pr
 ## Build Status
 * Linux/OSX: [![Build Status](https://travis-ci.org/google/cloud-print-connector.svg?branch=master)](https://travis-ci.org/google/cloud-print-connector)
 
-* FreeBSD: [![Build Status](http://jenkins.mouf.net/job/cups-connector/badge/icon)](http://jenkins.mouf.net/job/cups-connector/)
+* FreeBSD: [![Build Status](http://jenkins.mouf.net/job/cloud-print-connector/badge/icon)](http://jenkins.mouf.net/job/cloud-print-connector/)
 
 ## License
 Copyright 2015 Google Inc. All rights reserved.
