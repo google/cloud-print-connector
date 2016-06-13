@@ -22,7 +22,7 @@ const (
 	ConnectorName = "Cloud Print Connector"
 
 	// A website with user-friendly information.
-	ConnectorHomeURL = "https://github.com/google/cups-connector"
+	ConnectorHomeURL = "https://github.com/google/cloud-print-connector"
 
 	GCPAPIVersion = "2.0"
 )
