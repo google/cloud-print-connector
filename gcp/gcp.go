@@ -26,9 +26,9 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/lib"
-	"github.com/google/cups-connector/log"
+	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/lib"
+	"github.com/google/cloud-print-connector/log"
 )
 
 const (

@@ -13,7 +13,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/google/cups-connector/cdd"
+	"github.com/google/cloud-print-connector/cdd"
 )
 
 func translationTest(t *testing.T, ppd string, expected *cdd.PrinterDescriptionSection) {

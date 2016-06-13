@@ -12,7 +12,7 @@ package log
 import (
 	"fmt"
 
-	"github.com/google/cups-connector/lib"
+	"github.com/google/cloud-print-connector/lib"
 	"golang.org/x/sys/windows/svc/debug"
 	"golang.org/x/sys/windows/svc/eventlog"
 )

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/codegangsta/cli"
-	"github.com/google/cups-connector/lib"
+	"github.com/google/cloud-print-connector/lib"
 )
 
 var unixInitFlags = []cli.Flag{

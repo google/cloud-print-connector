@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 
 	"github.com/codegangsta/cli"
-	"github.com/google/cups-connector/lib"
+	"github.com/google/cloud-print-connector/lib"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/eventlog"
 	"golang.org/x/sys/windows/svc/mgr"

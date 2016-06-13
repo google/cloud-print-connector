@@ -19,7 +19,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/google/cups-connector/log"
+	"github.com/google/cloud-print-connector/log"
 )
 
 var (

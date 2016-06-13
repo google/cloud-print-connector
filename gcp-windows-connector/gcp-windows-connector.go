@@ -15,12 +15,12 @@ import (
 	"time"
 
 	"github.com/codegangsta/cli"
-	"github.com/google/cups-connector/gcp"
-	"github.com/google/cups-connector/lib"
-	"github.com/google/cups-connector/log"
-	"github.com/google/cups-connector/manager"
-	"github.com/google/cups-connector/winspool"
-	"github.com/google/cups-connector/xmpp"
+	"github.com/google/cloud-print-connector/gcp"
+	"github.com/google/cloud-print-connector/lib"
+	"github.com/google/cloud-print-connector/log"
+	"github.com/google/cloud-print-connector/manager"
+	"github.com/google/cloud-print-connector/winspool"
+	"github.com/google/cloud-print-connector/xmpp"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/debug"
 )
