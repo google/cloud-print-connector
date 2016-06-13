@@ -703,7 +703,7 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 			}
 	}
 
-	file, err := ioutil.TempFile("", "cups-connector-gcp-")
+	file, err := ioutil.TempFile("", "cloud-print-connector-")
 	if err != nil {
 		return nil, "",
 			fmt.Sprintf("Failed to create a temporary file: %s", err),

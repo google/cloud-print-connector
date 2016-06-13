@@ -381,7 +381,7 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, err := ioutil.TempFile("", "cups-connector-privet-")
+	file, err := ioutil.TempFile("", "cloud-print-connector-privet-")
 	if err != nil {
 		log.Errorf("Failed to create file for new Privet job: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)
