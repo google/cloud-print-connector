@@ -215,6 +215,22 @@ func getUserClientFromToken(context *cli.Context) *http.Client {
 
 // initRobotAccount creates a GCP robot account for this connector.
 func initRobotAccount(context *cli.Context, userClient *http.Client) (string, string) {
+	var robotInit struct {
+		Success  bool   `json:"success"`
+		Message  string `json:"message"`
+		XMPPJID  string `json:"xmpp_jid"`
+		AuthCode string `json:"authorization_code"`
+	}
+
+	response := registerRobotAccount(context, userClient, 1)
+	if err := json.NewDecoder(response.Body).Decode(&robotInit); err != nil {
+		log.Fatalln(err)
+	}
+	return robotInit.XMPPJID, robotInit.AuthCode
+}
+
+// registerRobotAccount registers a new robot account with Google.
+func registerRobotAccount(context *cli.Context, userClient *http.Client, try int) *http.Response {
 	params := url.Values{}
 	params.Set("oauth_client_id", lib.DefaultConfig.GCPOAuthClientID)
 
@@ -224,24 +240,22 @@ func initRobotAccount(context *cli.Context, userClient *http.Client) (string, st
 		log.Fatalln(err)
 	}
 	if response.StatusCode != http.StatusOK {
-		log.Fatalf("Failed to initialize robot account: %s\n", response.Status)
+		// Will be retrying only 10 times.
+		if try > 10 {
+			log.Fatalf("Permanently failed to initialize robot account: %s\n", response.Status)
+		} else {
+			retry := try + 1
+			// We'll be waiting in the following manner=> 4, 9, 16, 25, 36, 49, 64, 81, 100, end.
+			sleep := retry * retry
+			fmt.Println("Failed: %s, retrying after %d seconds...", response.Status, sleep)
+			go func() {
+				time.Sleep(time.Second * time.Duration(sleep))
+			}()
+			// Calling again
+			return registerRobotAccount(context, userClient, retry)
+		}
 	}
-
-	var robotInit struct {
-		Success  bool   `json:"success"`
-		Message  string `json:"message"`
-		XMPPJID  string `json:"xmpp_jid"`
-		AuthCode string `json:"authorization_code"`
-	}
-
-	if err = json.NewDecoder(response.Body).Decode(&robotInit); err != nil {
-		log.Fatalln(err)
-	}
-	if !robotInit.Success {
-		log.Fatalf("Failed to initialize robot account: %s\n", robotInit.Message)
-	}
-
-	return robotInit.XMPPJID, robotInit.AuthCode
+	return response
 }
 
 func verifyRobotAccount(authCode string) string {
