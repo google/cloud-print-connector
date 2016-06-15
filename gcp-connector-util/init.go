@@ -38,7 +38,16 @@ var commonInitFlags = []cli.Flag{
 		Usage: "GCP API timeout, for debugging",
 		Value: 30 * time.Second,
 	},
-
+	cli.StringFlag{
+		Name:  "gcp-oauth-client-id",
+		Usage: "Identifies the CUPS Connector to the Google Cloud Print cloud service",
+		Value: lib.DefaultConfig.GCPOAuthClientID,
+	},
+	cli.StringFlag{
+		Name:  "gcp-oauth-client-secret",
+		Usage: "Goes along with the Client ID. Not actually secret",
+		Value: lib.DefaultConfig.GCPOAuthClientSecret,
+	},
 	cli.StringFlag{
 		Name:  "gcp-user-refresh-token",
 		Usage: "GCP user refresh token, useful when managing many connectors",
@@ -119,7 +128,7 @@ var commonInitFlags = []cli.Flag{
 // https://developers.google.com/identity/protocols/OAuth2ForDevices
 func getUserClientFromUser(context *cli.Context) (*http.Client, string) {
 	form := url.Values{
-		"client_id": {lib.DefaultConfig.GCPOAuthClientID},
+		"client_id": {context.String("gcp-oauth-client-id")},
 		"scope":     {gcp.ScopeCloudPrint},
 	}
 	response, err := http.PostForm(gcpOAuthDeviceCodeURL, form)
@@ -144,8 +153,8 @@ func getUserClientFromUser(context *cli.Context) (*http.Client, string) {
 
 func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int) (*http.Client, string) {
 	config := oauth2.Config{
-		ClientID:     lib.DefaultConfig.GCPOAuthClientID,
-		ClientSecret: lib.DefaultConfig.GCPOAuthClientSecret,
+		ClientID:     context.String("gcp-oauth-client-id"),
+		ClientSecret: context.String("gcp-oauth-client-secret"),
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  lib.DefaultConfig.GCPOAuthAuthURL,
 			TokenURL: lib.DefaultConfig.GCPOAuthTokenURL,
@@ -158,8 +167,8 @@ func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int
 		time.Sleep(time.Duration(interval) * time.Second)
 
 		form := url.Values{
-			"client_id":     {lib.DefaultConfig.GCPOAuthClientID},
-			"client_secret": {lib.DefaultConfig.GCPOAuthClientSecret},
+			"client_id":     {context.String("gcp-oauth-client-id")},
+			"client_secret": {context.String("gcp-oauth-client-secret")},
 			"code":          {deviceCode},
 			"grant_type":    {gcpOAuthGrantTypeDevice},
 		}
@@ -196,8 +205,8 @@ func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int
 // getUserClientFromToken creates a user client with just a refresh token.
 func getUserClientFromToken(context *cli.Context) *http.Client {
 	config := &oauth2.Config{
-		ClientID:     lib.DefaultConfig.GCPOAuthClientID,
-		ClientSecret: lib.DefaultConfig.GCPOAuthClientSecret,
+		ClientID:     context.String("gcp-oauth-client-id"),
+		ClientSecret: context.String("gcp-oauth-client-secret"),
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  lib.DefaultConfig.GCPOAuthAuthURL,
 			TokenURL: lib.DefaultConfig.GCPOAuthTokenURL,
@@ -216,7 +225,7 @@ func getUserClientFromToken(context *cli.Context) *http.Client {
 // initRobotAccount creates a GCP robot account for this connector.
 func initRobotAccount(context *cli.Context, userClient *http.Client) (string, string) {
 	params := url.Values{}
-	params.Set("oauth_client_id", lib.DefaultConfig.GCPOAuthClientID)
+	params.Set("oauth_client_id", context.String("gcp-oauth-client-id"))
 
 	url := fmt.Sprintf("%s%s?%s", lib.DefaultConfig.GCPBaseURL, "createrobot", params.Encode())
 	response, err := userClient.Get(url)
@@ -244,10 +253,10 @@ func initRobotAccount(context *cli.Context, userClient *http.Client) (string, st
 	return robotInit.XMPPJID, robotInit.AuthCode
 }
 
-func verifyRobotAccount(authCode string) string {
+func verifyRobotAccount(context *cli.Context, authCode string) string {
 	config := &oauth2.Config{
-		ClientID:     lib.DefaultConfig.GCPOAuthClientID,
-		ClientSecret: lib.DefaultConfig.GCPOAuthClientSecret,
+		ClientID:     context.String("gcp-oauth-client-id"),
+		ClientSecret: context.String("gcp-oauth-client-secret"),
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  lib.DefaultConfig.GCPOAuthAuthURL,
 			TokenURL: lib.DefaultConfig.GCPOAuthTokenURL,
@@ -266,7 +275,7 @@ func verifyRobotAccount(authCode string) string {
 
 func createRobotAccount(context *cli.Context, userClient *http.Client) (string, string) {
 	xmppJID, authCode := initRobotAccount(context, userClient)
-	token := verifyRobotAccount(authCode)
+	token := verifyRobotAccount(context, authCode)
 
 	return xmppJID, token
 }
