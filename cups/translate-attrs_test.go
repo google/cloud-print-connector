@@ -13,8 +13,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/log"
+	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/log"
 )
 
 func TestGetUUID(t *testing.T) {

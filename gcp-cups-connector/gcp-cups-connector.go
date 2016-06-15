@@ -20,14 +20,14 @@ import (
 
 	"github.com/codegangsta/cli"
 	"github.com/coreos/go-systemd/journal"
-	"github.com/google/cups-connector/cups"
-	"github.com/google/cups-connector/gcp"
-	"github.com/google/cups-connector/lib"
-	"github.com/google/cups-connector/log"
-	"github.com/google/cups-connector/manager"
-	"github.com/google/cups-connector/monitor"
-	"github.com/google/cups-connector/privet"
-	"github.com/google/cups-connector/xmpp"
+	"github.com/google/cloud-print-connector/cups"
+	"github.com/google/cloud-print-connector/gcp"
+	"github.com/google/cloud-print-connector/lib"
+	"github.com/google/cloud-print-connector/log"
+	"github.com/google/cloud-print-connector/manager"
+	"github.com/google/cloud-print-connector/monitor"
+	"github.com/google/cloud-print-connector/privet"
+	"github.com/google/cloud-print-connector/xmpp"
 )
 
 func main() {

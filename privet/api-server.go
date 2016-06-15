@@ -20,9 +20,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/lib"
-	"github.com/google/cups-connector/log"
+	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/lib"
+	"github.com/google/cloud-print-connector/log"
 )
 
 var (
@@ -381,7 +381,7 @@ func (api *privetAPI) submitdoc(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, err := ioutil.TempFile("", "cups-connector-privet-")
+	file, err := ioutil.TempFile("", "cloud-print-connector-privet-")
 	if err != nil {
 		log.Errorf("Failed to create file for new Privet job: %s", err)
 		w.WriteHeader(http.StatusInternalServerError)

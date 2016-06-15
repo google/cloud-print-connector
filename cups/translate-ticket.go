@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/lib"
+	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/lib"
 )
 
 var rVendorIDKeyValue = regexp.MustCompile(

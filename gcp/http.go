@@ -16,7 +16,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/google/cups-connector/lib"
+	"github.com/google/cloud-print-connector/lib"
 
 	"golang.org/x/oauth2"
 )

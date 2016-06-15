@@ -44,10 +44,10 @@
   <Fragment>
     <!-- Group of components that are our main application items -->
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER" Source="!(wix.SourceDir)">
-      <Component Id="CUPS_Connector_exe">
+      <Component Id="Cloud_Print_Connector_exe">
         <File Name="gcp-windows-connector.exe" KeyPath="yes" />
       </Component>
-      <Component Id="CUPS_Connector_Util_exe">
+      <Component Id="Cloud_Print_Connector_Util_exe">
         <File Id="ConnectorUtil" Name="gcp-connector-util.exe" KeyPath="yes" />
       </Component>
     </ComponentGroup>
@@ -64,9 +64,9 @@
       <RemoveFiles/>
       <Custom Action="SilentInit" Before="RegisterProduct">INITCMD</Custom>
       <Custom Action="InstallService" After="SilentInit">NOT NO_INSTALL_SERVICE AND NOT Installed</Custom>
-      <Custom Action="StartService" After="InstallService">$CUPS_Connector_exe=3 AND NOT (NO_INSTALL_SERVICE OR NO_START_SERVICE)</Custom>
-      <Custom Action="StopService" Before="RemoveFiles">?CUPS_Connector_exe=3</Custom>
-      <Custom Action="UninstallService" After="StopService">$CUPS_Connector_exe=2</Custom>
+      <Custom Action="StartService" After="InstallService">$Cloud_Print_Connector_exe=3 AND NOT (NO_INSTALL_SERVICE OR NO_START_SERVICE)</Custom>
+      <Custom Action="StopService" Before="RemoveFiles">?Cloud_Print_Connector_exe=3</Custom>
+      <Custom Action="UninstallService" After="StopService">$Cloud_Print_Connector_exe=2</Custom>
     </InstallExecuteSequence>
 
     <CustomAction Id="SilentInit" FileKey="ConnectorUtil" Execute="deferred" ExeCommand="[INITCMD]" />

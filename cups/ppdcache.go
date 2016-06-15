@@ -19,7 +19,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/google/cups-connector/cdd"
+	"github.com/google/cloud-print-connector/cdd"
 )
 
 // This isn't really a cache, but an interface to CUPS' quirky PPD interface.

@@ -171,12 +171,12 @@ var DefaultConfig = Config{
 	LocalPortLow:  26000,
 	LocalPortHigh: 26999,
 
-	LogFileName:         "/tmp/cups-connector",
+	LogFileName:         "/tmp/cloud-print-connector",
 	LogFileMaxMegabytes: 1,
 	LogMaxFiles:         3,
 	LogToJournal:        PointerToBool(false),
 
-	MonitorSocketFilename: "/tmp/cups-connector-monitor.sock",
+	MonitorSocketFilename: "/tmp/cloud-print-connector-monitor.sock",
 
 	CUPSMaxConnections: 50,
 	CUPSConnectTimeout: "5s",

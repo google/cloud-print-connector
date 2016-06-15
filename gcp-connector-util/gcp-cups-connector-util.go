@@ -17,9 +17,9 @@ import (
 	"sync"
 
 	"github.com/codegangsta/cli"
-	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/gcp"
-	"github.com/google/cups-connector/lib"
+	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/gcp"
+	"github.com/google/cloud-print-connector/lib"
 )
 
 var commonCommands = []cli.Command{

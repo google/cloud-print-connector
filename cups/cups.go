@@ -26,9 +26,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/lib"
-	"github.com/google/cups-connector/log"
+	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/lib"
+	"github.com/google/cloud-print-connector/log"
 )
 
 const (
@@ -275,13 +275,13 @@ func (c *CUPS) filterBlacklistPrinters(printers []lib.Printer) []lib.Printer {
 
 // filterClassPrinters removes class printers from the slice.
 func filterClassPrinters(printers []lib.Printer) []lib.Printer {
-        result := make([]lib.Printer, 0, len(printers))
-        for i := range printers {
-                if !lib.PrinterIsClass(printers[i]) {
-                        result = append(result, printers[i])
-                }
-        }
-        return result
+	result := make([]lib.Printer, 0, len(printers))
+	for i := range printers {
+		if !lib.PrinterIsClass(printers[i]) {
+			result = append(result, printers[i])
+		}
+	}
+	return result
 }
 
 // filterRawPrinters removes raw printers from the slice.

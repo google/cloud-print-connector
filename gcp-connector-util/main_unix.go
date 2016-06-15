@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/codegangsta/cli"
-	"github.com/google/cups-connector/lib"
+	"github.com/google/cloud-print-connector/lib"
 )
 
 var unixInitFlags = []cli.Flag{
@@ -98,8 +98,8 @@ func main() {
 	log.SetFlags(0)
 
 	app := cli.NewApp()
-	app.Name = "gcp-cups-connector-util"
-	app.Usage = "Google Cloud Print CUPS Connector utility tools"
+	app.Name = "gcp-connector-util"
+	app.Usage = "Google Cloud Print Connector utility tools"
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
 		lib.ConfigFilenameFlag,

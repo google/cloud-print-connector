@@ -35,7 +35,7 @@ var (
 	}
 
 	// To be populated by something like:
-	// go install -ldflags "-X github.com/google/cups-connector/lib.BuildDate=`date +%Y.%m.%d`"
+	// go install -ldflags "-X github.com/google/cloud-print-connector/lib.BuildDate=`date +%Y.%m.%d`"
 	BuildDate = "DEV"
 
 	ShortName = platformName + " Connector " + BuildDate + "-" + runtime.GOOS
