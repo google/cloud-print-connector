@@ -20,6 +20,7 @@ import (
 	"unsafe"
 
 	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/lib"
 )
 
 // This isn't really a cache, but an interface to CUPS' quirky PPD interface.
@@ -65,7 +66,7 @@ func (pc *ppdCache) removePPD(printername string) {
 	}
 }
 
-func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptionSection, string, string, error) {
+func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptionSection, string, string, lib.DuplexVendorMap, error) {
 	pc.cacheMutex.RLock()
 	pce, exists := pc.cache[printername]
 	pc.cacheMutex.RUnlock()
@@ -73,11 +74,11 @@ func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptio
 	if !exists {
 		pce, err := createPPDCacheEntry(printername)
 		if err != nil {
-			return nil, "", "", err
+			return nil, "", "", nil, err
 		}
 		if err = pce.refresh(pc.cc); err != nil {
 			pce.free()
-			return nil, "", "", err
+			return nil, "", "", nil, err
 		}
 
 		pc.cacheMutex.Lock()
@@ -89,17 +90,17 @@ func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptio
 			go firstPCE.free()
 		}
 		pc.cache[printername] = pce
-		description, manufacturer, model := pce.getFields()
-		return &description, manufacturer, model, nil
+		description, manufacturer, model, duplexMap := pce.getFields()
+		return &description, manufacturer, model, duplexMap, nil
 
 	} else {
 		if err := pce.refresh(pc.cc); err != nil {
 			delete(pc.cache, printername)
 			pce.free()
-			return nil, "", "", err
+			return nil, "", "", nil, err
 		}
-		description, manufacturer, model := pce.getFields()
-		return &description, manufacturer, model, nil
+		description, manufacturer, model, duplexMap := pce.getFields()
+		return &description, manufacturer, model, duplexMap, nil
 	}
 }
 
@@ -110,6 +111,7 @@ type ppdCacheEntry struct {
 	description  cdd.PrinterDescriptionSection
 	manufacturer string
 	model        string
+	duplexMap    lib.DuplexVendorMap
 	mutex        sync.Mutex
 }
 
@@ -127,10 +129,10 @@ func createPPDCacheEntry(name string) (*ppdCacheEntry, error) {
 
 // getFields gets externally-interesting fields from this ppdCacheEntry under
 // a lock. The description is passed as a value (copy), to protect the cached copy.
-func (pce *ppdCacheEntry) getFields() (cdd.PrinterDescriptionSection, string, string) {
+func (pce *ppdCacheEntry) getFields() (cdd.PrinterDescriptionSection, string, string, lib.DuplexVendorMap) {
 	pce.mutex.Lock()
 	defer pce.mutex.Unlock()
-	return pce.description, pce.manufacturer, pce.model
+	return pce.description, pce.manufacturer, pce.model, pce.duplexMap
 }
 
 // free frees the memory that stores the name and buffer fields, and deletes
@@ -176,7 +178,7 @@ func (pce *ppdCacheEntry) refresh(cc *cupsCore) error {
 		return err
 	}
 
-	description, manufacturer, model := translatePPD(w.String())
+	description, manufacturer, model, duplexMap := translatePPD(w.String())
 	if description == nil || manufacturer == "" || model == "" {
 		return errors.New("Failed to parse PPD")
 	}
@@ -184,6 +186,7 @@ func (pce *ppdCacheEntry) refresh(cc *cupsCore) error {
 	pce.description = *description
 	pce.manufacturer = manufacturer
 	pce.model = model
+	pce.duplexMap = duplexMap
 
 	return nil
 }

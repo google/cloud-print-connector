@@ -48,20 +48,17 @@ func TestTranslateTicket(t *testing.T) {
 			Color: &cdd.Color{
 				Option: []cdd.ColorOption{
 					cdd.ColorOption{
-						VendorID: "zebra-stripes",
+						VendorID: "ColorModel:zebra-stripes",
 						Type:     cdd.ColorTypeCustomMonochrome,
 					},
 				},
-				VendorKey: "ColorModel",
 			},
 			Duplex: &cdd.Duplex{
 				Option: []cdd.DuplexOption{
 					cdd.DuplexOption{
-						Type:     cdd.DuplexNoDuplex,
-						VendorID: "None",
+						Type: cdd.DuplexNoDuplex,
 					},
 				},
-				VendorKey: "Duplex",
 			},
 			PageOrientation: &cdd.PageOrientation{},
 			Copies:          &cdd.Copies{},
@@ -80,13 +77,16 @@ func TestTranslateTicket(t *testing.T) {
 			Collate:      &cdd.Collate{},
 			ReverseOrder: &cdd.ReverseOrder{},
 		},
+		DuplexMap: lib.DuplexVendorMap{
+			cdd.DuplexNoDuplex: "Duplex:None",
+		},
 	}
 	ticket.Print = cdd.PrintTicketSection{
 		VendorTicketItem: []cdd.VendorTicketItem{
 			cdd.VendorTicketItem{"number-up", "a"},
 			cdd.VendorTicketItem{"a:b/c:d/e", "f"},
 		},
-		Color:           &cdd.ColorTicketItem{VendorID: "zebra-stripes", Type: cdd.ColorTypeCustomMonochrome},
+		Color:           &cdd.ColorTicketItem{VendorID: "ColorModel:zebra-stripes", Type: cdd.ColorTypeCustomMonochrome},
 		Duplex:          &cdd.DuplexTicketItem{Type: cdd.DuplexNoDuplex},
 		PageOrientation: &cdd.PageOrientationTicketItem{Type: cdd.PageOrientationAuto},
 		Copies:          &cdd.CopiesTicketItem{Copies: 2},
@@ -139,20 +139,17 @@ func TestTranslateTicket(t *testing.T) {
 		Color: &cdd.Color{
 			Option: []cdd.ColorOption{
 				cdd.ColorOption{
-					VendorID: "color",
+					VendorID: "print-color-mode:color",
 					Type:     cdd.ColorTypeStandardColor,
 				},
 			},
-			VendorKey: "print-color-mode",
 		},
 		Duplex: &cdd.Duplex{
 			Option: []cdd.DuplexOption{
 				cdd.DuplexOption{
-					Type:     cdd.DuplexLongEdge,
-					VendorID: "Single",
+					Type: cdd.DuplexLongEdge,
 				},
 			},
-			VendorKey: "KMDuplex",
 		},
 		PageOrientation: &cdd.PageOrientation{},
 		DPI: &cdd.DPI{
@@ -166,8 +163,11 @@ func TestTranslateTicket(t *testing.T) {
 		},
 		MediaSize: &cdd.MediaSize{},
 	}
+	printer.DuplexMap = lib.DuplexVendorMap{
+		cdd.DuplexLongEdge: "KMDuplex:Single",
+	}
 	ticket.Print = cdd.PrintTicketSection{
-		Color:           &cdd.ColorTicketItem{VendorID: "color", Type: cdd.ColorTypeStandardColor},
+		Color:           &cdd.ColorTicketItem{VendorID: "print-color-mode:color", Type: cdd.ColorTypeStandardColor},
 		Duplex:          &cdd.DuplexTicketItem{Type: cdd.DuplexLongEdge},
 		PageOrientation: &cdd.PageOrientationTicketItem{Type: cdd.PageOrientationLandscape},
 		DPI:             &cdd.DPITicketItem{100, 100, ""},
@@ -193,14 +193,13 @@ func TestTranslateTicket(t *testing.T) {
 	printer.Description.Color = &cdd.Color{
 		Option: []cdd.ColorOption{
 			cdd.ColorOption{
-				VendorID: "Gray600x600dpi",
+				VendorID: "CMAndResolution:Gray600x600dpi",
 				Type:     cdd.ColorTypeStandardColor,
 			},
 		},
-		VendorKey: "CMAndResolution",
 	}
 	ticket.Print = cdd.PrintTicketSection{
-		Color: &cdd.ColorTicketItem{VendorID: "Gray600x600dpi", Type: cdd.ColorTypeStandardColor},
+		Color: &cdd.ColorTicketItem{VendorID: "CMAndResolution:Gray600x600dpi", Type: cdd.ColorTypeStandardColor},
 	}
 	expected = map[string]string{
 		"CMAndResolution": "Gray600x600dpi",
@@ -218,14 +217,13 @@ func TestTranslateTicket(t *testing.T) {
 	printer.Description.Color = &cdd.Color{
 		Option: []cdd.ColorOption{
 			cdd.ColorOption{
-				VendorID: "Color",
+				VendorID: "SelectColor:Color",
 				Type:     cdd.ColorTypeStandardColor,
 			},
 		},
-		VendorKey: "SelectColor",
 	}
 	ticket.Print = cdd.PrintTicketSection{
-		Color: &cdd.ColorTicketItem{VendorID: "Color"},
+		Color: &cdd.ColorTicketItem{VendorID: "SelectColor:Color"},
 	}
 	expected = map[string]string{
 		"SelectColor": "Color",

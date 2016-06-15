@@ -14,13 +14,20 @@ import (
 	"testing"
 
 	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/lib"
 )
 
-func translationTest(t *testing.T, ppd string, expected *cdd.PrinterDescriptionSection) {
-	description, _, _ := translatePPD(ppd)
-	if !reflect.DeepEqual(expected, description) {
+type testdata struct {
+	Pds *cdd.PrinterDescriptionSection
+	Dm  lib.DuplexVendorMap
+}
+
+func translationTest(t *testing.T, ppd string, expected testdata) {
+	description, _, _, dm := translatePPD(ppd)
+	actual := testdata{description, dm}
+	if !reflect.DeepEqual(expected, actual) {
 		e, _ := json.Marshal(expected)
-		d, _ := json.Marshal(description)
+		d, _ := json.Marshal(actual)
 		t.Logf("expected\n %s\ngot\n %s", e, d)
 		t.Fail()
 	}
@@ -29,14 +36,17 @@ func translationTest(t *testing.T, ppd string, expected *cdd.PrinterDescriptionS
 func TestTrPrintingSpeed(t *testing.T) {
 	ppd := `*PPD-Adobe: "4.3"
 *Throughput: "30"`
-	expected := &cdd.PrinterDescriptionSection{
-		PrintingSpeed: &cdd.PrintingSpeed{
-			[]cdd.PrintingSpeedOption{
-				cdd.PrintingSpeedOption{
-					SpeedPPM: 30.0,
+	expected := testdata{
+		&cdd.PrinterDescriptionSection{
+			PrintingSpeed: &cdd.PrintingSpeed{
+				[]cdd.PrintingSpeedOption{
+					cdd.PrintingSpeedOption{
+						SpeedPPM: 30.0,
+					},
 				},
 			},
 		},
+		nil,
 	}
 	translationTest(t, ppd, expected)
 }
@@ -52,17 +62,20 @@ func TestTrMediaSize(t *testing.T) {
 *PageSize HalfLetter/5.5x8.5: ""
 *PageSize w81h252/Address - 1 1/8 x 3 1/2":         "<</PageSize[81 252]/ImagingBBox null>>setpagedevice"
 *CloseUI: *PageSize`
-	expected := &cdd.PrinterDescriptionSection{
-		MediaSize: &cdd.MediaSize{
-			Option: []cdd.MediaSizeOption{
-				cdd.MediaSizeOption{cdd.MediaSizeISOA3, mmToMicrons(297), mmToMicrons(420), false, false, "", "A3", cdd.NewLocalizedString("A3")},
-				cdd.MediaSizeOption{cdd.MediaSizeISOB5, mmToMicrons(176), mmToMicrons(250), false, false, "", "ISOB5", cdd.NewLocalizedString("B5 (ISO)")},
-				cdd.MediaSizeOption{cdd.MediaSizeJISB5, mmToMicrons(182), mmToMicrons(257), false, false, "", "B5", cdd.NewLocalizedString("B5 (JIS)")},
-				cdd.MediaSizeOption{cdd.MediaSizeNALetter, inchesToMicrons(8.5), inchesToMicrons(11), false, true, "", "Letter", cdd.NewLocalizedString("Letter")},
-				cdd.MediaSizeOption{cdd.MediaSizeCustom, inchesToMicrons(5.5), inchesToMicrons(8.5), false, false, "", "HalfLetter", cdd.NewLocalizedString("5.5x8.5")},
-				cdd.MediaSizeOption{cdd.MediaSizeCustom, pointsToMicrons(81), pointsToMicrons(252), false, false, "", "w81h252", cdd.NewLocalizedString(`Address - 1 1/8 x 3 1/2"`)},
+	expected := testdata{
+		&cdd.PrinterDescriptionSection{
+			MediaSize: &cdd.MediaSize{
+				Option: []cdd.MediaSizeOption{
+					cdd.MediaSizeOption{cdd.MediaSizeISOA3, mmToMicrons(297), mmToMicrons(420), false, false, "", "A3", cdd.NewLocalizedString("A3")},
+					cdd.MediaSizeOption{cdd.MediaSizeISOB5, mmToMicrons(176), mmToMicrons(250), false, false, "", "ISOB5", cdd.NewLocalizedString("B5 (ISO)")},
+					cdd.MediaSizeOption{cdd.MediaSizeJISB5, mmToMicrons(182), mmToMicrons(257), false, false, "", "B5", cdd.NewLocalizedString("B5 (JIS)")},
+					cdd.MediaSizeOption{cdd.MediaSizeNALetter, inchesToMicrons(8.5), inchesToMicrons(11), false, true, "", "Letter", cdd.NewLocalizedString("Letter")},
+					cdd.MediaSizeOption{cdd.MediaSizeCustom, inchesToMicrons(5.5), inchesToMicrons(8.5), false, false, "", "HalfLetter", cdd.NewLocalizedString("5.5x8.5")},
+					cdd.MediaSizeOption{cdd.MediaSizeCustom, pointsToMicrons(81), pointsToMicrons(252), false, false, "", "w81h252", cdd.NewLocalizedString(`Address - 1 1/8 x 3 1/2"`)},
+				},
 			},
 		},
+		nil,
 	}
 	translationTest(t, ppd, expected)
 }
@@ -74,14 +87,16 @@ func TestTrColor(t *testing.T) {
 *ColorModel CMYK/Color: "(cmyk) RCsetdevicecolor"
 *ColorModel Gray/Black and White: "(gray) RCsetdevicecolor"
 *CloseUI: *ColorModel`
-	expected := &cdd.PrinterDescriptionSection{
-		Color: &cdd.Color{
-			Option: []cdd.ColorOption{
-				cdd.ColorOption{"CMYK", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
-				cdd.ColorOption{"Gray", cdd.ColorTypeStandardMonochrome, "", true, cdd.NewLocalizedString("Black and White")},
+	expected := testdata{
+		&cdd.PrinterDescriptionSection{
+			Color: &cdd.Color{
+				Option: []cdd.ColorOption{
+					cdd.ColorOption{"ColorModel:CMYK", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
+					cdd.ColorOption{"ColorModel:Gray", cdd.ColorTypeStandardMonochrome, "", true, cdd.NewLocalizedString("Black and White")},
+				},
 			},
-			VendorKey: "ColorModel",
 		},
+		nil,
 	}
 	translationTest(t, ppd, expected)
 
@@ -97,14 +112,16 @@ func TestTrColor(t *testing.T) {
 *End
 *CloseUI: *CMAndResolution
 `
-	expected = &cdd.PrinterDescriptionSection{
-		Color: &cdd.Color{
-			Option: []cdd.ColorOption{
-				cdd.ColorOption{"CMYKImageRET3600", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color")},
-				cdd.ColorOption{"Gray600x600dpi", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Gray")},
+	expected = testdata{
+		&cdd.PrinterDescriptionSection{
+			Color: &cdd.Color{
+				Option: []cdd.ColorOption{
+					cdd.ColorOption{"CMAndResolution:CMYKImageRET3600", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color")},
+					cdd.ColorOption{"CMAndResolution:Gray600x600dpi", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Gray")},
+				},
 			},
-			VendorKey: "CMAndResolution",
 		},
+		nil,
 	}
 	translationTest(t, ppd, expected)
 
@@ -117,15 +134,17 @@ func TestTrColor(t *testing.T) {
 *CMAndResolution Gray600x600dpi/On - 600 dpi: "<</ProcessColorModel /DeviceGray /HWResolution [600 600] /PreRenderingEnhance false>> setpagedevice"
 *CloseUI: *CMAndResolution
 `
-	expected = &cdd.PrinterDescriptionSection{
-		Color: &cdd.Color{
-			Option: []cdd.ColorOption{
-				cdd.ColorOption{"CMYKImageRET2400", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color, ImageRET 2400")},
-				cdd.ColorOption{"Gray1200x1200dpi", cdd.ColorTypeCustomMonochrome, "", false, cdd.NewLocalizedString("Gray, ProRes 1200")},
-				cdd.ColorOption{"Gray600x600dpi", cdd.ColorTypeCustomMonochrome, "", false, cdd.NewLocalizedString("Gray, 600 dpi")},
+	expected = testdata{
+		&cdd.PrinterDescriptionSection{
+			Color: &cdd.Color{
+				Option: []cdd.ColorOption{
+					cdd.ColorOption{"CMAndResolution:CMYKImageRET2400", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color, ImageRET 2400")},
+					cdd.ColorOption{"CMAndResolution:Gray1200x1200dpi", cdd.ColorTypeCustomMonochrome, "", false, cdd.NewLocalizedString("Gray, ProRes 1200")},
+					cdd.ColorOption{"CMAndResolution:Gray600x600dpi", cdd.ColorTypeCustomMonochrome, "", false, cdd.NewLocalizedString("Gray, 600 dpi")},
+				},
 			},
-			VendorKey: "CMAndResolution",
 		},
+		nil,
 	}
 	translationTest(t, ppd, expected)
 
@@ -137,14 +156,16 @@ func TestTrColor(t *testing.T) {
 *SelectColor Grayscale/Grayscale:  "<</ProcessColorModel /DeviceGray>> setpagedevice"
 *CloseUI: *SelectColor
 `
-	expected = &cdd.PrinterDescriptionSection{
-		Color: &cdd.Color{
-			Option: []cdd.ColorOption{
-				cdd.ColorOption{"Color", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color")},
-				cdd.ColorOption{"Grayscale", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Grayscale")},
+	expected = testdata{
+		&cdd.PrinterDescriptionSection{
+			Color: &cdd.Color{
+				Option: []cdd.ColorOption{
+					cdd.ColorOption{"SelectColor:Color", cdd.ColorTypeStandardColor, "", true, cdd.NewLocalizedString("Color")},
+					cdd.ColorOption{"SelectColor:Grayscale", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Grayscale")},
+				},
 			},
-			VendorKey: "SelectColor",
 		},
+		nil,
 	}
 	translationTest(t, ppd, expected)
 }
@@ -156,13 +177,18 @@ func TestTrDuplex(t *testing.T) {
 *Duplex None/Off: ""
 *Duplex DuplexNoTumble/Long Edge: ""
 *CloseUI: *Duplex`
-	expected := &cdd.PrinterDescriptionSection{
-		Duplex: &cdd.Duplex{
-			Option: []cdd.DuplexOption{
-				cdd.DuplexOption{cdd.DuplexNoDuplex, true, "None"},
-				cdd.DuplexOption{cdd.DuplexLongEdge, false, "DuplexNoTumble"},
+	expected := testdata{
+		&cdd.PrinterDescriptionSection{
+			Duplex: &cdd.Duplex{
+				Option: []cdd.DuplexOption{
+					cdd.DuplexOption{cdd.DuplexNoDuplex, true},
+					cdd.DuplexOption{cdd.DuplexLongEdge, false},
+				},
 			},
-			VendorKey: "Duplex",
+		},
+		lib.DuplexVendorMap{
+			cdd.DuplexNoDuplex: "Duplex:None",
+			cdd.DuplexLongEdge: "Duplex:DuplexNoTumble",
 		},
 	}
 	translationTest(t, ppd, expected)
@@ -184,14 +210,20 @@ func TestTrKMDuplex(t *testing.T) {
 *End
 *CloseUI: *KMDuplex
 `
-	expected := &cdd.PrinterDescriptionSection{
-		Duplex: &cdd.Duplex{
-			Option: []cdd.DuplexOption{
-				cdd.DuplexOption{cdd.DuplexNoDuplex, false, "Single"},
-				cdd.DuplexOption{cdd.DuplexLongEdge, true, "Double"},
-				cdd.DuplexOption{cdd.DuplexShortEdge, false, "Booklet"},
+	expected := testdata{
+		&cdd.PrinterDescriptionSection{
+			Duplex: &cdd.Duplex{
+				Option: []cdd.DuplexOption{
+					cdd.DuplexOption{cdd.DuplexNoDuplex, false},
+					cdd.DuplexOption{cdd.DuplexLongEdge, true},
+					cdd.DuplexOption{cdd.DuplexShortEdge, false},
+				},
 			},
-			VendorKey: "KMDuplex",
+		},
+		lib.DuplexVendorMap{
+			cdd.DuplexNoDuplex:  "KMDuplex:Single",
+			cdd.DuplexLongEdge:  "KMDuplex:Double",
+			cdd.DuplexShortEdge: "KMDuplex:Booklet",
 		},
 	}
 	translationTest(t, ppd, expected)
@@ -204,13 +236,18 @@ func TestTrKMDuplex(t *testing.T) {
 *KMDuplex True/On:  "<< /Duplex true >> setpagedevice"
 *CloseUI: *KMDuplex
 `
-	expected = &cdd.PrinterDescriptionSection{
-		Duplex: &cdd.Duplex{
-			Option: []cdd.DuplexOption{
-				cdd.DuplexOption{cdd.DuplexNoDuplex, true, "False"},
-				cdd.DuplexOption{cdd.DuplexLongEdge, false, "True"},
+	expected = testdata{
+		&cdd.PrinterDescriptionSection{
+			Duplex: &cdd.Duplex{
+				Option: []cdd.DuplexOption{
+					cdd.DuplexOption{cdd.DuplexNoDuplex, true},
+					cdd.DuplexOption{cdd.DuplexLongEdge, false},
+				},
 			},
-			VendorKey: "KMDuplex",
+		},
+		lib.DuplexVendorMap{
+			cdd.DuplexNoDuplex: "KMDuplex:False",
+			cdd.DuplexLongEdge: "KMDuplex:True",
 		},
 	}
 	translationTest(t, ppd, expected)
@@ -224,14 +261,17 @@ func TestTrDPI(t *testing.T) {
 *Resolution 1200x600dpi/1200x600 dpi: ""
 *Resolution 1200x1200dpi/1200 dpi: ""
 *CloseUI: *Resolution`
-	expected := &cdd.PrinterDescriptionSection{
-		DPI: &cdd.DPI{
-			Option: []cdd.DPIOption{
-				cdd.DPIOption{600, 600, true, "", "600dpi", cdd.NewLocalizedString("600 dpi")},
-				cdd.DPIOption{1200, 600, false, "", "1200x600dpi", cdd.NewLocalizedString("1200x600 dpi")},
-				cdd.DPIOption{1200, 1200, false, "", "1200x1200dpi", cdd.NewLocalizedString("1200 dpi")},
+	expected := testdata{
+		&cdd.PrinterDescriptionSection{
+			DPI: &cdd.DPI{
+				Option: []cdd.DPIOption{
+					cdd.DPIOption{600, 600, true, "", "600dpi", cdd.NewLocalizedString("600 dpi")},
+					cdd.DPIOption{1200, 600, false, "", "1200x600dpi", cdd.NewLocalizedString("1200x600 dpi")},
+					cdd.DPIOption{1200, 1200, false, "", "1200x1200dpi", cdd.NewLocalizedString("1200 dpi")},
+				},
 			},
 		},
+		nil,
 	}
 	translationTest(t, ppd, expected)
 }
@@ -245,21 +285,24 @@ func TestTrInputSlot(t *testing.T) {
 *OutputBin Bin1/Internal Tray 2: ""
 *OutputBin External/External Tray: ""
 *CloseUI: *OutputBin`
-	expected := &cdd.PrinterDescriptionSection{
-		VendorCapability: &[]cdd.VendorCapability{
-			cdd.VendorCapability{
-				ID:                   "OutputBin",
-				Type:                 cdd.VendorCapabilitySelect,
-				DisplayNameLocalized: cdd.NewLocalizedString("Destination"),
-				SelectCap: &cdd.SelectCapability{
-					Option: []cdd.SelectCapabilityOption{
-						cdd.SelectCapabilityOption{"Standard", "", true, cdd.NewLocalizedString("Internal Tray 1")},
-						cdd.SelectCapabilityOption{"Bin1", "", false, cdd.NewLocalizedString("Internal Tray 2")},
-						cdd.SelectCapabilityOption{"External", "", false, cdd.NewLocalizedString("External Tray")},
+	expected := testdata{
+		&cdd.PrinterDescriptionSection{
+			VendorCapability: &[]cdd.VendorCapability{
+				cdd.VendorCapability{
+					ID:                   "OutputBin",
+					Type:                 cdd.VendorCapabilitySelect,
+					DisplayNameLocalized: cdd.NewLocalizedString("Destination"),
+					SelectCap: &cdd.SelectCapability{
+						Option: []cdd.SelectCapabilityOption{
+							cdd.SelectCapabilityOption{"Standard", "", true, cdd.NewLocalizedString("Internal Tray 1")},
+							cdd.SelectCapabilityOption{"Bin1", "", false, cdd.NewLocalizedString("Internal Tray 2")},
+							cdd.SelectCapabilityOption{"External", "", false, cdd.NewLocalizedString("External Tray")},
+						},
 					},
 				},
 			},
 		},
+		nil,
 	}
 	translationTest(t, ppd, expected)
 }
@@ -272,21 +315,24 @@ func TestTrPrintQuality(t *testing.T) {
 *HPPrintQuality 600dpi/600 dpi: ""
 *HPPrintQuality ProRes1200/ProRes 1200: ""
 *CloseUI: *HPPrintQuality`
-	expected := &cdd.PrinterDescriptionSection{
-		VendorCapability: &[]cdd.VendorCapability{
-			cdd.VendorCapability{
-				ID:                   "HPPrintQuality",
-				Type:                 cdd.VendorCapabilitySelect,
-				DisplayNameLocalized: cdd.NewLocalizedString("Print Quality"),
-				SelectCap: &cdd.SelectCapability{
-					Option: []cdd.SelectCapabilityOption{
-						cdd.SelectCapabilityOption{"FastRes1200", "", true, cdd.NewLocalizedString("FastRes 1200")},
-						cdd.SelectCapabilityOption{"600dpi", "", false, cdd.NewLocalizedString("600 dpi")},
-						cdd.SelectCapabilityOption{"ProRes1200", "", false, cdd.NewLocalizedString("ProRes 1200")},
+	expected := testdata{
+		&cdd.PrinterDescriptionSection{
+			VendorCapability: &[]cdd.VendorCapability{
+				cdd.VendorCapability{
+					ID:                   "HPPrintQuality",
+					Type:                 cdd.VendorCapabilitySelect,
+					DisplayNameLocalized: cdd.NewLocalizedString("Print Quality"),
+					SelectCap: &cdd.SelectCapability{
+						Option: []cdd.SelectCapabilityOption{
+							cdd.SelectCapabilityOption{"FastRes1200", "", true, cdd.NewLocalizedString("FastRes 1200")},
+							cdd.SelectCapabilityOption{"600dpi", "", false, cdd.NewLocalizedString("600 dpi")},
+							cdd.SelectCapabilityOption{"ProRes1200", "", false, cdd.NewLocalizedString("ProRes 1200")},
+						},
 					},
 				},
 			},
 		},
+		nil,
 	}
 	translationTest(t, ppd, expected)
 }
@@ -318,17 +364,20 @@ func TestRicohLockedPrint(t *testing.T) {
 *CustomLockedPrintPassword True/Custom Password: ""
 *ParamCustomLockedPrintPassword Password: 1 passcode 4 8
 `
-	expected := &cdd.PrinterDescriptionSection{
-		VendorCapability: &[]cdd.VendorCapability{
-			cdd.VendorCapability{
-				ID:                   "JobType:LockedPrint/LockedPrintPassword",
-				Type:                 cdd.VendorCapabilityTypedValue,
-				DisplayNameLocalized: cdd.NewLocalizedString("Password (4 numbers)"),
-				TypedValueCap: &cdd.TypedValueCapability{
-					ValueType: cdd.TypedValueCapabilityTypeString,
+	expected := testdata{
+		&cdd.PrinterDescriptionSection{
+			VendorCapability: &[]cdd.VendorCapability{
+				cdd.VendorCapability{
+					ID:                   "JobType:LockedPrint/LockedPrintPassword",
+					Type:                 cdd.VendorCapabilityTypedValue,
+					DisplayNameLocalized: cdd.NewLocalizedString("Password (4 numbers)"),
+					TypedValueCap: &cdd.TypedValueCapability{
+						ValueType: cdd.TypedValueCapabilityTypeString,
+					},
 				},
 			},
 		},
+		nil,
 	}
 	translationTest(t, ppd, expected)
 }
