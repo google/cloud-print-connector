@@ -9,8 +9,6 @@ https://developers.google.com/open-source/licenses/bsd
 package lib
 
 import (
-	"bytes"
-	"encoding/json"
 	"reflect"
 	"regexp"
 
@@ -18,6 +16,9 @@ import (
 )
 
 type PrinterState uint8
+
+// DuplexVendorMap maps a DuplexType to a CUPS key:value option string for a given printer.
+type DuplexVendorMap map[cdd.DuplexType]string
 
 // CUPS: cups_dest_t; GCP: /register and /update interfaces
 type Printer struct {
@@ -36,6 +37,7 @@ type Printer struct {
 	Description        *cdd.PrinterDescriptionSection // CUPS: translated PPD;              GCP: capabilities field
 	CapsHash           string                         // CUPS: hash of PPD;                 GCP: capsHash field
 	Tags               map[string]string              // CUPS: all printer attributes;      GCP: repeated tag field
+	DuplexMap          DuplexVendorMap                // CUPS: PPD;
 	NativeJobSemaphore *Semaphore
 	QuotaEnabled       bool
 	DailyQuota         int
@@ -85,6 +87,7 @@ type PrinterDiff struct {
 	DescriptionChanged        bool
 	CapsHashChanged           bool
 	TagsChanged               bool
+	DuplexMapChanged          bool
 	QuotaEnabledChanged       bool
 	DailyQuotaChanged         bool
 }
@@ -191,11 +194,7 @@ func diffPrinter(pn, pg *Printer) PrinterDiff {
 	if !reflect.DeepEqual(pg.State, pn.State) {
 		d.StateChanged = true
 	}
-	// PrinterDescriptionSection objects contain fields that are not exported to JSON,
-	// and therefore cause comparison with GCP's copy to incorrectly appear not equal.
-	pgDescJSON, _ := json.Marshal(pg.Description)
-	pnDescJSON, _ := json.Marshal(pn.Description)
-	if !bytes.Equal(pgDescJSON, pnDescJSON) {
+	if !reflect.DeepEqual(pg.Description, pn.Description) {
 		d.DescriptionChanged = true
 	}
 	if pg.CapsHash != pn.CapsHash {
@@ -206,6 +205,10 @@ func diffPrinter(pn, pg *Printer) PrinterDiff {
 	nativeTagshash, nativeHasTagshash := pn.Tags["tagshash"]
 	if !gcpHasTagshash || !nativeHasTagshash || gcpTagshash != nativeTagshash {
 		d.TagsChanged = true
+	}
+
+	if !reflect.DeepEqual(pg.DuplexMap, pn.DuplexMap) {
+		d.DuplexMapChanged = true
 	}
 
 	if pg.QuotaEnabled != pn.QuotaEnabled {
@@ -220,7 +223,7 @@ func diffPrinter(pn, pg *Printer) PrinterDiff {
 		d.GCPVersionChanged || d.SetupURLChanged || d.SupportURLChanged ||
 		d.UpdateURLChanged || d.ConnectorVersionChanged || d.StateChanged ||
 		d.DescriptionChanged || d.CapsHashChanged || d.TagsChanged ||
-		d.QuotaEnabledChanged || d.DailyQuotaChanged {
+		d.DuplexMapChanged || d.QuotaEnabledChanged || d.DailyQuotaChanged {
 		return d
 	}
 

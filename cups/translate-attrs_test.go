@@ -585,12 +585,11 @@ func TestConvertColorAttrs(t *testing.T) {
 	}
 	expected := &cdd.Color{
 		Option: []cdd.ColorOption{
-			cdd.ColorOption{"color", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
-			cdd.ColorOption{"monochrome", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Monochrome")},
-			cdd.ColorOption{"auto", cdd.ColorTypeAuto, "", true, cdd.NewLocalizedString("Auto")},
-			cdd.ColorOption{"zebra", cdd.ColorTypeCustomColor, "", false, cdd.NewLocalizedString("zebra")},
+			cdd.ColorOption{"print-color-mode:color", cdd.ColorTypeStandardColor, "", false, cdd.NewLocalizedString("Color")},
+			cdd.ColorOption{"print-color-mode:monochrome", cdd.ColorTypeStandardMonochrome, "", false, cdd.NewLocalizedString("Monochrome")},
+			cdd.ColorOption{"print-color-mode:auto", cdd.ColorTypeAuto, "", true, cdd.NewLocalizedString("Auto")},
+			cdd.ColorOption{"print-color-mode:zebra", cdd.ColorTypeCustomColor, "", false, cdd.NewLocalizedString("zebra")},
 		},
-		VendorKey: "print-color-mode",
 	}
 	c = convertColorAttrs(pt)
 	if !reflect.DeepEqual(expected, c) {

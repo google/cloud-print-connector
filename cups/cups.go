@@ -304,10 +304,13 @@ func (c *CUPS) addPPDDescriptionToPrinters(printers []lib.Printer) []lib.Printer
 	for i := range printers {
 		wg.Add(1)
 		go func(p *lib.Printer) {
-			if description, manufacturer, model, err := c.pc.getPPDCacheEntry(p.Name); err == nil {
+			if description, manufacturer, model, duplexMap, err := c.pc.getPPDCacheEntry(p.Name); err == nil {
 				p.Description.Absorb(description)
 				p.Manufacturer = manufacturer
 				p.Model = model
+				if duplexMap != nil {
+					p.DuplexMap = duplexMap
+				}
 				ch <- p
 			} else {
 				log.ErrorPrinter(p.Name, err)

@@ -48,22 +48,28 @@ func translateTicket(printer *lib.Printer, ticket *cdd.CloudJobTicket) (map[stri
 		}
 	}
 	if ticket.Print.Color != nil && printer.Description.Color != nil {
+		var colorString string
 		if ticket.Print.Color.VendorID != "" {
-			m[printer.Description.Color.VendorKey] = ticket.Print.Color.VendorID
+			colorString = ticket.Print.Color.VendorID
 		} else {
-			// The ticket doesn't provide the VendorID. Let's find it.
+			// The ticket doesn't provide the VendorID. Let's find it by Type.
 			for _, colorOption := range printer.Description.Color.Option {
 				if ticket.Print.Color.Type == colorOption.Type {
-					m[printer.Description.Color.VendorKey] = colorOption.VendorID
+					colorString = colorOption.VendorID
+					break
 				}
 			}
 		}
+		parts := rVendorIDKeyValue.FindStringSubmatch(colorString)
+		if parts != nil && parts[2] != "" {
+			m[parts[1]] = parts[2]
+		}
 	}
 	if ticket.Print.Duplex != nil && printer.Description.Duplex != nil {
-		for _, duplexOption := range printer.Description.Duplex.Option {
-			if ticket.Print.Duplex.Type == duplexOption.Type {
-				m[printer.Description.Duplex.VendorKey] = duplexOption.VendorID
-			}
+		duplexString := printer.DuplexMap[ticket.Print.Duplex.Type]
+		parts := rVendorIDKeyValue.FindStringSubmatch(duplexString)
+		if parts != nil && parts[2] != "" {
+			m[parts[1]] = parts[2]
 		}
 	}
 	if ticket.Print.PageOrientation != nil && printer.Description.PageOrientation != nil {
