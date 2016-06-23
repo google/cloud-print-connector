@@ -97,6 +97,9 @@ type Config struct {
 	// Ignore printers with native names.
 	PrinterBlacklist []string `json:"printer_blacklist,omitempty"`
 
+	// Allow printers with native names.
+	PrinterWhitelist []string `json:"printer_whitelist,omitempty"`
+
 	// Least severity to log.
 	LogLevel string `json:"log_level"`
 
@@ -133,6 +136,7 @@ var DefaultConfig = Config{
 		"Microsoft XPS Document Writer",
 		"Google Cloud Printer",
 	},
+	PrinterWhitelist:          []string{},
 	LocalPrintingEnable: true,
 	CloudPrintingEnable: false,
 	LogLevel:            "INFO",

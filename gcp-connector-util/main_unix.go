@@ -136,6 +136,7 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 		PrefixJobIDToJobTitle:     lib.PointerToBool(context.Bool("prefix-job-id-to-job-title")),
 		DisplayNamePrefix:         context.String("display-name-prefix"),
 		PrinterBlacklist:          lib.DefaultConfig.PrinterBlacklist,
+		PrinterWhitelist:          lib.DefaultConfig.PrinterWhitelist,
 		LogLevel:                  context.String("log-level"),
 
 		LocalPortLow:  uint16(context.Int("local-port-low")),
@@ -167,6 +168,7 @@ func createLocalConfig(context *cli.Context) *lib.Config {
 		PrefixJobIDToJobTitle:     lib.PointerToBool(context.Bool("prefix-job-id-to-job-title")),
 		DisplayNamePrefix:         context.String("display-name-prefix"),
 		PrinterBlacklist:          lib.DefaultConfig.PrinterBlacklist,
+		PrinterWhitelist:          lib.DefaultConfig.PrinterWhitelist,
 		LogLevel:                  context.String("log-level"),
 
 		LocalPortLow:  uint16(context.Int("local-port-low")),

@@ -246,6 +246,28 @@ func FilterRawPrinters(printers []Printer) ([]Printer, []Printer) {
 	return notRaw, raw
 }
 
+func FilterBlacklistPrinters(printers []Printer, list map[string]interface{}) []Printer {
+	return filterPrinters(printers, list, false)
+}
+
+func FilterWhitelistPrinters(printers []Printer, list map[string]interface{}) []Printer {
+	if len(list) == 0 {
+		return printers; // Empty whitelist means don't use whitelist
+	}
+
+	return filterPrinters(printers, list, true)
+}
+
+func filterPrinters(printers []Printer, list map[string]interface{}, isWhitelist bool) []Printer {
+	result := make([]Printer, 0, len(printers))
+	for i := range printers {
+		if _, exists := list[printers[i].Name]; exists == isWhitelist {
+			result = append(result, printers[i])
+		}
+	}
+	return result
+}
+
 func PrinterIsRaw(printer Printer) bool {
 	if printer.Tags["printer-make-and-model"] == "Local Raw Printer" {
 		return true
