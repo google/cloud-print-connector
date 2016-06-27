@@ -233,19 +233,6 @@ func diffPrinter(pn, pg *Printer) PrinterDiff {
 	}
 }
 
-// FilterRawPrinters splits a slice of printers into non-raw and raw.
-func FilterRawPrinters(printers []Printer) ([]Printer, []Printer) {
-	notRaw, raw := make([]Printer, 0, len(printers)), make([]Printer, 0, 0)
-	for i := range printers {
-		if PrinterIsRaw(printers[i]) {
-			raw = append(raw, printers[i])
-		} else {
-			notRaw = append(notRaw, printers[i])
-		}
-	}
-	return notRaw, raw
-}
-
 func FilterBlacklistPrinters(printers []Printer, list map[string]interface{}) []Printer {
 	return filterPrinters(printers, list, false)
 }
@@ -266,6 +253,19 @@ func filterPrinters(printers []Printer, list map[string]interface{}, isWhitelist
 		}
 	}
 	return result
+}
+
+// FilterRawPrinters splits a slice of printers into non-raw and raw.
+func FilterRawPrinters(printers []Printer) ([]Printer, []Printer) {
+	notRaw, raw := make([]Printer, 0, len(printers)), make([]Printer, 0, 0)
+	for i := range printers {
+		if PrinterIsRaw(printers[i]) {
+			raw = append(raw, printers[i])
+		} else {
+			notRaw = append(notRaw, printers[i])
+		}
+	}
+	return notRaw, raw
 }
 
 func PrinterIsRaw(printer Printer) bool {
