@@ -211,6 +211,9 @@ func (c *Config) commonBackfill(configMap map[string]interface{}) *Config {
 	if _, exists := configMap["printer_blacklist"]; !exists {
 		b.PrinterBlacklist = DefaultConfig.PrinterBlacklist
 	}
+	if _, exists := configMap["printer_whitelist"]; !exists {
+		b.PrinterWhitelist = DefaultConfig.PrinterWhitelist
+	}
 	if _, exists := configMap["local_printing_enable"]; !exists {
 		b.LocalPrintingEnable = DefaultConfig.LocalPrintingEnable
 	}

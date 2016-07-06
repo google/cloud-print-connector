@@ -99,6 +99,9 @@ type Config struct {
 	// Ignore printers with native names.
 	PrinterBlacklist []string `json:"printer_blacklist,omitempty"`
 
+	// Allow printers with native names.
+	PrinterWhitelist []string `json:"printer_whitelist,omitempty"`
+
 	// Least severity to log.
 	LogLevel string `json:"log_level"`
 
@@ -166,6 +169,7 @@ var DefaultConfig = Config{
 	PrefixJobIDToJobTitle:     PointerToBool(false),
 	DisplayNamePrefix:         "",
 	PrinterBlacklist:          []string{},
+	PrinterWhitelist:          []string{},
 	LogLevel:                  "INFO",
 
 	LocalPortLow:  26000,

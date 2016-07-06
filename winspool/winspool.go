@@ -45,9 +45,10 @@ type WinSpool struct {
 	displayNamePrefix     string
 	systemTags            map[string]string
 	printerBlacklist      map[string]interface{}
+	printerWhitelist      map[string]interface{}
 }
 
-func NewWinSpool(prefixJobIDToJobTitle bool, displayNamePrefix string, printerBlacklist []string) (*WinSpool, error) {
+func NewWinSpool(prefixJobIDToJobTitle bool, displayNamePrefix string, printerBlacklist []string, printerWhitelist []string) (*WinSpool, error) {
 	systemTags, err := getSystemTags()
 	if err != nil {
 		return nil, err
@@ -58,11 +59,17 @@ func NewWinSpool(prefixJobIDToJobTitle bool, displayNamePrefix string, printerBl
 		pb[p] = struct{}{}
 	}
 
+	pw := map[string]interface{}{}
+	for _, p := range printerWhitelist {
+		pw[p] = struct{}{}
+	}
+
 	ws := WinSpool{
 		prefixJobIDToJobTitle: prefixJobIDToJobTitle,
 		displayNamePrefix:     displayNamePrefix,
 		systemTags:            systemTags,
 		printerBlacklist:      pb,
+		printerWhitelist:      pw,
 	}
 	return &ws, nil
 }
@@ -431,21 +438,12 @@ func (ws *WinSpool) GetPrinters() ([]lib.Printer, error) {
 		printers = append(printers, printer)
 	}
 
-	printers = ws.filterBlacklistPrinters(printers)
+	printers = lib.FilterBlacklistPrinters(printers, ws.printerBlacklist)
+	printers = lib.FilterWhitelistPrinters(printers, ws.printerWhitelist)
 	printers = addStaticDescriptionToPrinters(printers)
 	printers = ws.addSystemTagsToPrinters(printers)
 
 	return printers, nil
-}
-
-func (ws *WinSpool) filterBlacklistPrinters(printers []lib.Printer) []lib.Printer {
-	result := make([]lib.Printer, 0, len(printers))
-	for i := range printers {
-		if _, exists := ws.printerBlacklist[printers[i].Name]; !exists {
-			result = append(result, printers[i])
-		}
-	}
-	return result
 }
 
 // addStaticDescriptionToPrinters adds information that is true for all
