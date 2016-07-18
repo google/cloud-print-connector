@@ -16,11 +16,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 	"github.com/google/cloud-print-connector/lib"
 )
 
-func monitorConnector(context *cli.Context) {
+func monitorConnector(context *cli.Context) error {
 	config, filename, err := lib.GetConfig(context)
 	if err != nil {
 		log.Fatalf("Failed to read config file: %s\n", err)
@@ -58,4 +58,5 @@ func monitorConnector(context *cli.Context) {
 	timer.Stop()
 
 	fmt.Printf(string(buf))
+        return nil
 }

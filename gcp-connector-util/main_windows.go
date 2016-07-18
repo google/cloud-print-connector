@@ -14,7 +14,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 	"github.com/google/cloud-print-connector/lib"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/eventlog"
@@ -61,25 +61,27 @@ var windowsCommands = []cli.Command{
 	},
 }
 
-func installEventLog(c *cli.Context) {
+func installEventLog(c *cli.Context) error {
 	err := eventlog.InstallAsEventCreate(lib.ConnectorName, eventlog.Error|eventlog.Warning|eventlog.Info)
 	if err != nil {
 		fmt.Printf("Failed to install event log registry entries: %s\n", err)
 		os.Exit(1)
 	}
 	fmt.Println("Event log registry entries installed successfully")
+        return nil
 }
 
-func removeEventLog(c *cli.Context) {
+func removeEventLog(c *cli.Context) error {
 	err := eventlog.Remove(lib.ConnectorName)
 	if err != nil {
 		fmt.Printf("Failed to remove event log registry entries: %s\n", err)
 		os.Exit(1)
 	}
 	fmt.Println("Event log registry entries removed successfully")
+        return nil
 }
 
-func createService(c *cli.Context) {
+func createService(c *cli.Context) error {
 	exePath, err := filepath.Abs("gcp-windows-connector.exe")
 	if err != nil {
 		fmt.Printf("Failed to find the connector executable: %s\n", err)
@@ -107,9 +109,10 @@ func createService(c *cli.Context) {
 	defer service.Close()
 
 	fmt.Println("Service created successfully")
+        return nil
 }
 
-func deleteService(c *cli.Context) {
+func deleteService(c *cli.Context) error {
 	m, err := mgr.Connect()
 	if err != nil {
 		fmt.Printf("Failed to connect to service control manager: %s\n", err)
@@ -131,9 +134,10 @@ func deleteService(c *cli.Context) {
 	}
 
 	fmt.Println("Service deleted successfully")
+        return nil
 }
 
-func startService(c *cli.Context) {
+func startService(c *cli.Context) error {
 	m, err := mgr.Connect()
 	if err != nil {
 		fmt.Printf("Failed to connect to service control manager: %s\n", err)
@@ -155,9 +159,10 @@ func startService(c *cli.Context) {
 	}
 
 	fmt.Println("Service started successfully")
+        return nil
 }
 
-func stopService(c *cli.Context) {
+func stopService(c *cli.Context) error {
 	m, err := mgr.Connect()
 	if err != nil {
 		fmt.Printf("Failed to connect to service control manager: %s\n", err)
@@ -179,6 +184,7 @@ func stopService(c *cli.Context) {
 	}
 
 	fmt.Printf("Service stopped successfully")
+        return nil
 }
 
 func main() {
@@ -198,7 +204,7 @@ func main() {
 }
 
 // createCloudConfig creates a config object that supports cloud and (optionally) local mode.
-func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string, localEnable bool) *lib.Config {
+func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string, localEnable bool) (*lib.Config, error) {
 	return &lib.Config{
 		LocalPrintingEnable: localEnable,
 		CloudPrintingEnable: true,
@@ -230,11 +236,11 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 
 		LocalPortLow:  uint16(context.Int("local-port-low")),
 		LocalPortHigh: uint16(context.Int("local-port-high")),
-	}
+	}, nil
 }
 
 // createLocalConfig creates a config object that supports local mode.
-func createLocalConfig(context *cli.Context) *lib.Config {
+func createLocalConfig(context *cli.Context) (*lib.Config, error) {
 	return &lib.Config{
 		LocalPrintingEnable: true,
 		CloudPrintingEnable: false,
@@ -250,5 +256,5 @@ func createLocalConfig(context *cli.Context) *lib.Config {
 
 		LocalPortLow:  uint16(context.Int("local-port-low")),
 		LocalPortHigh: uint16(context.Int("local-port-high")),
-	}
+	}, nil
 }
