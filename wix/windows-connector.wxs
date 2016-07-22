@@ -7,7 +7,8 @@
       Version="1.0.0.0"
       Manufacturer="Google, Inc."
       UpgradeCode="15C3FD61-B03C-4C04-A56D-CD8424C99D7F">
-    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+    <Package
+        InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" />
@@ -19,13 +20,19 @@
       <WixVariable Id="SourceDir" Overridable="yes" Value="C:\go\bin"/>
     <?endif?>
     <!-- Variable used by WIX at build time to locate the dependency dlls -->
-    <WixVariable Id="DependencyDir" Overridable="yes" Value="C:\msys64\mingw64\bin"/>
+    <WixVariable
+        Id="DependencyDir"
+        Overridable="yes"
+        Value="C:\msys64\mingw64\bin"/>
 
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf" />
     <UIRef Id="WixUI_InstallDir" />
     
-    <Feature Id="connector" Title="Google Cloud Print Windows Connector" Level="1">
+    <Feature
+        Id="connector"
+        Title="Google Cloud Print Windows Connector"
+        Level="1">
       <ComponentGroupRef Id="ProductComponents" />
       <ComponentGroupRef Id="Dependencies" />
     </Feature>
@@ -38,162 +45,87 @@
           <Directory Id="INSTALLFOLDER" Name="Cloud Print Windows Connector" />
         </Directory>
       </Directory>
+      <Directory Id="TempFolder" />
     </Directory>
   </Fragment>
 
   <Fragment>
     <!-- Group of components that are our main application items -->
-    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER" Source="!(wix.SourceDir)">
-      <Component Id="Cloud_Print_Connector_exe">
+    <ComponentGroup
+        Id="ProductComponents"
+        Directory="INSTALLFOLDER"
+        Source="!(wix.SourceDir)">
+      <Component Id="Connector_exe">
         <File Name="gcp-windows-connector.exe" KeyPath="yes" />
+      <ServiceInstall
+          Name="Cloud Print Connector"
+          Description="Shares printers with Google Cloud Print"
+          Start="auto"
+          Type="ownProcess"
+          ErrorControl="normal"
+          Vital="yes">
+        <ServiceDependency Id="Spooler" />
+      </ServiceInstall>
+      <ServiceControl
+          Id="StartAndStopService"
+          Name="Cloud Print Connector"
+          Remove="uninstall"
+          Start="install"
+          Stop="uninstall" />
       </Component>
-      <Component Id="Cloud_Print_Connector_Util_exe">
+      <Component Id="ConfigFile" Guid="19aa4f1c-3fd8-4fd6-abba-865d1e62ec42">
+        <CopyFile
+            Id="ConfigFile"
+            Delete="yes"
+            DestinationDirectory="INSTALLFOLDER"
+            DestinationName="gcp-windows-connector.config.json"
+            SourceProperty="ConfigFile" />
+        <RemoveFile
+            Id="ConfigFile"
+            Directory="INSTALLFOLDER"
+            Name="gcp-windows-connector.config.json"
+            On="uninstall" />
+      </Component>
+      <Component Id="Connector_Util_exe">
         <File Id="ConnectorUtil" Name="gcp-connector-util.exe" KeyPath="yes" />
       </Component>
     </ComponentGroup>
+    <Property Id="CONFIGFILE" Secure="yes" />
+    <SetProperty
+        Id="ConfigFile"
+        Action="SetConfigFileDefault"
+        After="LaunchConditions"
+        Sequence="both"
+        Value="[TempFolder]gcp-windows-connector.config.json">
+      NOT CONFIGFILE
+    </SetProperty>
+    <SetProperty
+        Id="ConfigFile"
+        Action="SetConfigFileCustom"
+        After="LaunchConditions"
+        Sequence="both"
+        Value="[CONFIGFILE]">
+      CONFIGFILE
+    </SetProperty>
   </Fragment>
 
   <Fragment>
     <InstallUISequence>
       <ExecuteAction />
-      <Custom Action="ManualInit" After="ExecuteAction">NOT INITCMD</Custom>
+      <Show Dialog="WelcomeDlg" Before="ManualInit" />
+      <Show Dialog="ProgressDlg" After="ManualInit" />
+      <Custom Action="ManualInit" Before="ExecuteAction">NOT CONFIGFILE and NOT Installed</Custom>
     </InstallUISequence>
 
-    <InstallExecuteSequence>
-      <RegisterProduct/>
-      <RemoveFiles/>
-      <Custom Action="SilentInit" Before="RegisterProduct">INITCMD</Custom>
-      <Custom Action="InstallService" After="SilentInit">NOT NO_INSTALL_SERVICE AND NOT Installed</Custom>
-      <Custom Action="StartService" After="InstallService">$Cloud_Print_Connector_exe=3 AND NOT (NO_INSTALL_SERVICE OR NO_START_SERVICE)</Custom>
-      <Custom Action="StopService" Before="RemoveFiles">?Cloud_Print_Connector_exe=3</Custom>
-      <Custom Action="UninstallService" After="StopService">$Cloud_Print_Connector_exe=2</Custom>
-    </InstallExecuteSequence>
+    <CustomAction
+        Id="ManualInit"
+        BinaryKey="ConnectorUtil"
+        Execute="immediate"
+        Return="check"
+        ExeCommand="init" />
 
-    <CustomAction Id="SilentInit" FileKey="ConnectorUtil" Execute="deferred" ExeCommand="[INITCMD]" />
-    <CustomAction Id="ManualInit" FileKey="ConnectorUtil" Execute="immediate" ExeCommand="init" />
-    <CustomAction Id="InstallService" FileKey="ConnectorUtil" Execute="deferred" ExeCommand="create-service" />
-    <CustomAction Id="UninstallService" FileKey="ConnectorUtil" Execute="deferred" ExeCommand="delete-service" />
-    <CustomAction Id="StartService" FileKey="ConnectorUtil" Execute="deferred" ExeCommand="start-service" />
-    <CustomAction Id="StopService" FileKey="ConnectorUtil" Execute="deferred" ExeCommand="stop-service" />
-  </Fragment>
-
-  <Fragment>
-    <!-- Group of components of all the dependency dlls -->
-    <ComponentGroup Id="Dependencies" Directory="INSTALLFOLDER" Source="!(wix.DependencyDir)">
-      <Component>
-        <File Name="libcairo-2.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libglib-2.0-0.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libgobject-2.0-0.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libpoppler-glib-8.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libgcc_s_seh-1.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libfontconfig-1.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libfreetype-6.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libpixman-1-0.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libpng16-16.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="zlib1.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libintl-8.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libwinpthread-1.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libffi-6.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libpoppler-58.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libstdc++-6.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libgio-2.0-0.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libexpat-1.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libiconv-2.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libbz2-1.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libharfbuzz-0.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libcurl-4.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libjpeg-8.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="liblcms2-2.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libopenjpeg-5.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libtiff-5.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libgmodule-2.0-0.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="LIBEAY32.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libidn-11.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="librtmp-1.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libssh2-1.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="SSLEAY32.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="liblzma-5.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libgmp-10.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libgnutls-30.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libhogweed-4-1.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libnettle-6-1.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libp11-kit-0.dll" KeyPath="yes"/>
-      </Component>
-      <Component>
-        <File Name="libtasn1-6.dll" KeyPath="yes"/>
-      </Component>
-    </ComponentGroup>
+    <Binary
+        Id="ConnectorUtil"
+        SourceFile="!(wix.SourceDir)\gcp-connector-util.exe" />
   </Fragment>
 </Wix>
