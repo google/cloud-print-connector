@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -353,7 +354,10 @@ func stringToBool(val string) (bool, bool) {
 
 func initConfigFile(context *cli.Context) {
 	var localEnable bool
-	if context.IsSet("local-printing-enable") {
+	if runtime.GOOS == "windows" {
+		// Remove this if block when Privet support is added to Windows.
+		localEnable = false
+	} else if context.IsSet("local-printing-enable") {
 		localEnable = context.Bool("local-printing-enable")
 	} else {
 		fmt.Println("\"Local printing\" means that clients print directly to the connector via local subnet,")
@@ -362,7 +366,10 @@ func initConfigFile(context *cli.Context) {
 	}
 
 	var cloudEnable bool
-	if context.IsSet("cloud-printing-enable") {
+	if runtime.GOOS == "windows" {
+		// Remove this if block when Privet support is added to Windows.
+		cloudEnable = true
+	} else if context.IsSet("cloud-printing-enable") {
 		cloudEnable = context.Bool("cloud-printing-enable")
 	} else {
 		fmt.Println("\"Cloud printing\" means that clients can print from anywhere on the Internet,")
