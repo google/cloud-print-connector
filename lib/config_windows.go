@@ -12,7 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 )
 
 const (
@@ -136,7 +136,7 @@ var DefaultConfig = Config{
 		"Microsoft XPS Document Writer",
 		"Google Cloud Printer",
 	},
-	PrinterWhitelist:          []string{},
+	PrinterWhitelist:    []string{},
 	LocalPrintingEnable: true,
 	CloudPrintingEnable: false,
 	LogLevel:            "INFO",

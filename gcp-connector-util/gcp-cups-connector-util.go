@@ -16,10 +16,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/codegangsta/cli"
 	"github.com/google/cloud-print-connector/cdd"
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
+	"github.com/urfave/cli"
 )
 
 var commonCommands = []cli.Command{
