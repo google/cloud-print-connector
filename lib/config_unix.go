@@ -135,6 +135,9 @@ type Config struct {
 	// CUPS only: printer attributes to copy to GCP.
 	CUPSPrinterAttributes []string `json:"cups_printer_attributes,omitempty"`
 
+	// CUPS only: non-standard PPD options to add as GCP vendor capabilities.
+	CUPSVendorPPDOptions []string `json:"cups_vendor_ppd_options,omitempty"`
+
 	// CUPS only: ignore printers with make/model 'Local Raw Printer'.
 	CUPSIgnoreRawPrinters *bool `json:"cups_ignore_raw_printers,omitempty"`
 

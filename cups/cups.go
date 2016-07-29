@@ -141,7 +141,9 @@ type CUPS struct {
 	ignoreClassPrinters   bool
 }
 
-func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix string, printerAttributes []string, maxConnections uint, connectTimeout time.Duration, printerBlacklist []string, printerWhitelist []string, ignoreRawPrinters bool, ignoreClassPrinters bool) (*CUPS, error) {
+func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix string,
+	printerAttributes, vendorPPDOptions []string, maxConnections uint, connectTimeout time.Duration,
+	printerBlacklist, printerWhitelist []string, ignoreRawPrinters bool, ignoreClassPrinters bool) (*CUPS, error) {
 	if err := checkPrinterAttributes(printerAttributes); err != nil {
 		return nil, err
 	}
@@ -150,7 +152,7 @@ func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix st
 	if err != nil {
 		return nil, err
 	}
-	pc := newPPDCache(cc)
+	pc := newPPDCache(cc, vendorPPDOptions)
 
 	systemTags, err := getSystemTags()
 	if err != nil {
