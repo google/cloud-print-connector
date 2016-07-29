@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
 
@@ -145,7 +145,7 @@ func postWithRetry(url string, data url.Values) (*http.Response, error) {
 
 // getUserClientFromUser follows the token acquisition steps outlined here:
 // https://developers.google.com/identity/protocols/OAuth2ForDevices
-func getUserClientFromUser(context *cli.Context) (*http.Client, string) {
+func getUserClientFromUser(context *cli.Context) (*http.Client, string, error) {
 	form := url.Values{
 		"client_id": {context.String("gcp-oauth-client-id")},
 		"scope":     {gcp.ScopeCloudPrint},
@@ -170,7 +170,7 @@ func getUserClientFromUser(context *cli.Context) (*http.Client, string) {
 	return pollOAuthConfirmation(context, r.DeviceCode, r.Interval)
 }
 
-func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int) (*http.Client, string) {
+func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int) (*http.Client, string, error) {
 	config := oauth2.Config{
 		ClientID:     context.String("gcp-oauth-client-id"),
 		ClientSecret: context.String("gcp-oauth-client-secret"),
@@ -209,7 +209,7 @@ func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int
 			token := &oauth2.Token{RefreshToken: r.RefreshToken}
 			client := config.Client(oauth2.NoContext, token)
 			client.Timeout = context.Duration("gcp-api-timeout")
-			return client, r.RefreshToken
+			return client, r.RefreshToken, nil
 		case "authorization_pending":
 		case "slow_down":
 			interval *= 2
@@ -222,7 +222,7 @@ func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int
 }
 
 // getUserClientFromToken creates a user client with just a refresh token.
-func getUserClientFromToken(context *cli.Context) *http.Client {
+func getUserClientFromToken(context *cli.Context) (*http.Client, error) {
 	config := &oauth2.Config{
 		ClientID:     context.String("gcp-oauth-client-id"),
 		ClientSecret: context.String("gcp-oauth-client-secret"),
@@ -238,11 +238,11 @@ func getUserClientFromToken(context *cli.Context) *http.Client {
 	client := config.Client(oauth2.NoContext, token)
 	client.Timeout = context.Duration("gcp-api-timeout")
 
-	return client
+	return client, nil
 }
 
 // initRobotAccount creates a GCP robot account for this connector.
-func initRobotAccount(context *cli.Context, userClient *http.Client) (string, string) {
+func initRobotAccount(context *cli.Context, userClient *http.Client) (string, string, error) {
 	params := url.Values{}
 	params.Set("oauth_client_id", context.String("gcp-oauth-client-id"))
 
@@ -269,10 +269,10 @@ func initRobotAccount(context *cli.Context, userClient *http.Client) (string, st
 		log.Fatalf("Failed to initialize robot account: %s\n", robotInit.Message)
 	}
 
-	return robotInit.XMPPJID, robotInit.AuthCode
+	return robotInit.XMPPJID, robotInit.AuthCode, nil
 }
 
-func verifyRobotAccount(context *cli.Context, authCode string) string {
+func verifyRobotAccount(context *cli.Context, authCode string) (string, error) {
 	config := &oauth2.Config{
 		ClientID:     context.String("gcp-oauth-client-id"),
 		ClientSecret: context.String("gcp-oauth-client-secret"),
@@ -289,21 +289,21 @@ func verifyRobotAccount(context *cli.Context, authCode string) string {
 		log.Fatalln(err)
 	}
 
-	return token.RefreshToken
+	return token.RefreshToken, nil
 }
 
-func createRobotAccount(context *cli.Context, userClient *http.Client) (string, string) {
-	xmppJID, authCode := initRobotAccount(context, userClient)
-	token := verifyRobotAccount(context, authCode)
+func createRobotAccount(context *cli.Context, userClient *http.Client) (string, string, error) {
+	xmppJID, authCode, _ := initRobotAccount(context, userClient)
+	token, _ := verifyRobotAccount(context, authCode)
 
-	return xmppJID, token
+	return xmppJID, token, nil
 }
 
-func writeConfigFile(context *cli.Context, config *lib.Config) string {
+func writeConfigFile(context *cli.Context, config *lib.Config) (string, error) {
 	if configFilename, err := config.Sparse(context).ToFile(context); err != nil {
 		log.Fatalln(err)
 	} else {
-		return configFilename
+		return configFilename, nil
 	}
 	panic("unreachable")
 }
@@ -352,7 +352,7 @@ func stringToBool(val string) (bool, bool) {
 	return false, false
 }
 
-func initConfigFile(context *cli.Context) {
+func initConfigFile(context *cli.Context) error {
 	var localEnable bool
 	if runtime.GOOS == "windows" {
 		// Remove this if block when Privet support is added to Windows.
@@ -399,29 +399,29 @@ func initConfigFile(context *cli.Context) {
 
 		var userClient *http.Client
 		if context.IsSet("gcp-user-refresh-token") {
-			userClient = getUserClientFromToken(context)
+			userClient, _ = getUserClientFromToken(context)
 			if shareScope != "" {
 				userRefreshToken = context.String("gcp-user-refresh-token")
 			}
 		} else {
 			var urt string
-			userClient, urt = getUserClientFromUser(context)
+			userClient, urt, _ = getUserClientFromUser(context)
 			if shareScope != "" {
 				userRefreshToken = urt
 			}
 		}
 
-		xmppJID, robotRefreshToken = createRobotAccount(context, userClient)
+		xmppJID, robotRefreshToken, _ = createRobotAccount(context, userClient)
 
 		fmt.Println("Acquired OAuth credentials for robot account")
 		fmt.Println("")
-		config = createCloudConfig(context, xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName, localEnable)
+		config, _ = createCloudConfig(context, xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName, localEnable)
 
 	} else {
-		config = createLocalConfig(context)
+		config, _ = createLocalConfig(context)
 	}
 
-	configFilename := writeConfigFile(context, config)
+	configFilename, _ := writeConfigFile(context, config)
 	fmt.Printf("The config file %s is ready to rock.\n", configFilename)
 	if cloudEnable {
 		fmt.Println("Keep it somewhere safe, as it contains an OAuth refresh token.")
@@ -432,4 +432,5 @@ func initConfigFile(context *cli.Context) {
 		fmt.Println("")
 		fmt.Printf("When the connector runs, be sure the socket directory %s exists.\n", socketDirectory)
 	}
+        return nil
 }

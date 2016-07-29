@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 	"launchpad.net/go-xdg/v0"
 )
 
@@ -220,33 +220,33 @@ var DefaultConfig = Config{
 // If the (relative or absolute) ConfigFilename exists, then it is returned.
 // If the ConfigFilename exists in a valid XDG path, then it is returned.
 // If neither of those exist, the (relative or absolute) ConfigFilename is returned.
-func getConfigFilename(context *cli.Context) (string, bool) {
+func getConfigFilename(context *cli.Context) (string, bool, error) {
 	cf := context.GlobalString("config-filename")
 
 	if filepath.IsAbs(cf) {
 		// Absolute path specified; user knows what they want.
 		_, err := os.Stat(cf)
-		return cf, err == nil
+		return cf, err == nil, nil
 	}
 
 	absCF, err := filepath.Abs(cf)
 	if err != nil {
 		// syscall failure; treat as if file doesn't exist.
-		return cf, false
+		return cf, false, nil
 	}
 	if _, err := os.Stat(absCF); err == nil {
 		// File exists on relative path.
-		return absCF, true
+		return absCF, true, nil
 	}
 
 	if xdgCF, err := xdg.Config.Find(cf); err == nil {
 		// File exists in an XDG directory.
-		return xdgCF, true
+		return xdgCF, true, nil
 	}
 
 	// Default to relative path. This is probably what the user expects if
 	// it wasn't found anywhere else.
-	return absCF, false
+	return absCF, false, nil
 }
 
 // Backfill returns a copy of this config with all missing keys set to default values.
@@ -305,7 +305,7 @@ func (c *Config) Backfill(configMap map[string]interface{}) *Config {
 }
 
 // Sparse returns a copy of this config with obvious values removed.
-func (c *Config) Sparse(context *cli.Context) *Config {
+func (c *Config) Sparse(context *cli.Context) (*Config) {
 	s := *c.commonSparse(context)
 
 	if !context.IsSet("log-file-max-megabytes") &&

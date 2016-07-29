@@ -12,7 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 )
 
 const (
@@ -150,23 +150,23 @@ var DefaultConfig = Config{
 //
 // If the ConfigFilename exists, then it is returned as an absolute path.
 // If neither of those exist, the absolute ConfigFilename is returned.
-func getConfigFilename(context *cli.Context) (string, bool) {
+func getConfigFilename(context *cli.Context) (string, bool, error) {
 	cf := context.GlobalString("config-filename")
 
 	if filepath.IsAbs(cf) {
 		// Absolute path specified; user knows what they want.
 		_, err := os.Stat(cf)
-		return cf, err == nil
+		return cf, err == nil, nil
 	}
 
 	absCF, err := filepath.Abs(cf)
 	if err != nil {
 		// syscall failure; treat as if file doesn't exist.
-		return cf, false
+		return cf, false, nil
 	}
 	if _, err := os.Stat(absCF); err == nil {
 		// File exists on relative path.
-		return absCF, true
+		return absCF, true, nil
 	}
 
 	// Check for config file on path relative to executable.
@@ -174,11 +174,11 @@ func getConfigFilename(context *cli.Context) (string, bool) {
 	exeDir := filepath.Dir(exeFile)
 	absCF = filepath.Join(exeDir, cf)
 	if _, err := os.Stat(absCF); err == nil {
-		return absCF, true
+		return absCF, true, nil
 	}
 
 	// This is probably what the user expects if it wasn't found anywhere else.
-	return absCF, false
+	return absCF, false, nil
 }
 
 // Backfill returns a copy of this config with all missing keys set to default values.
@@ -187,6 +187,6 @@ func (c *Config) Backfill(configMap map[string]interface{}) *Config {
 }
 
 // Sparse returns a copy of this config with obvious values removed.
-func (c *Config) Sparse(context *cli.Context) *Config {
+func (c *Config) Sparse(context *cli.Context) (*Config) {
 	return c.commonSparse(context)
 }

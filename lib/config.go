@@ -15,7 +15,7 @@ import (
 	"reflect"
 	"runtime"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 )
 
 const (
@@ -51,7 +51,7 @@ func PointerToBool(b bool) *bool {
 // GetConfig reads a Config object from the config file indicated by the config
 // filename flag. If no such file exists, then DefaultConfig is returned.
 func GetConfig(context *cli.Context) (*Config, string, error) {
-	cf, exists := getConfigFilename(context)
+	cf, exists, _ := getConfigFilename(context)
 	if !exists {
 		return &DefaultConfig, "", nil
 	}
@@ -84,7 +84,7 @@ func (c *Config) ToFile(context *cli.Context) (string, error) {
 		return "", err
 	}
 
-	cf, _ := getConfigFilename(context)
+	cf, _, _ := getConfigFilename(context)
 	if err = ioutil.WriteFile(cf, b, 0600); err != nil {
 		return "", err
 	}

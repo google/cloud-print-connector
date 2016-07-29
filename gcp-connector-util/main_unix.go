@@ -13,7 +13,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 	"github.com/google/cloud-print-connector/lib"
 )
 
@@ -110,7 +110,7 @@ func main() {
 }
 
 // createCloudConfig creates a config object that supports cloud and (optionally) local mode.
-func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string, localEnable bool) *lib.Config {
+func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string, localEnable bool) (*lib.Config, error) {
 	return &lib.Config{
 		LocalPrintingEnable: localEnable,
 		CloudPrintingEnable: true,
@@ -154,11 +154,11 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 		CUPSIgnoreRawPrinters:            lib.PointerToBool(context.Bool("cups-ignore-raw-printers")),
 		CUPSIgnoreClassPrinters:          lib.PointerToBool(context.Bool("cups-ignore-class-printers")),
 		CUPSCopyPrinterInfoToDisplayName: lib.PointerToBool(context.Bool("copy-printer-info-to-display-name")),
-	}
+	}, nil
 }
 
 // createLocalConfig creates a config object that supports local mode.
-func createLocalConfig(context *cli.Context) *lib.Config {
+func createLocalConfig(context *cli.Context) (*lib.Config, error) {
 	return &lib.Config{
 		LocalPrintingEnable: true,
 		CloudPrintingEnable: false,
@@ -186,5 +186,5 @@ func createLocalConfig(context *cli.Context) *lib.Config {
 		CUPSIgnoreRawPrinters:            lib.PointerToBool(context.Bool("cups-ignore-raw-printers")),
 		CUPSIgnoreClassPrinters:          lib.PointerToBool(context.Bool("cups-ignore-class-printers")),
 		CUPSCopyPrinterInfoToDisplayName: lib.PointerToBool(context.Bool("copy-printer-info-to-display-name")),
-	}
+	}, nil
 }

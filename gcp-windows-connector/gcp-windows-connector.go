@@ -14,7 +14,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
 	"github.com/google/cloud-print-connector/log"
@@ -53,7 +53,7 @@ type service struct {
 	interactive bool
 }
 
-func RunService(context *cli.Context) {
+func RunService(context *cli.Context) error {
 	interactive, err := svc.IsAnInteractiveSession()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to detect interactive session: %s\n", err)
@@ -67,6 +67,7 @@ func RunService(context *cli.Context) {
 	} else {
 		svc.Run(lib.ConnectorName, &s)
 	}
+        return nil
 }
 
 func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s chan<- svc.Status) (bool, uint32) {
