@@ -10,6 +10,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -18,7 +19,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/codegangsta/cli"
 	"github.com/coreos/go-systemd/journal"
 	"github.com/google/cloud-print-connector/cups"
 	"github.com/google/cloud-print-connector/gcp"
@@ -28,6 +28,7 @@ import (
 	"github.com/google/cloud-print-connector/monitor"
 	"github.com/google/cloud-print-connector/privet"
 	"github.com/google/cloud-print-connector/xmpp"
+	"github.com/urfave/cli"
 )
 
 func main() {
@@ -42,17 +43,14 @@ func main() {
 			Usage: "Log to STDERR, in addition to configured logging",
 		},
 	}
-	app.Action = func(context *cli.Context) {
-		os.Exit(connector(context))
-	}
-	app.RunAndExitOnError()
+	app.Action = connector
+	app.Run(os.Args)
 }
 
-func connector(context *cli.Context) int {
+func connector(context *cli.Context) error {
 	config, configFilename, err := lib.GetConfig(context)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read config file: %s", err)
-		return 1
+		return fmt.Errorf("Failed to read config file: %s", err)
 	}
 
 	logToJournal := *config.LogToJournal && journal.Enabled()
@@ -70,8 +68,7 @@ func connector(context *cli.Context) int {
 		var logWriter io.Writer
 		logWriter, err = log.NewLogRoller(config.LogFileName, logFileMaxBytes, config.LogMaxFiles)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to start log roller: %s", err)
-			return 1
+			return fmt.Errorf("Failed to start log roller: %s", err)
 		}
 
 		if logToConsole {
@@ -82,8 +79,7 @@ func connector(context *cli.Context) int {
 
 	logLevel, ok := log.LevelFromString(config.LogLevel)
 	if !ok {
-		fmt.Fprintf(os.Stderr, "Log level %s is not recognized", config.LogLevel)
-		return 1
+		return fmt.Errorf("Log level %s is not recognized", config.LogLevel)
 	}
 	log.SetLevel(logLevel)
 
@@ -99,19 +95,22 @@ func connector(context *cli.Context) int {
 	fmt.Println(lib.FullName)
 
 	if !config.CloudPrintingEnable && !config.LocalPrintingEnable {
-		log.Fatal("Cannot run connector with both local_printing_enable and cloud_printing_enable set to false")
-		return 1
+		errStr := "Cannot run connector with both local_printing_enable and cloud_printing_enable set to false"
+		log.Fatal(errStr)
+		return errors.New(errStr)
 	}
 
 	if _, err := os.Stat(config.MonitorSocketFilename); !os.IsNotExist(err) {
+		var errStr string
 		if err != nil {
-			log.Fatalf("Failed to stat monitor socket: %s", err)
+			errStr = fmt.Sprintf("Failed to stat monitor socket: %s", err)
 		} else {
-			log.Fatalf(
+			errStr = fmt.Sprintf(
 				"A connector is already running, or the monitoring socket %s wasn't cleaned up properly",
 				config.MonitorSocketFilename)
 		}
-		return 1
+		log.Fatal(errStr)
+		return errors.New(errStr)
 	}
 
 	jobs := make(chan *lib.Job, 10)
@@ -122,13 +121,15 @@ func connector(context *cli.Context) int {
 	if config.CloudPrintingEnable {
 		xmppPingTimeout, err := time.ParseDuration(config.XMPPPingTimeout)
 		if err != nil {
-			log.Fatalf("Failed to parse xmpp ping timeout: %s", err)
-			return 1
+			errStr := fmt.Sprintf("Failed to parse xmpp ping timeout: %s", err)
+			log.Fatal(errStr)
+			return errors.New(errStr)
 		}
 		xmppPingInterval, err := time.ParseDuration(config.XMPPPingInterval)
 		if err != nil {
-			log.Fatalf("Failed to parse xmpp ping interval default: %s", err)
-			return 1
+			errStr := fmt.Sprintf("Failed to parse xmpp ping interval default: %s", err)
+			log.Fatalf(errStr)
+			return errors.New(errStr)
 		}
 
 		g, err = gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
@@ -137,22 +138,23 @@ func connector(context *cli.Context) int {
 			config.GCPMaxConcurrentDownloads, jobs)
 		if err != nil {
 			log.Fatal(err)
-			return 1
+			return err
 		}
 
 		x, err = xmpp.NewXMPP(config.XMPPJID, config.ProxyName, config.XMPPServer, config.XMPPPort,
 			xmppPingTimeout, xmppPingInterval, g.GetRobotAccessToken, xmppNotifications)
 		if err != nil {
 			log.Fatal(err)
-			return 1
+			return err
 		}
 		defer x.Quit()
 	}
 
 	cupsConnectTimeout, err := time.ParseDuration(config.CUPSConnectTimeout)
 	if err != nil {
-		log.Fatalf("Failed to parse CUPS connect timeout: %s", err)
-		return 1
+		errStr := fmt.Sprintf("Failed to parse CUPS connect timeout: %s", err)
+		log.Fatalf(errStr)
+		return errors.New(errStr)
 	}
 	c, err := cups.NewCUPS(*config.CUPSCopyPrinterInfoToDisplayName, *config.PrefixJobIDToJobTitle,
 		config.DisplayNamePrefix, config.CUPSPrinterAttributes, config.CUPSVendorPPDOptions, config.CUPSMaxConnections,
@@ -160,7 +162,7 @@ func connector(context *cli.Context) int {
 		*config.CUPSIgnoreClassPrinters)
 	if err != nil {
 		log.Fatal(err)
-		return 1
+		return err
 	}
 	defer c.Quit()
 
@@ -173,39 +175,40 @@ func connector(context *cli.Context) int {
 		}
 		if err != nil {
 			log.Fatal(err)
-			return 1
+			return err
 		}
 		defer priv.Quit()
 	}
 
 	nativePrinterPollInterval, err := time.ParseDuration(config.NativePrinterPollInterval)
 	if err != nil {
-		log.Fatalf("Failed to parse CUPS printer poll interval: %s", err)
-		return 1
+		errStr := fmt.Sprintf("Failed to parse CUPS printer poll interval: %s", err)
+		log.Fatal(errStr)
+		return errors.New(errStr)
 	}
 	pm, err := manager.NewPrinterManager(c, g, priv, nativePrinterPollInterval,
 		config.NativeJobQueueSize, *config.CUPSJobFullUsername, config.ShareScope,
 		jobs, xmppNotifications)
 	if err != nil {
 		log.Fatal(err)
-		return 1
+		return err
 	}
 	defer pm.Quit()
 
 	m, err := monitor.NewMonitor(c, g, priv, pm, config.MonitorSocketFilename)
 	if err != nil {
 		log.Fatal(err)
-		return 1
+		return err
 	}
 	defer m.Quit()
 
 	if config.CloudPrintingEnable {
 		if config.LocalPrintingEnable {
 			log.Infof("Ready to rock as proxy '%s' and in local mode", config.ProxyName)
-			fmt.Printf("Ready to rock as proxy '%s' and in local mode\n", config.ProxyName)
+			fmt.Println("Ready to rock as proxy '%s' and in local mode", config.ProxyName)
 		} else {
 			log.Infof("Ready to rock as proxy '%s'", config.ProxyName)
-			fmt.Printf("Ready to rock as proxy '%s'\n", config.ProxyName)
+			fmt.Println("Ready to rock as proxy '%s'", config.ProxyName)
 		}
 	} else {
 		log.Info("Ready to rock in local-only mode")
@@ -218,7 +221,7 @@ func connector(context *cli.Context) int {
 	fmt.Println("")
 	fmt.Println("Shutting down")
 
-	return 0
+	return nil
 }
 
 // Blocks until Ctrl-C or SIGTERM.

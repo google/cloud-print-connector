@@ -20,9 +20,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codegangsta/cli"
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
+	"github.com/urfave/cli"
 
 	"golang.org/x/oauth2"
 )
@@ -360,8 +360,8 @@ func initConfigFile(context *cli.Context) {
 	} else if context.IsSet("local-printing-enable") {
 		localEnable = context.Bool("local-printing-enable")
 	} else {
-		fmt.Println("\"Local printing\" means that clients print directly to the connector via local subnet,")
-		fmt.Println("and that an Internet connection is neither necessary nor used.")
+		fmt.Println("\"Local printing\" means that clients print directly to the connector via")
+		fmt.Println("local subnet, and that an Internet connection is neither necessary nor used.")
 		localEnable = scanYesOrNo("Enable local printing?")
 	}
 

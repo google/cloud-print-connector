@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/codegangsta/cli"
+	"github.com/urfave/cli"
 	"launchpad.net/go-xdg/v0"
 )
 
