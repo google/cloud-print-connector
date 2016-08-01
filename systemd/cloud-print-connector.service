@@ -7,13 +7,13 @@
 [Unit]
 Description=Google Cloud Print Connector
 Documentation="https://github.com/google/cloud-print-connector"
-After=cups.service avahi-daemon.service network-online.target
-Wants=cups.service avahi-daemon.service network-online.target
+After=printer.target network.target multi-user.target
 
 [Service]
-ExecStart=/opt/cloud-print-connector/gcp-cups-connector -config-filename /opt/cloud-print-connector/gcp-cups-connector.config.json
-Restart=on-failure
-User=cloud-print-connector
+ExecStart=/opt/cloud-print-connector/gcp-cups-connector -config-filename /etc/gcp_cups_connector/gcp-cups-connector.config.json
+Restart=on-abort
+User=gcp
+Group=gcp
 
 [Install]
 WantedBy=multi-user.target
