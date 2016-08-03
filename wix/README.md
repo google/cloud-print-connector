@@ -57,3 +57,9 @@ will open a console window to initialize the connector.
 The following public properties may be set during install of the MSI 
 (see https://msdn.microsoft.com/en-us/library/windows/desktop/aa370912(v=vs.85).aspx) 
 * CONFIGFILE = Path of connector config file to use instead of running gcp-connector-util init during install
+
+## Modifying the Config File after install
+The installer will create (or copy) the config file specified to the Common
+Application Data directory at %PROGRAMDATA%\Google\Cloud Print Connector.
+This is the file that is used by the connector.  This file can be modified
+and the service restarted to change the configuration.

@@ -10,8 +10,10 @@
     <Package
         InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
 
-    <MajorUpgrade DowngradeErrorMessage =
-        "A newer version of [ProductName] is already installed." />
+    <MajorUpgrade
+        DowngradeErrorMessage=
+            "A newer version of [ProductName] is already installed."
+        Schedule="afterInstallExecute" />
     <MediaTemplate EmbedCab="yes" />
 
     <!-- Variable used by WIX at build time to find the built files -->
@@ -36,6 +38,7 @@
         Level="1">
       <ComponentGroupRef Id="ProductComponents" />
       <ComponentGroupRef Id="Dependencies" />
+      <ComponentRef Id="ConfigFile" />
     </Feature>
   </Product>
 
@@ -43,10 +46,15 @@
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="GoogleFolder" Name="Google">
-          <Directory Id="INSTALLFOLDER" Name="Cloud Print Windows Connector" />
+          <Directory Id="INSTALLFOLDER" Name="Cloud Print Connector" />
         </Directory>
       </Directory>
       <Directory Id="TempFolder" />
+      <Directory Id="CommonAppDataFolder">
+        <Directory Id="GoogleDataFolder" Name="Google">
+          <Directory Id="CloudPrintDataFolder" Name="Cloud Print Connector" />
+        </Directory>
+      </Directory>
     </Directory>
   </Fragment>
 
@@ -64,7 +72,8 @@
           Start="auto"
           Type="ownProcess"
           ErrorControl="normal"
-          Vital="yes">
+          Vital="yes"
+          Arguments='--config-filename="[CloudPrintDataFolder]gcp-windows-connector.config.json"'>
         <ServiceDependency Id="Spooler" />
       </ServiceInstall>
       <ServiceControl
@@ -74,23 +83,28 @@
           Start="install"
           Stop="uninstall" />
       </Component>
-      <Component Id="ConfigFile" Guid="19aa4f1c-3fd8-4fd6-abba-865d1e62ec42">
-        <CopyFile
-            Id="ConfigFile"
-            Delete="yes"
-            DestinationDirectory="INSTALLFOLDER"
-            DestinationName="gcp-windows-connector.config.json"
-            SourceProperty="ConfigFile" />
-        <RemoveFile
-            Id="ConfigFile"
-            Directory="INSTALLFOLDER"
-            Name="gcp-windows-connector.config.json"
-            On="uninstall" />
-      </Component>
       <Component Id="Connector_Util_exe">
         <File Id="ConnectorUtil" Name="gcp-connector-util.exe" KeyPath="yes" />
       </Component>
     </ComponentGroup>
+    <Component Id="ConfigFile" Guid="19aa4f1c-3fd8-4fd6-abba-865d1e62ec42"
+        Directory="CloudPrintDataFolder">
+      <CreateFolder />
+      <RemoveFolder Id="RemoveCloudPrintDataFolder" On="uninstall" />
+      <RemoveFolder Id="RemoveGoogleDataFolder" On="uninstall"
+          Directory="GoogleDataFolder" />
+      <CopyFile
+          Id="ConfigFile"
+          Delete="yes"
+          DestinationDirectory="CloudPrintDataFolder"
+          DestinationName="gcp-windows-connector.config.json"
+          SourceProperty="ConfigFile" />
+      <RemoveFile
+          Id="ConfigFile"
+          Directory="CloudPrintDataFolder"
+          Name="gcp-windows-connector.config.json"
+          On="uninstall" />
+    </Component>
     <Property Id="CONFIGFILE" Secure="yes" />
     <SetProperty
         Id="ConfigFile"
