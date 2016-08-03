@@ -99,6 +99,24 @@ const (
 	REG_QWORD_LITTLE_ENDIAN        = 11
 )
 
+// PRINTER_INFO_2 attribute values
+const (
+	PRINTER_ATTRIBUTE_QUEUED            uint32 = 0x00000001
+	PRINTER_ATTRIBUTE_DIRECT            uint32 = 0x00000002
+	PRINTER_ATTRIBUTE_DEFAULT           uint32 = 0x00000004
+	PRINTER_ATTRIBUTE_SHARED            uint32 = 0x00000008
+	PRINTER_ATTRIBUTE_NETWORK           uint32 = 0x00000010
+	PRINTER_ATTRIBUTE_HIDDEN            uint32 = 0x00000020
+	PRINTER_ATTRIBUTE_LOCAL             uint32 = 0x00000040
+	PRINTER_ATTRIBUTE_ENABLE_DEVQ       uint32 = 0x00000080
+	PRINTER_ATTRIBUTE_KEEPPRINTEDJOBS   uint32 = 0x00000100
+	PRINTER_ATTRIBUTE_DO_COMPLETE_FIRST uint32 = 0x00000200
+	PRINTER_ATTRIBUTE_WORK_OFFLINE      uint32 = 0x00000400
+	PRINTER_ATTRIBUTE_ENABLE_BIDI       uint32 = 0x00000800
+	PRINTER_ATTRIBUTE_RAW_ONLY          uint32 = 0x00001000
+	PRINTER_ATTRIBUTE_PUBLISHED         uint32 = 0x00002000
+)
+
 // PRINTER_INFO_2 status values.
 const (
 	PRINTER_STATUS_PAUSED               uint32 = 0x00000001
@@ -173,6 +191,10 @@ func (pi *PrinterInfo2) GetLocation() string {
 
 func (pi *PrinterInfo2) GetDevMode() *DevMode {
 	return pi.pDevMode
+}
+
+func (pi *PrinterInfo2) GetAttributes() uint32 {
+	return pi.attributes
 }
 
 func (pi *PrinterInfo2) GetStatus() uint32 {

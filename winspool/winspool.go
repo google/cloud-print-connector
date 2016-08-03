@@ -89,7 +89,7 @@ func getSystemTags() (map[string]string, error) {
 	return tags, nil
 }
 
-func convertPrinterState(wsStatus uint32) *cdd.PrinterStateSection {
+func convertPrinterState(wsStatus uint32, wsAttributes uint32) *cdd.PrinterStateSection {
 	state := cdd.PrinterStateSection{
 		State:       cdd.CloudDeviceStateIdle,
 		VendorState: &cdd.VendorState{},
@@ -154,7 +154,12 @@ func convertPrinterState(wsStatus uint32) *cdd.PrinterStateSection {
 		}
 		state.VendorState.Item = append(state.VendorState.Item, vs)
 	}
-	if wsStatus&PRINTER_STATUS_OFFLINE != 0 {
+
+	// If PRINTER_ATTRIBUTE_WORK_OFFLINE is set
+	// spooler won't despool any jobs to the printer.
+	// At least for some USB printers, this flag is controlled
+	// automatically by the system depending on the state of physical connection.
+	if wsStatus&PRINTER_STATUS_OFFLINE != 0 || wsAttributes&PRINTER_ATTRIBUTE_WORK_OFFLINE != 0 {
 		state.State = cdd.CloudDeviceStateStopped
 		vs := cdd.VendorStateItem{
 			State:                cdd.VendorStateError,
@@ -318,7 +323,7 @@ func (ws *WinSpool) GetPrinters() ([]lib.Printer, error) {
 			UUID:               printerName, // TODO: Add something unique from host.
 			Manufacturer:       manufacturer,
 			Model:              model,
-			State:              convertPrinterState(pi2.GetStatus()),
+			State:              convertPrinterState(pi2.GetStatus(), pi2.GetAttributes()),
 			Description:        &cdd.PrinterDescriptionSection{},
 			Tags: map[string]string{
 				"printer-location": pi2.GetLocation(),
