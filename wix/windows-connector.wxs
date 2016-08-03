@@ -105,7 +105,7 @@
           Delete="yes"
           DestinationDirectory="CloudPrintDataFolder"
           DestinationName="gcp-windows-connector.config.json"
-          SourceProperty="ConfigFile" />
+          SourceProperty="CONFIGFILEPATH" />
       <RemoveFile
           Id="ConfigFile"
           Directory="CloudPrintDataFolder"
@@ -114,18 +114,18 @@
     </Component>
     <Property Id="CONFIGFILE" Secure="yes" />
     <SetProperty
-        Id="ConfigFile"
+        Id="CONFIGFILEPATH"
         Action="SetConfigFileDefault"
         After="LaunchConditions"
-        Sequence="both"
+        Sequence="first"
         Value="[TempFolder]gcp-windows-connector.config.json">
       NOT CONFIGFILE
     </SetProperty>
     <SetProperty
-        Id="ConfigFile"
+        Id="CONFIGFILEPATH"
         Action="SetConfigFileCustom"
         After="LaunchConditions"
-        Sequence="both"
+        Sequence="first"
         Value="[CONFIGFILE]">
       CONFIGFILE
     </SetProperty>
