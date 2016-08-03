@@ -29,6 +29,7 @@ type NativePrintSystem interface {
 	GetPrinters() ([]lib.Printer, error)
 	GetJobState(printerName string, jobID uint32) (*cdd.PrintJobStateDiff, error)
 	Print(printer *lib.Printer, fileName, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (uint32, error)
+	ReleaseJob(printerName string, jobID uint32) error
 	RemoveCachedPPD(printerName string)
 }
 
@@ -401,6 +402,7 @@ func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, job
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	defer pm.releaseJob(printer.Name, nativeJobID, jobID)
 
 	for _ = range ticker.C {
 		nativeState, err := pm.native.GetJobState(printer.Name, nativeJobID)
@@ -437,6 +439,12 @@ func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, job
 			}
 			return
 		}
+	}
+}
+
+func (pm *PrinterManager)releaseJob(printerName string, nativeJobID uint32, jobID string) {
+	if err := pm.native.ReleaseJob(printerName, nativeJobID); err != nil {
+		log.ErrorJob(jobID, err)
 	}
 }
 

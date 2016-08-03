@@ -632,3 +632,9 @@ func checkPrinterAttributes(printerAttributes []string) error {
 
 	return nil
 }
+
+// The following functions are not relevant to CUPS printing, but are required by the NativePrintSystem interface.
+
+func (c *CUPS) ReleaseJob(printerName string, jobID uint32) error {
+	return nil
+}
