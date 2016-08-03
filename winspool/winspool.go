@@ -683,10 +683,6 @@ func (c *jobContext) free() error {
 	if err != nil {
 		return err
 	}
-	err = c.hPrinter.SetJobCommand(c.jobID, JOB_CONTROL_RELEASE)
-	if err != nil {
-		return err
-	}
 	err = c.hDC.EndDoc()
 	if err != nil {
 		return err
@@ -908,7 +904,20 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 	return uint32(jobContext.jobID), nil
 }
 
+func (ws *WinSpool) ReleaseJob(printerName string, jobID uint32) error {
+	hPrinter, err := OpenPrinter(printerName)
+	if err != nil {
+		return err
+	}
+
+	err = hPrinter.SetJobCommand(int32(jobID), JOB_CONTROL_RELEASE)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // The following functions are not relevant to Windows printing, but are required by the NativePrintSystem interface.
 
-func (ws *WinSpool) Quit()                              {}
 func (ws *WinSpool) RemoveCachedPPD(printerName string) {}
