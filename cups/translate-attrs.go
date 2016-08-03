@@ -67,7 +67,8 @@ func getUUID(printerTags map[string][]string) string {
 }
 
 func getState(printerTags map[string][]string) cdd.CloudDeviceStateType {
-	// offline-report reason is set when printer is offline (e.g. USB cable is disconnected)
+	// Some CUPS backends (e.g. usb-darwin) add offline-report
+	// to printer-state-reasons when the printer is offline/disconnected
 	reasons, exists := printerTags[attrPrinterStateReasons]
 	if exists && len(reasons) > 0 {
 		for _, reason := range reasons {

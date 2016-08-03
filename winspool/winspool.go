@@ -154,6 +154,11 @@ func convertPrinterState(wsStatus uint32, wsAttributes uint32) *cdd.PrinterState
 		}
 		state.VendorState.Item = append(state.VendorState.Item, vs)
 	}
+
+	// If PRINTER_ATTRIBUTE_WORK_OFFLINE is set
+	// spooler won't despool any jobs to the printer.
+	// At least for some USB printers, this flag is controlled
+	// automatically by the system depending on the state of physical connection.
 	if wsStatus&PRINTER_STATUS_OFFLINE != 0 || wsAttributes&PRINTER_ATTRIBUTE_WORK_OFFLINE != 0 {
 		state.State = cdd.CloudDeviceStateStopped
 		vs := cdd.VendorStateItem{
