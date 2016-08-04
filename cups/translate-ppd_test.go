@@ -22,8 +22,8 @@ type testdata struct {
 	Dm  lib.DuplexVendorMap
 }
 
-func translationTest(t *testing.T, ppd string, expected testdata) {
-	description, _, _, dm := translatePPD(ppd)
+func translationTest(t *testing.T, ppd string, vendorPPDOptions []string, expected testdata) {
+	description, _, _, dm := translatePPD(ppd, vendorPPDOptions)
 	actual := testdata{description, dm}
 	if !reflect.DeepEqual(expected, actual) {
 		e, _ := json.Marshal(expected)
@@ -48,7 +48,7 @@ func TestTrPrintingSpeed(t *testing.T) {
 		},
 		nil,
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 }
 
 func TestTrMediaSize(t *testing.T) {
@@ -77,7 +77,7 @@ func TestTrMediaSize(t *testing.T) {
 		},
 		nil,
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 }
 
 func TestTrColor(t *testing.T) {
@@ -98,7 +98,7 @@ func TestTrColor(t *testing.T) {
 		},
 		nil,
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 
 	ppd = `*PPD-Adobe: "4.3"
 *OpenUI *CMAndResolution/Print Color as Gray: PickOne
@@ -123,7 +123,7 @@ func TestTrColor(t *testing.T) {
 		},
 		nil,
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 
 	ppd = `*PPD-Adobe: "4.3"
 *OpenUI *CMAndResolution/Print Color as Gray: PickOne
@@ -146,7 +146,7 @@ func TestTrColor(t *testing.T) {
 		},
 		nil,
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 
 	ppd = `*PPD-Adobe: "4.3"
 *OpenUI  *SelectColor/Select Color: PickOne
@@ -167,7 +167,7 @@ func TestTrColor(t *testing.T) {
 		},
 		nil,
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 }
 
 func TestTrDuplex(t *testing.T) {
@@ -191,7 +191,7 @@ func TestTrDuplex(t *testing.T) {
 			cdd.DuplexLongEdge: "Duplex:DuplexNoTumble",
 		},
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 }
 
 func TestTrKMDuplex(t *testing.T) {
@@ -226,7 +226,7 @@ func TestTrKMDuplex(t *testing.T) {
 			cdd.DuplexShortEdge: "KMDuplex:Booklet",
 		},
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 
 	ppd = `*PPD-Adobe: "4.3"
 *OpenUI  *KMDuplex/Duplex: Boolean
@@ -250,7 +250,7 @@ func TestTrKMDuplex(t *testing.T) {
 			cdd.DuplexLongEdge: "KMDuplex:True",
 		},
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 }
 
 func TestTrDPI(t *testing.T) {
@@ -273,7 +273,7 @@ func TestTrDPI(t *testing.T) {
 		},
 		nil,
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 }
 
 func TestTrInputSlot(t *testing.T) {
@@ -304,7 +304,7 @@ func TestTrInputSlot(t *testing.T) {
 		},
 		nil,
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 }
 
 func TestTrPrintQuality(t *testing.T) {
@@ -334,7 +334,7 @@ func TestTrPrintQuality(t *testing.T) {
 		},
 		nil,
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 }
 
 func TestRicohLockedPrint(t *testing.T) {
@@ -379,7 +379,7 @@ func TestRicohLockedPrint(t *testing.T) {
 		},
 		nil,
 	}
-	translationTest(t, ppd, expected)
+	translationTest(t, ppd, []string{}, expected)
 }
 
 func easyModelTest(t *testing.T, input, expected string) {
@@ -415,4 +415,45 @@ func TestCleanupModel(t *testing.T) {
 	easyModelTest(t, "Color LaserJet 3600 hpijs, 3.13.9, requires proprietary plugin", "Color LaserJet 3600")
 	easyModelTest(t, "LaserJet 4250 pcl3, hpcups 3.13.9", "LaserJet 4250")
 	easyModelTest(t, "DesignJet T790 pcl, 1.0", "DesignJet T790")
+}
+
+func TestTrVendorPPDOptions(t *testing.T) {
+	ppd := `*PPD-Adobe: "4.3"
+*OpenUI *CustomKey/Custom Translation: PickOne
+*DefaultCustomKey: Some
+*CustomKey None/Off: ""
+*CustomKey Some/On: ""
+*CustomKey Yes/Petunia: ""
+*CloseUI: *CustomKey`
+
+	expected := testdata{
+		&cdd.PrinterDescriptionSection{
+			VendorCapability: &[]cdd.VendorCapability{
+				cdd.VendorCapability{
+					ID:                   "CustomKey",
+					Type:                 cdd.VendorCapabilitySelect,
+					DisplayNameLocalized: cdd.NewLocalizedString("Custom Translation"),
+					SelectCap: &cdd.SelectCapability{
+						Option: []cdd.SelectCapabilityOption{
+							cdd.SelectCapabilityOption{"None", "", false, cdd.NewLocalizedString("Off")},
+							cdd.SelectCapabilityOption{"Some", "", true, cdd.NewLocalizedString("On")},
+							cdd.SelectCapabilityOption{"Yes", "", false, cdd.NewLocalizedString("Petunia")},
+						},
+					},
+				},
+			},
+		},
+		nil,
+	}
+	translationTest(t, ppd, []string{"CustomKey", "AnyOtherKey"}, expected)
+	translationTest(t, ppd, []string{"all"}, expected)
+	translationTest(t, ppd, []string{"CustomKey", "all"}, expected)
+	translationTest(t, ppd, []string{"AnyOtherKey", "all"}, expected)
+
+	expected = testdata{
+		&cdd.PrinterDescriptionSection{},
+		nil,
+	}
+	translationTest(t, ppd, []string{}, expected)
+	translationTest(t, ppd, []string{"AnyOtherKey"}, expected)
 }

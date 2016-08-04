@@ -31,16 +31,18 @@ import (
 // (1) maintains temporary file copies of PPDs for each printer
 // (2) updates those PPD files as necessary
 type ppdCache struct {
-	cc         *cupsCore
-	cache      map[string]*ppdCacheEntry
-	cacheMutex sync.RWMutex
+	cc               *cupsCore
+	vendorPPDOptions []string
+	cache            map[string]*ppdCacheEntry
+	cacheMutex       sync.RWMutex
 }
 
-func newPPDCache(cc *cupsCore) *ppdCache {
+func newPPDCache(cc *cupsCore, vendorPPDOptions []string) *ppdCache {
 	cache := make(map[string]*ppdCacheEntry)
 	pc := ppdCache{
-		cc:    cc,
-		cache: cache,
+		cc:               cc,
+		vendorPPDOptions: vendorPPDOptions,
+		cache:            cache,
 	}
 	return &pc
 }
@@ -76,7 +78,7 @@ func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptio
 		if err != nil {
 			return nil, "", "", nil, err
 		}
-		if err = pce.refresh(pc.cc); err != nil {
+		if err = pce.refresh(pc.cc, pc.vendorPPDOptions); err != nil {
 			pce.free()
 			return nil, "", "", nil, err
 		}
@@ -94,7 +96,7 @@ func (pc *ppdCache) getPPDCacheEntry(printername string) (*cdd.PrinterDescriptio
 		return &description, manufacturer, model, duplexMap, nil
 
 	} else {
-		if err := pce.refresh(pc.cc); err != nil {
+		if err := pce.refresh(pc.cc, pc.vendorPPDOptions); err != nil {
 			delete(pc.cache, printername)
 			pce.free()
 			return nil, "", "", nil, err
@@ -147,7 +149,7 @@ func (pce *ppdCacheEntry) free() {
 
 // refresh calls cupsGetPPD3() to refresh this PPD information, in
 // case CUPS has a new PPD for the printer.
-func (pce *ppdCacheEntry) refresh(cc *cupsCore) error {
+func (pce *ppdCacheEntry) refresh(cc *cupsCore, vendorPPDOptions []string) error {
 	pce.mutex.Lock()
 	defer pce.mutex.Unlock()
 
@@ -178,7 +180,7 @@ func (pce *ppdCacheEntry) refresh(cc *cupsCore) error {
 		return err
 	}
 
-	description, manufacturer, model, duplexMap := translatePPD(w.String())
+	description, manufacturer, model, duplexMap := translatePPD(w.String(), vendorPPDOptions)
 	if description == nil || manufacturer == "" || model == "" {
 		return errors.New("Failed to parse PPD")
 	}

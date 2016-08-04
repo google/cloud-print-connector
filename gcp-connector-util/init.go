@@ -16,12 +16,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
-	"github.com/codegangsta/cli"
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
+	"github.com/urfave/cli"
 
 	"golang.org/x/oauth2"
 )
@@ -353,16 +354,22 @@ func stringToBool(val string) (bool, bool) {
 
 func initConfigFile(context *cli.Context) {
 	var localEnable bool
-	if context.IsSet("local-printing-enable") {
+	if runtime.GOOS == "windows" {
+		// Remove this if block when Privet support is added to Windows.
+		localEnable = false
+	} else if context.IsSet("local-printing-enable") {
 		localEnable = context.Bool("local-printing-enable")
 	} else {
-		fmt.Println("\"Local printing\" means that clients print directly to the connector via local subnet,")
-		fmt.Println("and that an Internet connection is neither necessary nor used.")
+		fmt.Println("\"Local printing\" means that clients print directly to the connector via")
+		fmt.Println("local subnet, and that an Internet connection is neither necessary nor used.")
 		localEnable = scanYesOrNo("Enable local printing?")
 	}
 
 	var cloudEnable bool
-	if context.IsSet("cloud-printing-enable") {
+	if runtime.GOOS == "windows" {
+		// Remove this if block when Privet support is added to Windows.
+		cloudEnable = true
+	} else if context.IsSet("cloud-printing-enable") {
 		cloudEnable = context.Bool("cloud-printing-enable")
 	} else {
 		fmt.Println("\"Cloud printing\" means that clients can print from anywhere on the Internet,")

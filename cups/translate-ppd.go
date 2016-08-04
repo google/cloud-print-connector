@@ -127,48 +127,80 @@ type entry struct {
 
 // translatePPD extracts a PrinterDescriptionSection, manufacturer string, model string, and DuplexVendorMap
 // from a PPD string.
-func translatePPD(ppd string) (*cdd.PrinterDescriptionSection, string, string, lib.DuplexVendorMap) {
+func translatePPD(ppd string, vendorPPDOptions []string) (*cdd.PrinterDescriptionSection, string, string, lib.DuplexVendorMap) {
 	statements := ppdToStatements(ppd)
 	openUIStatements, installables, uiConstraints, standAlones := groupStatements(statements)
 	openUIStatements = filterConstraints(openUIStatements, installables, uiConstraints)
 	entriesByMainKeyword, entriesByTranslation := openUIStatementsToEntries(openUIStatements)
 
+	consideredMainKeywords := make(map[string]struct{})
+
 	pds := cdd.PrinterDescriptionSection{
 		VendorCapability: &[]cdd.VendorCapability{},
 	}
+
 	var duplexMap lib.DuplexVendorMap
 	if e, exists := entriesByMainKeyword[ppdPageSize]; exists {
 		pds.MediaSize = convertMediaSize(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
 	if e, exists := entriesByMainKeyword[ppdColorModel]; exists {
 		pds.Color = convertColorPPD(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	} else if e, exists := entriesByMainKeyword[ppdCMAndResolution]; exists {
 		pds.Color = convertColorPPD(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	} else if e, exists := entriesByMainKeyword[ppdSelectColor]; exists {
 		pds.Color = convertColorPPD(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
 	if e, exists := entriesByMainKeyword[ppdDuplex]; exists {
 		pds.Duplex, duplexMap = convertDuplex(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	} else if e, exists := entriesByMainKeyword[ppdKMDuplex]; exists {
 		pds.Duplex, duplexMap = convertDuplex(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
 	if e, exists := entriesByMainKeyword[ppdResolution]; exists {
 		pds.DPI = convertDPI(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
 	if e, exists := entriesByMainKeyword[ppdOutputBin]; exists {
 		*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
 	if jobType, exists := entriesByMainKeyword[ppdJobType]; exists {
 		if lockedPrintPassword, exists := entriesByMainKeyword[ppdLockedPrintPassword]; exists {
 			vc := convertRicohLockedPrintPassword(jobType, lockedPrintPassword)
 			if vc != nil {
 				*pds.VendorCapability = append(*pds.VendorCapability, *vc)
+				consideredMainKeywords[jobType.mainKeyword] = struct{}{}
+				consideredMainKeywords[lockedPrintPassword.mainKeyword] = struct{}{}
 			}
 		}
 	}
 	if e, exists := entriesByTranslation[ppdPrintQualityTranslation]; exists {
 		*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
+
+	vendorPPDOptionsMap := make(map[string]struct{}, len(vendorPPDOptions))
+	for _, o := range vendorPPDOptions {
+		vendorPPDOptionsMap[o] = struct{}{}
+	}
+	_, translateAllVendorPPDOptions := vendorPPDOptionsMap["all"]
+	for _, e := range entriesByMainKeyword {
+		if _, exists := consideredMainKeywords[e.mainKeyword]; exists {
+			continue
+		}
+		if !translateAllVendorPPDOptions {
+			if _, exists := vendorPPDOptionsMap[e.mainKeyword]; !exists {
+				continue
+			}
+		}
+		*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
+	}
+
 	if len(*pds.VendorCapability) == 0 {
 		// Don't generate invalid CDD JSON.
 		pds.VendorCapability = nil

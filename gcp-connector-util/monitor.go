@@ -16,8 +16,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/codegangsta/cli"
 	"github.com/google/cloud-print-connector/lib"
+	"github.com/urfave/cli"
 )
 
 func monitorConnector(context *cli.Context) {
