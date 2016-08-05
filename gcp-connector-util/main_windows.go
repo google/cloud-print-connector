@@ -10,7 +10,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -61,35 +60,33 @@ var windowsCommands = []cli.Command{
 	},
 }
 
-func installEventLog(c *cli.Context) {
+func installEventLog(c *cli.Context) error {
 	err := eventlog.InstallAsEventCreate(lib.ConnectorName, eventlog.Error|eventlog.Warning|eventlog.Info)
 	if err != nil {
-		fmt.Printf("Failed to install event log registry entries: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to install event log registry entries: %s", err)
 	}
 	fmt.Println("Event log registry entries installed successfully")
+	return nil
 }
 
-func removeEventLog(c *cli.Context) {
+func removeEventLog(c *cli.Context) error {
 	err := eventlog.Remove(lib.ConnectorName)
 	if err != nil {
-		fmt.Printf("Failed to remove event log registry entries: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to remove event log registry entries: %s\n", err)
 	}
 	fmt.Println("Event log registry entries removed successfully")
+	return nil
 }
 
-func createService(c *cli.Context) {
+func createService(c *cli.Context) error {
 	exePath, err := filepath.Abs("gcp-windows-connector.exe")
 	if err != nil {
-		fmt.Printf("Failed to find the connector executable: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to find the connector executable: %s\n", err)
 	}
 
 	m, err := mgr.Connect()
 	if err != nil {
-		fmt.Printf("Failed to connect to service control manager: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to connect to service control manager: %s\n", err)
 	}
 	defer m.Disconnect()
 
@@ -101,90 +98,81 @@ func createService(c *cli.Context) {
 	}
 	service, err := m.CreateService(lib.ConnectorName, exePath, config)
 	if err != nil {
-		fmt.Printf("Failed to create service: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to create service: %s\n", err)
 	}
 	defer service.Close()
 
 	fmt.Println("Service created successfully")
+	return nil
 }
 
-func deleteService(c *cli.Context) {
+func deleteService(c *cli.Context) error {
 	m, err := mgr.Connect()
 	if err != nil {
-		fmt.Printf("Failed to connect to service control manager: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to connect to service control manager: %s\n", err)
 	}
 	defer m.Disconnect()
 
 	service, err := m.OpenService(lib.ConnectorName)
 	if err != nil {
-		fmt.Printf("Failed to open service: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to open service: %s\n", err)
 	}
 	defer service.Close()
 
 	err = service.Delete()
 	if err != nil {
-		fmt.Printf("Failed to delete service: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to delete service: %s\n", err)
 	}
 
 	fmt.Println("Service deleted successfully")
+	return nil
 }
 
-func startService(c *cli.Context) {
+func startService(c *cli.Context) error {
 	m, err := mgr.Connect()
 	if err != nil {
-		fmt.Printf("Failed to connect to service control manager: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to connect to service control manager: %s\n", err)
 	}
 	defer m.Disconnect()
 
 	service, err := m.OpenService(lib.ConnectorName)
 	if err != nil {
-		fmt.Printf("Failed to open service: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to open service: %s\n", err)
 	}
 	defer service.Close()
 
 	err = service.Start()
 	if err != nil {
-		fmt.Printf("Failed to start service: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to start service: %s\n", err)
 	}
 
 	fmt.Println("Service started successfully")
+	return nil
 }
 
-func stopService(c *cli.Context) {
+func stopService(c *cli.Context) error {
 	m, err := mgr.Connect()
 	if err != nil {
-		fmt.Printf("Failed to connect to service control manager: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to connect to service control manager: %s\n", err)
 	}
 	defer m.Disconnect()
 
 	service, err := m.OpenService(lib.ConnectorName)
 	if err != nil {
-		fmt.Printf("Failed to open service: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to open service: %s\n", err)
 	}
 	defer service.Close()
 
 	_, err = service.Control(svc.Stop)
 	if err != nil {
-		fmt.Printf("Failed to stop service: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to stop service: %s\n", err)
 	}
 
 	fmt.Printf("Service stopped successfully")
+	return nil
 }
 
 func main() {
-	// Suppress date/time prefix.
-	log.SetFlags(0)
-
 	app := cli.NewApp()
 	app.Name = "gcp-windows-connector-util"
 	app.Usage = lib.ConnectorName + " for Windows utility tools"

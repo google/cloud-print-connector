@@ -9,7 +9,6 @@
 package main
 
 import (
-	"log"
 	"os"
 	"time"
 
@@ -94,9 +93,6 @@ var unixCommands = []cli.Command{
 }
 
 func main() {
-	// Suppress date/time prefix.
-	log.SetFlags(0)
-
 	app := cli.NewApp()
 	app.Name = "gcp-connector-util"
 	app.Usage = "Google Cloud Print Connector utility tools"

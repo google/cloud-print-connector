@@ -205,10 +205,10 @@ func connector(context *cli.Context) error {
 	if config.CloudPrintingEnable {
 		if config.LocalPrintingEnable {
 			log.Infof("Ready to rock as proxy '%s' and in local mode", config.ProxyName)
-			fmt.Println("Ready to rock as proxy '%s' and in local mode", config.ProxyName)
+			fmt.Printf("Ready to rock as proxy '%s' and in local mode\n", config.ProxyName)
 		} else {
 			log.Infof("Ready to rock as proxy '%s'", config.ProxyName)
-			fmt.Println("Ready to rock as proxy '%s'", config.ProxyName)
+			fmt.Printf("Ready to rock as proxy '%s'\n", config.ProxyName)
 		}
 	} else {
 		log.Info("Ready to rock in local-only mode")
