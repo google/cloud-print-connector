@@ -31,7 +31,7 @@
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf" />
     <UIRef Id="WixUI_InstallDir" />
-    
+
     <Feature
         Id="connector"
         Title="Google Cloud Print Windows Connector"
@@ -130,9 +130,18 @@
       <Show Dialog="WelcomeDlg" Before="ManualInit" />
       <Show Dialog="ProgressDlg" After="ManualInit" />
       <Custom Action="ManualInit" Before="ExecuteAction">
-          NOT CONFIGFILE and NOT Installed
+          NOT CONFIGFILE and NOT Installed and NOT WIX_UPGRADE_DETECTED
       </Custom>
     </InstallUISequence>
+
+    <InstallExecuteSequence>
+      <RemoveFiles />
+      <Custom Action="DeletePrinters" Before="RemoveFiles">
+          DELETEPRINTERS="YES" AND $ConfigFile=2
+      </Custom>
+    </InstallExecuteSequence>
+
+    <Property Id="DELETEPRINTERS" Value="YES" Secure="yes" />
 
     <CustomAction
         Id="ManualInit"
@@ -140,6 +149,13 @@
         Execute="immediate"
         Return="check"
         ExeCommand="init" />
+
+    <CustomAction
+        Id="DeletePrinters"
+        FileKey="ConnectorUtil"
+        Execute="deferred"
+        Return="ignore"
+        ExeCommand='--config-filename="[CloudPrintDataFolder]gcp-windows-connector.config.json" delete-all-gcp-printers' />
 
     <Binary
         Id="ConnectorUtil"
