@@ -27,10 +27,13 @@ import (
 
 type NativePrintSystem interface {
 	GetPrinters() ([]lib.Printer, error)
-	GetJobState(printerName string, jobID uint32) (*cdd.PrintJobStateDiff, error)
-	Print(printer *lib.Printer, fileName, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (uint32, error)
-	ReleaseJob(printerName string, jobID uint32) error
+	Print(printer *lib.Printer, fileName, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (NativePrintJob, error)
 	RemoveCachedPPD(printerName string)
+}
+
+type NativePrintJob interface {
+	GetState() (*cdd.PrintJobStateDiff, error)
+	Release() error
 }
 
 // Manages state and interactions between the native print system and Google Cloud Print.
@@ -380,7 +383,7 @@ func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, job
 		return
 	}
 
-	nativeJobID, err := pm.native.Print(&printer, filename, title, user, jobID, ticket)
+	nativeJob, err := pm.native.Print(&printer, filename, title, user, jobID, ticket)
 	if err != nil {
 		pm.incrementJobsProcessed(false)
 		log.ErrorJobf(jobID, "Failed to submit to native print system: %s", err)
@@ -396,18 +399,18 @@ func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, job
 		return
 	}
 
-	log.InfoJobf(jobID, "Submitted as native job %d", nativeJobID)
+	log.InfoJobf(jobID, "Submitted as native job %s", nativeJob)
 
 	var state cdd.PrintJobStateDiff
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
-	defer pm.releaseJob(printer.Name, nativeJobID, jobID)
+	defer pm.releaseJob(nativeJob, jobID)
 
 	for _ = range ticker.C {
-		nativeState, err := pm.native.GetJobState(printer.Name, nativeJobID)
+		nativeState, err := nativeJob.GetState()
 		if err != nil {
-			log.WarningJobf(jobID, "Failed to get state of native job %d: %s", nativeJobID, err)
+			log.WarningJobf(jobID, "Failed to get state of native job %s: %s", nativeJob, err)
 
 			state = cdd.PrintJobStateDiff{
 				State: &cdd.JobState{
@@ -442,8 +445,8 @@ func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, job
 	}
 }
 
-func (pm *PrinterManager)releaseJob(printerName string, nativeJobID uint32, jobID string) {
-	if err := pm.native.ReleaseJob(printerName, nativeJobID); err != nil {
+func (pm *PrinterManager) releaseJob(nativeJob NativePrintJob, jobID string) {
+	if err := nativeJob.Release(); err != nil {
 		log.ErrorJob(jobID, err)
 	}
 }

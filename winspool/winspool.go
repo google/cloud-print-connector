@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/cloud-print-connector/cdd"
 	"github.com/google/cloud-print-connector/lib"
+	"github.com/google/cloud-print-connector/manager"
 )
 
 // winspoolPDS represents capabilities that WinSpool always provides.
@@ -46,6 +47,11 @@ type WinSpool struct {
 	systemTags            map[string]string
 	printerBlacklist      map[string]interface{}
 	printerWhitelist      map[string]interface{}
+}
+
+type WinSpoolPrintJob struct {
+	jobID    int32
+	hPrinter HANDLE
 }
 
 func NewWinSpool(prefixJobIDToJobTitle bool, displayNamePrefix string, printerBlacklist []string, printerWhitelist []string) (*WinSpool, error) {
@@ -571,14 +577,28 @@ func convertJobState(wsStatus uint32) *cdd.JobState {
 	return &state
 }
 
-// GetJobState gets the current state of the job indicated by jobID.
-func (ws *WinSpool) GetJobState(printerName string, jobID uint32) (*cdd.PrintJobStateDiff, error) {
-	hPrinter, err := OpenPrinter(printerName)
+func (job *WinSpoolPrintJob) Release() error {
+
+	err := job.hPrinter.SetJobCommand(job.jobID, JOB_CONTROL_RELEASE)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	ji1, err := hPrinter.GetJob(int32(jobID))
+	if err = job.hPrinter.ClosePrinter(); err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+func (job *WinSpoolPrintJob) String() string {
+	return fmt.Sprintf("%d", job.jobID)
+}
+
+func (job *WinSpoolPrintJob) GetState() (*cdd.PrintJobStateDiff, error) {
+
+	ji1, err := job.hPrinter.GetJob(job.jobID)
 	if err != nil {
 		if err == ERROR_INVALID_PARAMETER {
 			jobState := cdd.PrintJobStateDiff{
@@ -688,10 +708,6 @@ func (c *jobContext) free() error {
 		return err
 	}
 	err = c.hDC.DeleteDC()
-	if err != nil {
-		return err
-	}
-	err = c.hPrinter.ClosePrinter()
 	if err != nil {
 		return err
 	}
@@ -811,9 +827,8 @@ var (
 	}
 )
 
-// Print sends a new print job to the specified printer. The job ID
-// is returned.
-func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (uint32, error) {
+// Print sends a new print job to the specified printer.
+func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (manager.NativePrintJob, error) {
 	printer.NativeJobSemaphore.Acquire()
 	defer printer.NativeJobSemaphore.Release()
 
@@ -822,15 +837,15 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 	}
 
 	if printer == nil {
-		return 0, errors.New("Print() called with nil printer")
+		return nil, errors.New("Print() called with nil printer")
 	}
 	if ticket == nil {
-		return 0, errors.New("Print() called with nil ticket")
+		return nil, errors.New("Print() called with nil ticket")
 	}
 
 	jobContext, err := newJobContext(printer.Name, fileName, title, user)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer jobContext.free()
 
@@ -840,7 +855,7 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 		} else if ticket.Print.Color.VendorID != "" {
 			v, err := strconv.ParseInt(ticket.Print.Color.VendorID, 10, 16)
 			if err != nil {
-				return 0, err
+				return nil, err
 			}
 			jobContext.devMode.SetColor(int16(v))
 		}
@@ -875,7 +890,7 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 		if ticket.Print.MediaSize.VendorID != "" {
 			v, err := strconv.ParseInt(ticket.Print.MediaSize.VendorID, 10, 16)
 			if err != nil {
-				return 0, err
+				return nil, err
 			}
 			jobContext.devMode.SetPaperSize(int16(v))
 			jobContext.devMode.ClearPaperLength()
@@ -897,25 +912,11 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 
 	for i := 0; i < jobContext.pDoc.GetNPages(); i++ {
 		if err := printPage(printer.Name, i, jobContext, fitToPage); err != nil {
-			return 0, err
+			return nil, err
 		}
 	}
 
-	return uint32(jobContext.jobID), nil
-}
-
-func (ws *WinSpool) ReleaseJob(printerName string, jobID uint32) error {
-	hPrinter, err := OpenPrinter(printerName)
-	if err != nil {
-		return err
-	}
-
-	err = hPrinter.SetJobCommand(int32(jobID), JOB_CONTROL_RELEASE)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return &WinSpoolPrintJob{jobID: jobContext.jobID, hPrinter: jobContext.hPrinter}, nil
 }
 
 // The following functions are not relevant to Windows printing, but are required by the NativePrintSystem interface.
