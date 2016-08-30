@@ -147,7 +147,7 @@ func (gcp *GoogleCloudPrint) Fetch(gcpID string) ([]Job, error) {
 	responseBody, errorCode, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"fetch", form)
 	if err != nil {
 		if errorCode == 413 {
-			log.Debugf("No jobs returned by fetch (413 error)")
+			log.DebugPrinter("No jobs returned by fetch (413 error)")
 			// 413 means "Zero print jobs returned", which isn't really an error.
 			return []Job{}, nil
 		}
