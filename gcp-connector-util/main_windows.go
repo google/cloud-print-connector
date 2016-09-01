@@ -174,7 +174,7 @@ func stopService(c *cli.Context) error {
 
 func main() {
 	app := cli.NewApp()
-	app.Name = "gcp-windows-connector-util"
+	app.Name = "gcp-connector-util"
 	app.Usage = lib.ConnectorName + " for Windows utility tools"
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
