@@ -643,14 +643,6 @@ func newJobContext(printerName, fileName, title, user string) (*jobContext, erro
 		pDoc.Unref()
 		return nil, err
 	}
-	err = hPrinter.SetJobCommand(jobID, JOB_CONTROL_RETAIN)
-	if err != nil {
-		hDC.EndDoc()
-		hDC.DeleteDC()
-		hPrinter.ClosePrinter()
-		pDoc.Unref()
-		return nil, err
-	}
 	hPrinter.SetJobUserName(jobID, user)
 	cSurface, err := CairoWin32PrintingSurfaceCreate(hDC)
 	if err != nil {
@@ -901,6 +893,19 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 		}
 	}
 
+	// Retain unpaused jobs to check the status later. Don't retain paused jobs because
+	// release would delete the job even if it was still paused and hadn't been printed
+	ji1, err := jobContext.hPrinter.GetJob(jobContext.jobID)
+	if err != nil {
+		return 0, err
+	}
+	if ji1.status&JOB_STATUS_PAUSED == 0 {
+		err = jobContext.hPrinter.SetJobCommand(jobContext.jobID, JOB_CONTROL_RETAIN)
+		if err != nil {
+			return 0, err
+		}
+	}
+
 	return uint32(jobContext.jobID), nil
 }
 
@@ -910,9 +915,16 @@ func (ws *WinSpool) ReleaseJob(printerName string, jobID uint32) error {
 		return err
 	}
 
-	err = hPrinter.SetJobCommand(int32(jobID), JOB_CONTROL_RELEASE)
+	// Only release if the job was retained (otherwise we get an error)
+	ji1, err := hPrinter.GetJob(int32(jobID))
 	if err != nil {
 		return err
+	}
+	if ji1.status&JOB_STATUS_RETAINED != 0 {
+		err = hPrinter.SetJobCommand(int32(jobID), JOB_CONTROL_RELEASE)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
