@@ -28,7 +28,7 @@ import (
 func main() {
 	app := cli.NewApp()
 	app.Name = "gcp-windows-connector"
-	app.Usage = "Google Cloud Print Connector for Windows"
+	app.Usage = lib.ConnectorName + " for Windows"
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
 		lib.ConfigFilenameFlag,
