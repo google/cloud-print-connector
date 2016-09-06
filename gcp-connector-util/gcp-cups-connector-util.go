@@ -80,7 +80,7 @@ var commonCommands = []cli.Command{
 	},
 	cli.Command{
 		Name:   "show-gcp-printer-status",
-		Usage:  "Shows the current status of a printer and it's jobs",
+		Usage:  "Shows the current status of a printer and its jobs",
 		Action: showGCPPrinterStatus,
 		Flags: []cli.Flag{
 			cli.StringFlag{
@@ -95,16 +95,16 @@ var commonCommands = []cli.Command{
 		Flags: []cli.Flag{
 			cli.StringFlag{
 				Name:  "printer-id",
-				Usage: "Printer to share.",
+				Usage: "Printer to share",
 			},
 			cli.StringFlag{
 				Name:  "email",
-				Usage: "Group or user to share with.",
+				Usage: "Group or user to share with",
 			},
 			cli.StringFlag{
 				Name:  "role",
 				Value: "USER",
-				Usage: "Role granted. user or manager.",
+				Usage: "Role granted. user or manager",
 			},
 			cli.BoolTFlag{
 				Name:  "skip-notification",
@@ -118,43 +118,43 @@ var commonCommands = []cli.Command{
 	},
 	cli.Command{
 		Name:   "unshare-gcp-printer",
-		Usage:  "Removes user or group access to printer.",
+		Usage:  "Removes user or group access to printer",
 		Action: unshareGCPPrinter,
 		Flags: []cli.Flag{
 			cli.StringFlag{
 				Name:  "printer-id",
-				Usage: "Printer to unshare.",
+				Usage: "Printer to unshare",
 			},
 			cli.StringFlag{
 				Name:  "email",
-				Usage: "Group or user to remove.",
+				Usage: "Group or user to remove",
 			},
 			cli.BoolFlag{
 				Name:  "public",
-				Usage: "Remove public printer access.",
+				Usage: "Remove public printer access",
 			},
 		},
 	},
 	cli.Command{
 		Name:   "update-gcp-printer",
-		Usage:  "Modifies settings for a printer.",
+		Usage:  "Modifies settings for a printer",
 		Action: updateGCPPrinter,
 		Flags: []cli.Flag{
 			cli.StringFlag{
 				Name:  "printer-id",
-				Usage: "Printer to update.",
+				Usage: "Printer to update",
 			},
 			cli.BoolFlag{
 				Name:  "enable-quota",
-				Usage: "Set a daily per-user quota.",
+				Usage: "Set a daily per-user quota",
 			},
 			cli.BoolFlag{
 				Name:  "disable-quota",
-				Usage: "Disable daily per-user quota.",
+				Usage: "Disable daily per-user quota",
 			},
 			cli.IntFlag{
 				Name:  "daily-quota",
-				Usage: "Pages per-user per-day.",
+				Usage: "Pages per-user per-day",
 			},
 		},
 	},

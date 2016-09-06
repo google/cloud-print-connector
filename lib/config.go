@@ -10,7 +10,6 @@ package lib
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"reflect"
 	"runtime"
@@ -19,7 +18,7 @@ import (
 )
 
 const (
-	ConnectorName = "Cloud Print Connector"
+	ConnectorName = "Google Cloud Print Connector"
 
 	// A website with user-friendly information.
 	ConnectorHomeURL = "https://github.com/google/cloud-print-connector"
@@ -30,7 +29,7 @@ const (
 var (
 	ConfigFilenameFlag = cli.StringFlag{
 		Name:  "config-filename",
-		Usage: fmt.Sprintf("Connector config filename (default \"%s\")", defaultConfigFilename),
+		Usage: "Connector config filename",
 		Value: defaultConfigFilename,
 	}
 
