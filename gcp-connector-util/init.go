@@ -22,6 +22,7 @@ import (
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
 	"github.com/urfave/cli"
+  "github.com/satori/go.uuid"
 
 	"golang.org/x/oauth2"
 )
@@ -401,10 +402,7 @@ func initConfigFile(context *cli.Context) error {
 		if context.IsSet("proxy-name") {
 			proxyName = context.String("proxy-name")
 		} else {
-			proxyName, err = scanNonEmptyString("Proxy name for this connector:")
-			if err != nil {
-				return err
-			}
+			proxyName = uuid.NewV4().String()
 		}
 
 		var userClient *http.Client
