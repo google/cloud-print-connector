@@ -14,14 +14,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/urfave/cli"
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
 	"github.com/google/cloud-print-connector/log"
 	"github.com/google/cloud-print-connector/manager"
-	"github.com/google/cloud-print-connector/privet"
 	"github.com/google/cloud-print-connector/winspool"
 	"github.com/google/cloud-print-connector/xmpp"
-	"github.com/urfave/cli"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/debug"
 )
@@ -109,6 +108,9 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 	if !config.CloudPrintingEnable && !config.LocalPrintingEnable {
 		log.Fatal("Cannot run connector with both local_printing_enable and cloud_printing_enable set to false")
 		return false, 1
+	} else if config.LocalPrintingEnable {
+		log.Fatal("Local printing has not been implemented in this version of the Windows connector.")
+		return false, 1
 	}
 
 	jobs := make(chan *lib.Job, 10)
@@ -152,27 +154,12 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 		return false, 1
 	}
 
-	var priv *privet.Privet
-	if config.LocalPrintingEnable {
-		log.Info("Starting local printing...")
-		if g == nil {
-			priv, err = privet.NewPrivet(jobs, config.LocalPortLow, config.LocalPortHigh, config.GCPBaseURL, nil)
-		} else {
-			priv, err = privet.NewPrivet(jobs, config.LocalPortLow, config.LocalPortHigh, config.GCPBaseURL, g.ProximityToken)
-		}
-		if err != nil {
-			log.Fatal(err)
-			return false, 1
-		}
-		defer priv.Quit()
-	}
-
 	nativePrinterPollInterval, err := time.ParseDuration(config.NativePrinterPollInterval)
 	if err != nil {
 		log.Fatalf("Failed to parse printer poll interval: %s", err)
 		return false, 1
 	}
-	pm, err := manager.NewPrinterManager(ws, g, priv, nativePrinterPollInterval,
+	pm, err := manager.NewPrinterManager(ws, g, nil, nativePrinterPollInterval,
 		config.NativeJobQueueSize, *config.CUPSJobFullUsername, config.ShareScope, jobs, xmppNotifications)
 	if err != nil {
 		log.Fatal(err)
