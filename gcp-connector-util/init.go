@@ -21,8 +21,8 @@ import (
 
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
+	"github.com/satori/go.uuid"
 	"github.com/urfave/cli"
-  "github.com/satori/go.uuid"
 
 	"golang.org/x/oauth2"
 )
