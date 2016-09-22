@@ -415,7 +415,7 @@ func initConfigFile(context *cli.Context) error {
 		if context.IsSet("share-scope") {
 			shareScope = context.String("share-scope")
 		} else {
-			shareScope, err = scanString("Enter the email address of a user or group with whom all printers will automatically be shared or press enter to disable automatic sharing:")
+			shareScope, err = scanString("Enter the email address of a user or group with whom all printers will automatically be shared or leave blank to disable automatic sharing:")
 			if err != nil {
 				return err
 			}
