@@ -95,7 +95,7 @@ var unixCommands = []cli.Command{
 func main() {
 	app := cli.NewApp()
 	app.Name = "gcp-connector-util"
-	app.Usage = "Google Cloud Print Connector utility tools"
+	app.Usage = lib.ConnectorName + " for CUPS utility tools"
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
 		lib.ConfigFilenameFlag,
