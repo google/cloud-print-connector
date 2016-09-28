@@ -487,6 +487,93 @@ const (
 	Owner   Role = "OWNER"
 )
 
+// Search calls google.com/cloudprint/search to query printers owned by the user/robot.
+func (gcp *GoogleCloudPrint) Search(q, atype, connection_status string) (map[string]lib.Printer, error) {
+	var client *http.Client
+	if gcp.userClient != nil {
+		client = gcp.userClient
+	} else {
+		client = gcp.robotClient
+	}
+	form := url.Values{}
+	if q != "" {
+		form.Set("q", q)
+	}
+	if atype != "" {
+		form.Set("type", atype)
+	}
+	if connection_status != "" {
+		form.Set("connection_status", connection_status)
+	}
+	form.Set("extra_fields", "semanticState")
+
+	responseBody, _, _, err := postWithRetry(client, gcp.baseURL+"search", form)
+	if err != nil {
+		return nil, err
+	}
+
+	printers := make(map[string]lib.Printer)
+
+	var printersData struct {
+		Printers []struct {
+			ID                 string                     `json:"id"`
+			Name               string                     `json:"name"`
+			DefaultDisplayName string                     `json:"defaultDisplayName"`
+			UUID               string                     `json:"uuid"`
+			Manufacturer       string                     `json:"manufacturer"`
+			Model              string                     `json:"model"`
+			GCPVersion         string                     `json:"gcpVersion"`
+			SetupURL           string                     `json:"setupUrl"`
+			SupportURL         string                     `json:"supportUrl"`
+			UpdateURL          string                     `json:"updateUrl"`
+			Firmware           string                     `json:"firmware"`
+			Capabilities       cdd.CloudDeviceDescription `json:"capabilities"`
+			CapsHash           string                     `json:"capsHash"`
+			Tags               []string                   `json:"tags"`
+			QueuedJobsCount    uint                       `json:"queuedJobsCount"`
+			SemanticState      cdd.CloudDeviceState       `json:"semanticState"`
+		}
+	}
+	if err = json.Unmarshal(responseBody, &printersData); err != nil {
+		return nil, err
+	}
+
+	for _, p := range printersData.Printers {
+		tags := make(map[string]string)
+		for _, tag := range p.Tags {
+			s := strings.SplitN(tag, "=", 2)
+			key := s[0]
+			var value string
+			if len(s) > 1 {
+				value = s[1]
+			}
+			tags[key] = value
+		}
+
+		printer := &lib.Printer{
+			GCPID:              p.ID,
+			Name:               p.Name,
+			DefaultDisplayName: p.DefaultDisplayName,
+			UUID:               p.UUID,
+			Manufacturer:       p.Manufacturer,
+			Model:              p.Model,
+			GCPVersion:         p.GCPVersion,
+			SetupURL:           p.SetupURL,
+			SupportURL:         p.SupportURL,
+			UpdateURL:          p.UpdateURL,
+			ConnectorVersion:   p.Firmware,
+			State:              p.SemanticState.Printer,
+			Description:        p.Capabilities.Printer,
+			CapsHash:           p.CapsHash,
+			Tags:               tags,
+		}
+
+		printers[p.ID] = *printer
+	}
+
+	return printers, nil
+}
+
 // Share calls google.com/cloudprint/share to share a registered GCP printer.
 func (gcp *GoogleCloudPrint) Share(gcpID, shareScope string, role Role, skip_notification bool, public bool) error {
 	if gcp.userClient == nil {

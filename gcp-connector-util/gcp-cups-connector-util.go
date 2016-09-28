@@ -158,6 +158,25 @@ var commonCommands = []cli.Command{
 			},
 		},
 	},
+	cli.Command{
+		Name:   "list-gcp-printers",
+		Usage:  "Lists all GCP Printers",
+		Action: listGCPPrinters,
+		Flags: []cli.Flag{
+			cli.StringFlag{
+				Name:  "query",
+				Usage: "Search to perform",
+			},
+			cli.StringFlag{
+				Name:  "type",
+				Usage: "Type of printers to return",
+			},
+			cli.StringFlag{
+				Name:  "status",
+				Usage: "Connection status of printers returned.",
+			},
+		},
+	},
 }
 
 // getConfig returns a config object
@@ -530,6 +549,36 @@ func updateGCPPrinter(context *cli.Context) error {
 		return fmt.Errorf("Failed to update GCP printer %s: %s", context.String("printer-id"), err)
 	} else {
 		fmt.Printf("Updated GCP printer %s", context.String("printer-id"))
+	}
+	return nil
+}
+
+// listGCPPrinters lists all GCP printers.
+func listGCPPrinters(context *cli.Context) error {
+	config, err := getConfig(context)
+	if err != nil {
+		return err
+	}
+	gcpConn, err := getGCP(config)
+	if err != nil {
+		return err
+	}
+
+	printers, err := gcpConn.Search(context.String("query"), context.String("type"), context.String("status"))
+	if err != nil {
+		return fmt.Errorf("Failed to list GCP printers: %s", err)
+	}
+	//for printer in printers {
+	for id, p := range printers {
+		fmt.Println("Name:", p.DefaultDisplayName)
+		if p.State != nil {
+			fmt.Println(" State:", p.State.State)
+		}
+		fmt.Println(" ID:", id)
+		fmt.Println(" Manufacturer:", p.Manufacturer)
+		fmt.Println(" Model:", p.Model)
+
+		fmt.Println("")
 	}
 	return nil
 }
