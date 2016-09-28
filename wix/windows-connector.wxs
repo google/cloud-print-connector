@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:fire="http://schemas.microsoft.com/wix/FirewallExtension">
   <Product
       Id="*"
       Name="Google Cloud Print Windows Connector"
@@ -82,6 +82,14 @@
           Remove="uninstall"
           Start="install"
           Stop="uninstall" />
+			<fire:FirewallException
+			    Id="AllowConnectorTraffic"
+					Description="Allow Cloud Print Connector Inbound Network Traffic"
+					Name="Cloud Print Connector"
+					Profile="public"
+					Program="[#Connector_exe]"
+					Scope="any">
+			</fire:FirewallException>
       </Component>
       <Component Id="Connector_Util_exe">
         <File Id="ConnectorUtil" Name="gcp-connector-util.exe" KeyPath="yes" />
