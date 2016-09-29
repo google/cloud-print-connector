@@ -9,6 +9,7 @@ https://developers.google.com/open-source/licenses/bsd
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -305,18 +306,16 @@ func createRobotAccount(context *cli.Context, userClient *http.Client) (string, 
 	return xmppJID, token, nil
 }
 
-func scanNonEmptyString(prompt string) (string, error) {
-	for {
-		var answer string
-		fmt.Println(prompt)
-		if length, err := fmt.Scan(&answer); err != nil {
-			return "", err
-		} else if length > 0 {
-			fmt.Println("")
-			return answer, nil
-		}
+func scanString(prompt string) (string, error) {
+	fmt.Println(prompt)
+	reader := bufio.NewReader(os.Stdin)
+	if answer, err := reader.ReadString('\n'); err != nil {
+		return "", err
+	} else {
+		answer = answer[:len(answer)-1] // remove newline
+		fmt.Println("")
+		return answer, nil
 	}
-	panic("unreachable")
 }
 
 func scanYesOrNo(question string) (bool, error) {
@@ -388,17 +387,6 @@ func initConfigFile(context *cli.Context) error {
 
 	var xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string
 	if cloudEnable {
-		if context.IsSet("share-scope") {
-			shareScope = context.String("share-scope")
-		} else if yes, err := scanYesOrNo("Retain the user OAuth token to enable automatic sharing?"); err != nil {
-			return err
-		} else if yes {
-			shareScope, err = scanNonEmptyString("User or group email address to share with:")
-			if err != nil {
-				return err
-			}
-		}
-
 		if context.IsSet("proxy-name") {
 			proxyName = context.String("proxy-name")
 		} else {
@@ -406,19 +394,13 @@ func initConfigFile(context *cli.Context) error {
 		}
 
 		var userClient *http.Client
+		var urt string
 		if context.IsSet("gcp-user-refresh-token") {
 			userClient = getUserClientFromToken(context)
-			if shareScope != "" {
-				userRefreshToken = context.String("gcp-user-refresh-token")
-			}
 		} else {
-			var urt string
 			userClient, urt, err = getUserClientFromUser(context)
 			if err != nil {
 				return err
-			}
-			if shareScope != "" {
-				userRefreshToken = urt
 			}
 		}
 
@@ -429,6 +411,24 @@ func initConfigFile(context *cli.Context) error {
 
 		fmt.Println("Acquired OAuth credentials for robot account")
 		fmt.Println("")
+
+		if context.IsSet("share-scope") {
+			shareScope = context.String("share-scope")
+		} else {
+			shareScope, err = scanString("Enter the email address of a user or group with whom all printers will automatically be shared or leave blank to disable automatic sharing:")
+			if err != nil {
+				return err
+			}
+		}
+
+		if shareScope != "" {
+			if context.IsSet("gcp-user-refresh-token") {
+				userRefreshToken = context.String("gcp-user-refresh-token")
+			} else {
+				userRefreshToken = urt
+			}
+		}
+
 		config = createCloudConfig(context, xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName, localEnable)
 
 	} else {
