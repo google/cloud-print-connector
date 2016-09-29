@@ -4,7 +4,7 @@
       Id="*"
       Name="Google Cloud Print Windows Connector"
       Language="1033"
-      Version="1.0.0.0"
+      Version="1.0.0"
       Manufacturer="Google, Inc."
       UpgradeCode="15C3FD61-B03C-4C04-A56D-CD8424C99D7F">
     <Package
@@ -75,12 +75,14 @@
           Vital="yes"
           Arguments='--config-filename="[CloudPrintDataFolder]gcp-windows-connector.config.json"'>
         <ServiceDependency Id="Spooler" />
+        <ServiceDependency Id="Tcpip" />
       </ServiceInstall>
       <ServiceControl
           Id="StartAndStopService"
           Name="Cloud Print Connector"
           Remove="uninstall"
           Start="install"
+          Wait="no"
           Stop="uninstall" />
       </Component>
       <Component Id="Connector_Util_exe">
@@ -130,7 +132,7 @@
       <Show Dialog="WelcomeDlg" Before="ManualInit" />
       <Show Dialog="ProgressDlg" After="ManualInit" />
       <Custom Action="ManualInit" Before="ExecuteAction">
-          NOT CONFIGFILE and NOT Installed and NOT WIX_UPGRADE_DETECTED
+          NOT CONFIGFILE and NOT Installed and NOT WIX_UPGRADE_DETECTED and RUNINIT=1
       </Custom>
     </InstallUISequence>
 
@@ -143,12 +145,15 @@
 
     <Property Id="DELETEPRINTERS" Value="YES" Secure="yes" />
 
+		<Property Id="INITPARAMS" Secure="yes" Hidden="yes" />
+		<Property Id="RUNINIT" Secure="yes" Value="1"/>
+
     <CustomAction
         Id="ManualInit"
         BinaryKey="ConnectorUtil"
         Execute="immediate"
         Return="check"
-        ExeCommand="init" />
+        ExeCommand="init [INITPARAMS]" />
 
     <CustomAction
         Id="DeletePrinters"
