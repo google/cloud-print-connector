@@ -4,7 +4,7 @@
       Id="*"
       Name="Google Cloud Print Windows Connector"
       Language="1033"
-      Version="1.0.0"
+      Version="0.9.0"
       Manufacturer="Google, Inc."
       UpgradeCode="15C3FD61-B03C-4C04-A56D-CD8424C99D7F">
     <Package
@@ -78,12 +78,17 @@
         <ServiceDependency Id="Tcpip" />
       </ServiceInstall>
       <ServiceControl
-          Id="StartAndStopService"
-          Name="Cloud Print Connector"
+          Id="StopService"
+          Name="Cloud Print Connector Stop"
           Remove="uninstall"
-          Start="install"
-          Wait="no"
           Stop="uninstall" />
+      </Component>
+      <Component Id="Connector_exe_start" Guid="" KeyPath="yes">
+      <ServiceControl
+          Id="StartService"
+          Name="Cloud Print Connector Start"
+          Start="install" />
+      <Condition>STARTSERVICE="YES"</Condition>
       </Component>
       <Component Id="Connector_Util_exe">
         <File Id="ConnectorUtil" Name="gcp-connector-util.exe" KeyPath="yes" />
@@ -132,7 +137,7 @@
       <Show Dialog="WelcomeDlg" Before="ManualInit" />
       <Show Dialog="ProgressDlg" After="ManualInit" />
       <Custom Action="ManualInit" Before="ExecuteAction">
-          NOT CONFIGFILE and NOT Installed and NOT WIX_UPGRADE_DETECTED and RUNINIT=1
+          NOT CONFIGFILE and NOT Installed and NOT WIX_UPGRADE_DETECTED and RUNINIT="YES"
       </Custom>
     </InstallUISequence>
 
@@ -145,8 +150,9 @@
 
     <Property Id="DELETEPRINTERS" Value="YES" Secure="yes" />
 
-		<Property Id="INITPARAMS" Secure="yes" Hidden="yes" />
-		<Property Id="RUNINIT" Secure="yes" Value="1"/>
+    <Property Id="INITPARAMS" Secure="yes" Hidden="yes" />
+    <Property Id="RUNINIT" Secure="yes" Value="YES" />
+    <Property Id="STARTSERVICE" Secure="yes" Value="YES" />
 
     <CustomAction
         Id="ManualInit"
