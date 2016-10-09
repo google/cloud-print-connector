@@ -312,7 +312,7 @@ func scanString(prompt string) (string, error) {
 	if answer, err := reader.ReadString('\n'); err != nil {
 		return "", err
 	} else {
-		answer = answer[:len(answer)-1] // remove newline
+		answer = strings.TrimSpace(answer) // remove newline
 		fmt.Println("")
 		return answer, nil
 	}
