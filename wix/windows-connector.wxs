@@ -4,7 +4,7 @@
       Id="*"
       Name="Google Cloud Print Windows Connector"
       Language="1033"
-      Version="0.9.0"
+      Version="$(env.CONNECTOR_VERSION)"
       Manufacturer="Google, Inc."
       UpgradeCode="15C3FD61-B03C-4C04-A56D-CD8424C99D7F">
     <Package
