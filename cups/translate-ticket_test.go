@@ -281,10 +281,18 @@ func TestTranslateTicket_RicohLockedPrint(t *testing.T) {
 	}
 	expected = map[string]string{}
 	o, err = translateTicket(&printer, &ticket)
-	if err == nil {
-		t.Log("expected error")
+	// Issue 340 : begin add
+	if err != nil {
+		t.Logf("did not expect error %s", err)
 		t.Fail()
-	}
+	}	
+	// Issue 340 : end add
+	// Issue 340 : begin delete
+	// if err == nil {
+	// 	t.Log("expected error")
+	// 	t.Fail()
+	// }
+	// Issue 340 : end delete
 	if !reflect.DeepEqual(o, expected) {
 		t.Logf("expected\n %+v\ngot\n %+v", expected, o)
 		t.Fail()

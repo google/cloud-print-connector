@@ -31,8 +31,14 @@ func translateTicket(printer *lib.Printer, ticket *cdd.CloudJobTicket) (map[stri
 	m := map[string]string{}
 	for _, vti := range ticket.Print.VendorTicketItem {
 		if vti.ID == ricohPasswordVendorID {
+			// Issue 340 : begin add
+			if vti.Value == "" {
+				// do not add specific map of options for Ricoh vendor like ppdLockedPrintPassword or ppdJobType when password is empty
+				continue; 
+			}
+			// Issue 340 : end add
 			if !rRicohPasswordFormat.MatchString(vti.Value) {
-				return map[string]string{}, errors.New("Invalid password format")
+				return map[string]string{}, errors.New("Invalid password format")				
 			}
 		}
 
