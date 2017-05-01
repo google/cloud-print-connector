@@ -14,13 +14,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/urfave/cli"
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
 	"github.com/google/cloud-print-connector/log"
 	"github.com/google/cloud-print-connector/manager"
 	"github.com/google/cloud-print-connector/winspool"
 	"github.com/google/cloud-print-connector/xmpp"
+	"github.com/urfave/cli"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/debug"
 )
@@ -56,16 +56,20 @@ type service struct {
 func runService(context *cli.Context) error {
 	interactive, err := svc.IsAnInteractiveSession()
 	if err != nil {
-		return fmt.Errorf("Failed to detect interactive session: %s", err)
+		return cli.NewExitError(fmt.Sprintf("Failed to detect interactive session: %s", err), 1)
 	}
 
 	s := service{context, interactive}
 
 	if interactive {
-		return debug.Run(lib.ConnectorName, &s)
+		err = debug.Run(lib.ConnectorName, &s)
 	} else {
-		return svc.Run(lib.ConnectorName, &s)
+		err = svc.Run(lib.ConnectorName, &s)
 	}
+	if err != nil {
+		err = cli.NewExitError(err.Error(), 1)
+	}
+	return err
 }
 
 func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s chan<- svc.Status) (bool, uint32) {

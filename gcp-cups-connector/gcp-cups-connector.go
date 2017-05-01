@@ -10,7 +10,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -50,7 +49,7 @@ func main() {
 func connector(context *cli.Context) error {
 	config, configFilename, err := lib.GetConfig(context)
 	if err != nil {
-		return fmt.Errorf("Failed to read config file: %s", err)
+		return cli.NewExitError(fmt.Sprintf("Failed to read config file: %s", err), 1)
 	}
 
 	logToJournal := *config.LogToJournal && journal.Enabled()
@@ -68,7 +67,7 @@ func connector(context *cli.Context) error {
 		var logWriter io.Writer
 		logWriter, err = log.NewLogRoller(config.LogFileName, logFileMaxBytes, config.LogMaxFiles)
 		if err != nil {
-			return fmt.Errorf("Failed to start log roller: %s", err)
+			return cli.NewExitError(fmt.Sprintf("Failed to start log roller: %s", err), 1)
 		}
 
 		if logToConsole {
@@ -79,7 +78,7 @@ func connector(context *cli.Context) error {
 
 	logLevel, ok := log.LevelFromString(config.LogLevel)
 	if !ok {
-		return fmt.Errorf("Log level %s is not recognized", config.LogLevel)
+		return cli.NewExitError(fmt.Sprintf("Log level %s is not recognized", config.LogLevel), 1)
 	}
 	log.SetLevel(logLevel)
 
@@ -97,7 +96,7 @@ func connector(context *cli.Context) error {
 	if !config.CloudPrintingEnable && !config.LocalPrintingEnable {
 		errStr := "Cannot run connector with both local_printing_enable and cloud_printing_enable set to false"
 		log.Fatal(errStr)
-		return errors.New(errStr)
+		return cli.NewExitError(errStr, 1)
 	}
 
 	if _, err := os.Stat(config.MonitorSocketFilename); !os.IsNotExist(err) {
@@ -110,7 +109,7 @@ func connector(context *cli.Context) error {
 				config.MonitorSocketFilename)
 		}
 		log.Fatal(errStr)
-		return errors.New(errStr)
+		return cli.NewExitError(errStr, 1)
 	}
 
 	jobs := make(chan *lib.Job, 10)
@@ -123,13 +122,13 @@ func connector(context *cli.Context) error {
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to parse xmpp ping timeout: %s", err)
 			log.Fatal(errStr)
-			return errors.New(errStr)
+			return cli.NewExitError(errStr, 1)
 		}
 		xmppPingInterval, err := time.ParseDuration(config.XMPPPingInterval)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to parse xmpp ping interval default: %s", err)
 			log.Fatalf(errStr)
-			return errors.New(errStr)
+			return cli.NewExitError(errStr, 1)
 		}
 
 		g, err = gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
@@ -138,14 +137,14 @@ func connector(context *cli.Context) error {
 			config.GCPMaxConcurrentDownloads, jobs)
 		if err != nil {
 			log.Fatal(err)
-			return err
+			return cli.NewExitError(err.Error(), 1)
 		}
 
 		x, err = xmpp.NewXMPP(config.XMPPJID, config.ProxyName, config.XMPPServer, config.XMPPPort,
 			xmppPingTimeout, xmppPingInterval, g.GetRobotAccessToken, xmppNotifications)
 		if err != nil {
 			log.Fatal(err)
-			return err
+			return cli.NewExitError(err.Error(), 1)
 		}
 		defer x.Quit()
 	}
@@ -154,7 +153,7 @@ func connector(context *cli.Context) error {
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to parse CUPS connect timeout: %s", err)
 		log.Fatalf(errStr)
-		return errors.New(errStr)
+		return cli.NewExitError(errStr, 1)
 	}
 	c, err := cups.NewCUPS(*config.CUPSCopyPrinterInfoToDisplayName, *config.PrefixJobIDToJobTitle,
 		config.DisplayNamePrefix, config.CUPSPrinterAttributes, config.CUPSVendorPPDOptions, config.CUPSMaxConnections,
@@ -162,7 +161,7 @@ func connector(context *cli.Context) error {
 		*config.CUPSIgnoreClassPrinters)
 	if err != nil {
 		log.Fatal(err)
-		return err
+		return cli.NewExitError(err.Error(), 1)
 	}
 	defer c.Quit()
 
@@ -175,7 +174,7 @@ func connector(context *cli.Context) error {
 		}
 		if err != nil {
 			log.Fatal(err)
-			return err
+			return cli.NewExitError(err.Error(), 1)
 		}
 		defer priv.Quit()
 	}
@@ -184,21 +183,21 @@ func connector(context *cli.Context) error {
 	if err != nil {
 		errStr := fmt.Sprintf("Failed to parse CUPS printer poll interval: %s", err)
 		log.Fatal(errStr)
-		return errors.New(errStr)
+		return cli.NewExitError(errStr, 1)
 	}
 	pm, err := manager.NewPrinterManager(c, g, priv, nativePrinterPollInterval,
 		config.NativeJobQueueSize, *config.CUPSJobFullUsername, config.ShareScope,
 		jobs, xmppNotifications)
 	if err != nil {
 		log.Fatal(err)
-		return err
+		return cli.NewExitError(err.Error(), 1)
 	}
 	defer pm.Quit()
 
 	m, err := monitor.NewMonitor(c, g, priv, pm, config.MonitorSocketFilename)
 	if err != nil {
 		log.Fatal(err)
-		return err
+		return cli.NewExitError(err.Error(), 1)
 	}
 	defer m.Quit()
 
