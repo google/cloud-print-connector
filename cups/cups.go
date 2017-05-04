@@ -29,6 +29,7 @@ import (
 	"github.com/google/cloud-print-connector/cdd"
 	"github.com/google/cloud-print-connector/lib"
 	"github.com/google/cloud-print-connector/log"
+	"github.com/google/cloud-print-connector/manager"
 )
 
 const (
@@ -139,6 +140,11 @@ type CUPS struct {
 	printerWhitelist      map[string]interface{}
 	ignoreRawPrinters     bool
 	ignoreClassPrinters   bool
+}
+
+type CUPSPrintJob struct {
+	jobID uint32
+	c     *CUPS
 }
 
 func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix string,
@@ -402,15 +408,26 @@ func (c *CUPS) RemoveCachedPPD(printername string) {
 	c.pc.removePPD(printername)
 }
 
-// GetJobState gets the current state of the job indicated by jobID.
-func (c *CUPS) GetJobState(_ string, jobID uint32) (*cdd.PrintJobStateDiff, error) {
+func (job *CUPSPrintJob) Release() error {
+	// WinSpool jobs are flagged 'RETAIN' so their state can be queried while
+	// the job is in progress. They must then be released when done, so they
+	// can be deleted. CUPS needs no such hints, so nothing needs to be done.
+
+	return nil
+}
+
+func (job *CUPSPrintJob) String() string {
+	return fmt.Sprintf("%d", job.jobID)
+}
+
+func (job *CUPSPrintJob) GetState() (*cdd.PrintJobStateDiff, error) {
 	ja := C.newArrayOfStrings(C.int(len(jobAttributes)))
 	defer C.freeStringArrayAndStrings(ja, C.int(len(jobAttributes)))
 	for i, attribute := range jobAttributes {
 		C.setStringArrayValue(ja, C.int(i), C.CString(attribute))
 	}
 
-	response, err := c.cc.getJobAttributes(C.int(jobID), ja)
+	response, err := job.c.cc.getJobAttributes(C.int(job.jobID), ja)
 	if err != nil {
 		return nil, err
 	}
@@ -453,9 +470,8 @@ func convertJobState(cupsState int32) *cdd.PrintJobStateDiff {
 	return &state
 }
 
-// Print sends a new print job to the specified printer. The job ID
-// is returned.
-func (c *CUPS) Print(printer *lib.Printer, filename, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (uint32, error) {
+// Print sends a new print job to the specified printer.
+func (c *CUPS) Print(printer *lib.Printer, filename, title, user, gcpJobID string, ticket *cdd.CloudJobTicket) (manager.NativePrintJob, error) {
 	printer.NativeJobSemaphore.Acquire()
 	defer printer.NativeJobSemaphore.Release()
 
@@ -477,7 +493,7 @@ func (c *CUPS) Print(printer *lib.Printer, filename, title, user, gcpJobID strin
 
 	options, err := translateTicket(printer, ticket)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	numOptions := C.int(0)
 	var o *C.cups_option_t = nil
@@ -494,10 +510,10 @@ func (c *CUPS) Print(printer *lib.Printer, filename, title, user, gcpJobID strin
 
 	cupsJobID, err := c.cc.printFile(u, pn, fn, t, numOptions, o)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	return uint32(cupsJobID), nil
+	return &CUPSPrintJob{jobID: uint32(cupsJobID), c: c}, nil
 }
 
 // convertIPPDateToTime converts an RFC 2579 date to a time.Time object.
@@ -630,11 +646,5 @@ func checkPrinterAttributes(printerAttributes []string) error {
 		}
 	}
 
-	return nil
-}
-
-// The following functions are not relevant to CUPS printing, but are required by the NativePrintSystem interface.
-
-func (c *CUPS) ReleaseJob(printerName string, jobID uint32) error {
 	return nil
 }
