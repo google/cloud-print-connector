@@ -15,6 +15,8 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 var (
@@ -22,26 +24,28 @@ var (
 	kernel32 = syscall.MustLoadDLL("kernel32.dll")
 	ntoskrnl = syscall.MustLoadDLL("ntoskrnl.exe")
 	winspool = syscall.MustLoadDLL("winspool.drv")
+	user32   = syscall.MustLoadDLL("user32.dll")
 
-	abortDocProc           = gdi32.MustFindProc("AbortDoc")
-	closePrinterProc       = winspool.MustFindProc("ClosePrinter")
-	createDCProc           = gdi32.MustFindProc("CreateDCW")
-	deleteDCProc           = gdi32.MustFindProc("DeleteDC")
-	deviceCapabilitiesProc = winspool.MustFindProc("DeviceCapabilitiesW")
-	documentPropertiesProc = winspool.MustFindProc("DocumentPropertiesW")
-	endDocProc             = gdi32.MustFindProc("EndDoc")
-	endPageProc            = gdi32.MustFindProc("EndPage")
-	enumPrintersProc       = winspool.MustFindProc("EnumPrintersW")
-	getDeviceCapsProc      = gdi32.MustFindProc("GetDeviceCaps")
-	getJobProc             = winspool.MustFindProc("GetJobW")
-	openPrinterProc        = winspool.MustFindProc("OpenPrinterW")
-	resetDCProc            = gdi32.MustFindProc("ResetDCW")
-	rtlGetVersionProc      = ntoskrnl.MustFindProc("RtlGetVersion")
-	setGraphicsModeProc    = gdi32.MustFindProc("SetGraphicsMode")
-	setJobProc             = winspool.MustFindProc("SetJobW")
-	setWorldTransformProc  = gdi32.MustFindProc("SetWorldTransform")
-	startDocProc           = gdi32.MustFindProc("StartDocW")
-	startPageProc          = gdi32.MustFindProc("StartPage")
+	abortDocProc                   = gdi32.MustFindProc("AbortDoc")
+	closePrinterProc               = winspool.MustFindProc("ClosePrinter")
+	createDCProc                   = gdi32.MustFindProc("CreateDCW")
+	deleteDCProc                   = gdi32.MustFindProc("DeleteDC")
+	deviceCapabilitiesProc         = winspool.MustFindProc("DeviceCapabilitiesW")
+	documentPropertiesProc         = winspool.MustFindProc("DocumentPropertiesW")
+	endDocProc                     = gdi32.MustFindProc("EndDoc")
+	endPageProc                    = gdi32.MustFindProc("EndPage")
+	enumPrintersProc               = winspool.MustFindProc("EnumPrintersW")
+	getDeviceCapsProc              = gdi32.MustFindProc("GetDeviceCaps")
+	getJobProc                     = winspool.MustFindProc("GetJobW")
+	openPrinterProc                = winspool.MustFindProc("OpenPrinterW")
+	resetDCProc                    = gdi32.MustFindProc("ResetDCW")
+	rtlGetVersionProc              = ntoskrnl.MustFindProc("RtlGetVersion")
+	setGraphicsModeProc            = gdi32.MustFindProc("SetGraphicsMode")
+	setJobProc                     = winspool.MustFindProc("SetJobW")
+	setWorldTransformProc          = gdi32.MustFindProc("SetWorldTransform")
+	startDocProc                   = gdi32.MustFindProc("StartDocW")
+	startPageProc                  = gdi32.MustFindProc("StartPage")
+	registerDeviceNotificationProc = user32.MustFindProc("RegisterDeviceNotificationW")
 )
 
 // System error codes.
@@ -798,8 +802,8 @@ func (hPrinter HANDLE) SetJobUserName(jobID int32, userName string) error {
 		return err
 	}
 
-	ji1.pUserName = pUserName;
-	ji1.position = 0; // To prevent a possible access denied error (0 is JOB_POSITION_UNSPECIFIED)
+	ji1.pUserName = pUserName
+	ji1.position = 0 // To prevent a possible access denied error (0 is JOB_POSITION_UNSPECIFIED)
 	err = hPrinter.SetJobInfo1(jobID, ji1)
 	if err != nil {
 		return err
@@ -1195,4 +1199,50 @@ func GetWindowsVersion() string {
 	}
 
 	return version
+}
+
+type GUID struct {
+	Data1 uint32
+	Data2 uint16
+	Data3 uint16
+	Data4 [8]byte
+}
+
+var PRINTERS_DEVICE_CLASS = GUID{
+	0x4d36e979,
+	0xe325,
+	0x11ce,
+	[8]byte{0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18},
+}
+
+type DevBroadcastDevinterface struct {
+	dwSize       uint32
+	dwDeviceType uint32
+	dwReserved   uint32
+	classGuid    GUID
+	szName       uint16
+}
+
+const (
+	DEVICE_NOTIFY_SERVICE_HANDLE        = 1
+	DEVICE_NOTIFY_ALL_INTERFACE_CLASSES = 4
+
+	DBT_DEVTYP_DEVICEINTERFACE = 5
+)
+
+func RegisterDeviceNotification(handle windows.Handle) error {
+
+	var notificationFilter DevBroadcastDevinterface
+	notificationFilter.dwSize = uint32(unsafe.Sizeof(notificationFilter))
+	notificationFilter.dwDeviceType = DBT_DEVTYP_DEVICEINTERFACE
+	notificationFilter.dwReserved = 0
+	// BUG(pastarmovj): This class is ignored for now. Figure out what the right GUID is.
+	notificationFilter.classGuid = PRINTERS_DEVICE_CLASS
+	notificationFilter.szName = 0
+
+	r1, _, err := registerDeviceNotificationProc.Call(uintptr(handle), uintptr(unsafe.Pointer(&notificationFilter)), DEVICE_NOTIFY_SERVICE_HANDLE|DEVICE_NOTIFY_ALL_INTERFACE_CLASSES)
+	if r1 == 0 {
+		return err
+	}
+	return nil
 }

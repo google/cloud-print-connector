@@ -9,22 +9,22 @@ https://developers.google.com/open-source/licenses/bsd
 package lib
 
 import (
-	"testing"
 	"reflect"
+	"testing"
 )
 
 func TestFilterBlacklistPrinters(t *testing.T) {
-	printers := []Printer {
+	printers := []Printer{
 		{Name: "Stay1"},
 		{Name: "Go1"},
 		{Name: "Go2"},
 		{Name: "Stay2"},
 	}
-	blacklist := map[string]interface{} {
+	blacklist := map[string]interface{}{
 		"Go1": "",
 		"Go2": "",
 	}
-	correctFilteredPrinters := []Printer {
+	correctFilteredPrinters := []Printer{
 		{Name: "Stay1"},
 		{Name: "Stay2"},
 	}
@@ -37,17 +37,17 @@ func TestFilterBlacklistPrinters(t *testing.T) {
 }
 
 func TestFilterWhitelistPrinters(t *testing.T) {
-	printers := []Printer {
+	printers := []Printer{
 		{Name: "Stay1"},
 		{Name: "Go1"},
 		{Name: "Go2"},
 		{Name: "Stay2"},
 	}
-	whitelist := map[string]interface{} {
+	whitelist := map[string]interface{}{
 		"Stay1": "",
 		"Stay2": "",
 	}
-	correctFilteredPrinters := []Printer {
+	correctFilteredPrinters := []Printer{
 		{Name: "Stay1"},
 		{Name: "Stay2"},
 	}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/cloud-print-connector/cdd"
 	"github.com/google/cloud-print-connector/lib"
+	"golang.org/x/sys/windows"
 )
 
 // winspoolPDS represents capabilities that WinSpool always provides.
@@ -916,6 +917,11 @@ func (ws *WinSpool) ReleaseJob(printerName string, jobID uint32) error {
 	}
 
 	return nil
+}
+
+func (ws *WinSpool) StartPrinterNotifications(handle windows.Handle) error {
+	err := RegisterDeviceNotification(handle)
+	return err
 }
 
 // The following functions are not relevant to Windows printing, but are required by the NativePrintSystem interface.
