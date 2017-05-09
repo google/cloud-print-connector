@@ -239,7 +239,7 @@ func FilterBlacklistPrinters(printers []Printer, list map[string]interface{}) []
 
 func FilterWhitelistPrinters(printers []Printer, list map[string]interface{}) []Printer {
 	if len(list) == 0 {
-		return printers; // Empty whitelist means don't use whitelist
+		return printers // Empty whitelist means don't use whitelist
 	}
 
 	return filterPrinters(printers, list, true)
