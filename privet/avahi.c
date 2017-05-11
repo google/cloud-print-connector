@@ -36,34 +36,38 @@ const char *startAvahiClient(AvahiThreadedPoll **threaded_poll, AvahiClient **cl
   return NULL;
 }
 
+static const char *populateGroup(AvahiClient *client, AvahiEntryGroup *group,
+    const char *service_name, unsigned short port, AvahiStringList *txt) {
+  int error = avahi_entry_group_add_service_strlst(
+      group, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, 0, service_name,
+      SERVICE_TYPE, NULL, NULL, port, txt);
+  if (AVAHI_OK != error) {
+    avahi_entry_group_free(group);
+    return avahi_strerror(error);
+  }
+
+  error = avahi_entry_group_add_service_subtype(group, AVAHI_IF_UNSPEC,
+      AVAHI_PROTO_UNSPEC, 0, service_name, SERVICE_TYPE, NULL, SERVICE_SUBTYPE);
+  if (AVAHI_OK != error) {
+    avahi_entry_group_free(group);
+    return avahi_strerror(error);
+  }
+
+  error = avahi_entry_group_commit(group);
+  if (AVAHI_OK != error) {
+    avahi_entry_group_free(group);
+    return avahi_strerror(error);
+  }
+  return NULL;
+}
+
 const char *addAvahiGroup(AvahiClient *client, AvahiEntryGroup **group,
     const char *service_name, unsigned short port, AvahiStringList *txt) {
   *group = avahi_entry_group_new(client, handleGroupStateChange, (void *)service_name);
   if (!*group) {
     return avahi_strerror(avahi_client_errno(client));
   }
-
-  int error = avahi_entry_group_add_service_strlst(
-      *group, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, 0, service_name,
-      SERVICE_TYPE, NULL, NULL, port, txt);
-  if (AVAHI_OK != error) {
-    avahi_entry_group_free(*group);
-    return avahi_strerror(error);
-  }
-
-  error = avahi_entry_group_add_service_subtype(*group, AVAHI_IF_UNSPEC,
-      AVAHI_PROTO_UNSPEC, 0, service_name, SERVICE_TYPE, NULL, SERVICE_SUBTYPE);
-  if (AVAHI_OK != error) {
-    avahi_entry_group_free(*group);
-    return avahi_strerror(error);
-  }
-
-  error = avahi_entry_group_commit(*group);
-  if (AVAHI_OK != error) {
-    avahi_entry_group_free(*group);
-    return avahi_strerror(error);
-  }
-  return NULL;
+  return populateGroup(client, *group, service_name, port, txt);
 }
 
 const char *updateAvahiGroup(AvahiEntryGroup *group, const char *service_name, AvahiStringList *txt) {
