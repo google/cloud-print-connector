@@ -139,7 +139,7 @@ func (z *zeroconf) addPrinter(name string, port uint16, ty, note, url, id string
 		C.avahi_threaded_poll_lock(z.threadedPoll)
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
-		if errstr := C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(r.port), txt); errstr != nil {
+		if errstr := C.addAvahiGroup(z.client, &r.group, r.name, C.ushort(r.port), txt); errstr != nil {
 			err := fmt.Errorf("Failed to add Avahi group: %s", C.GoString(errstr))
 			return err
 		}
@@ -170,7 +170,7 @@ func (z *zeroconf) updatePrinterTXT(name, ty, note, url, id string, online bool)
 		C.avahi_threaded_poll_lock(z.threadedPoll)
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
-		if errstr := C.updateAvahiGroup(z.threadedPoll, r.group, r.name, txt); errstr != nil {
+		if errstr := C.updateAvahiGroup(r.group, r.name, txt); errstr != nil {
 			err := fmt.Errorf("Failed to update Avahi group: %s", C.GoString(errstr))
 			return err
 		}
@@ -193,7 +193,7 @@ func (z *zeroconf) removePrinter(name string) error {
 		C.avahi_threaded_poll_lock(z.threadedPoll)
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
-		if errstr := C.removeAvahiGroup(z.threadedPoll, r.group); errstr != nil {
+		if errstr := C.removeAvahiGroup(r.group); errstr != nil {
 			err := fmt.Errorf("Failed to remove Avahi group: %s", C.GoString(errstr))
 			return err
 		}
@@ -257,7 +257,7 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 		log.Info("Local printing disabled (Avahi client is not running).")
 		for name, r := range z.printers {
 			if r.group != nil {
-				if errstr := C.removeAvahiGroup(z.threadedPoll, r.group); errstr != nil {
+				if errstr := C.removeAvahiGroup(r.group); errstr != nil {
 					err := errors.New(C.GoString(errstr))
 					log.Errorf("Failed to remove Avahi group: %s", err)
 				}
@@ -274,7 +274,7 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 			txt := prepareTXT(r.ty, r.note, r.url, r.id, r.online)
 			defer C.avahi_string_list_free(txt)
 
-			if errstr := C.addAvahiGroup(z.threadedPoll, z.client, &r.group, r.name, C.ushort(r.port), txt); errstr != nil {
+			if errstr := C.addAvahiGroup(z.client, &r.group, r.name, C.ushort(r.port), txt); errstr != nil {
 				err := errors.New(C.GoString(errstr))
 				log.Errorf("Failed to add Avahi group: %s", err)
 			}

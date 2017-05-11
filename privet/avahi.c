@@ -36,8 +36,8 @@ const char *startAvahiClient(AvahiThreadedPoll **threaded_poll, AvahiClient **cl
   return NULL;
 }
 
-const char *addAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiClient *client,
-    AvahiEntryGroup **group, const char *service_name, unsigned short port, AvahiStringList *txt) {
+const char *addAvahiGroup(AvahiClient *client, AvahiEntryGroup **group,
+    const char *service_name, unsigned short port, AvahiStringList *txt) {
   *group = avahi_entry_group_new(client, handleGroupStateChange, (void *)service_name);
   if (!*group) {
     return avahi_strerror(avahi_client_errno(client));
@@ -66,8 +66,7 @@ const char *addAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiClient *client,
   return NULL;
 }
 
-const char *updateAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *group,
-    const char *service_name, AvahiStringList *txt) {
+const char *updateAvahiGroup(AvahiEntryGroup *group, const char *service_name, AvahiStringList *txt) {
   int error = avahi_entry_group_update_service_txt_strlst(group, AVAHI_IF_UNSPEC,
       AVAHI_PROTO_UNSPEC, 0, service_name, SERVICE_TYPE, NULL, txt);
   if (AVAHI_OK != error) {
@@ -76,7 +75,7 @@ const char *updateAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *
   return NULL;
 }
 
-const char *removeAvahiGroup(AvahiThreadedPoll *threaded_poll, AvahiEntryGroup *group) {
+const char *removeAvahiGroup(AvahiEntryGroup *group) {
   int error = avahi_entry_group_free(group);
   if (AVAHI_OK != error) {
     return avahi_strerror(error);
