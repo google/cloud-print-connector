@@ -70,6 +70,12 @@ const char *addAvahiGroup(AvahiClient *client, AvahiEntryGroup **group,
   return populateGroup(client, *group, service_name, port, txt);
 }
 
+const char *resetAvahiGroup(AvahiClient *client, AvahiEntryGroup *group, const char *service_name,
+    unsigned short port, AvahiStringList *txt) {
+  avahi_entry_group_reset(group);
+  return populateGroup(client, group, service_name, port, txt);
+}
+
 const char *updateAvahiGroup(AvahiEntryGroup *group, const char *service_name, AvahiStringList *txt) {
   int error = avahi_entry_group_update_service_txt_strlst(group, AVAHI_IF_UNSPEC,
       AVAHI_PROTO_UNSPEC, 0, service_name, SERVICE_TYPE, NULL, txt);

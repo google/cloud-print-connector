@@ -16,6 +16,8 @@
 const char *startAvahiClient(AvahiThreadedPoll **threaded_poll, AvahiClient **client);
 const char *addAvahiGroup(AvahiClient *client, AvahiEntryGroup **group,
     const char *service_name, unsigned short port, AvahiStringList *txt);
+const char *resetAvahiGroup(AvahiClient *client, AvahiEntryGroup *group, const char *service_name,
+    unsigned short port, AvahiStringList *txt);
 const char *updateAvahiGroup(AvahiEntryGroup *group, const char *service_name, AvahiStringList *txt);
 const char *removeAvahiGroup(AvahiEntryGroup *group);
 void stopAvahiClient(AvahiThreadedPoll *threaded_poll, AvahiClient *client);
