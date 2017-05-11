@@ -7,7 +7,9 @@
 // +build linux freebsd
 
 #include <avahi-client/publish.h>
+#include <avahi-common/alternative.h>
 #include <avahi-common/error.h>
+#include <avahi-common/malloc.h>
 #include <avahi-common/strlst.h>
 #include <avahi-common/thread-watch.h>
 
