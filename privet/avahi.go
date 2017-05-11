@@ -139,7 +139,7 @@ func (z *zeroconf) addPrinter(name string, port uint16, ty, note, url, id string
 		C.avahi_threaded_poll_lock(z.threadedPoll)
 		defer C.avahi_threaded_poll_unlock(z.threadedPoll)
 
-		if errstr := C.addAvahiGroup(z.client, &r.group, r.name, C.ushort(r.port), txt); errstr != nil {
+		if errstr := C.addAvahiGroup(z.client, &r.group, r.name, r.name, C.ushort(r.port), txt); errstr != nil {
 			err := fmt.Errorf("Failed to add Avahi group: %s", C.GoString(errstr))
 			return err
 		}
@@ -274,7 +274,7 @@ func handleClientStateChange(client *C.AvahiClient, newState C.AvahiClientState,
 			txt := prepareTXT(r.ty, r.note, r.url, r.id, r.online)
 			defer C.avahi_string_list_free(txt)
 
-			if errstr := C.addAvahiGroup(z.client, &r.group, r.name, C.ushort(r.port), txt); errstr != nil {
+			if errstr := C.addAvahiGroup(z.client, &r.group, r.name, r.name, C.ushort(r.port), txt); errstr != nil {
 				err := errors.New(C.GoString(errstr))
 				log.Errorf("Failed to add Avahi group: %s", err)
 			}

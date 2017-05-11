@@ -61,9 +61,9 @@ static const char *populateGroup(AvahiClient *client, AvahiEntryGroup *group,
   return NULL;
 }
 
-const char *addAvahiGroup(AvahiClient *client, AvahiEntryGroup **group,
+const char *addAvahiGroup(AvahiClient *client, AvahiEntryGroup **group, const char *printer_name,
     const char *service_name, unsigned short port, AvahiStringList *txt) {
-  *group = avahi_entry_group_new(client, handleGroupStateChange, (void *)service_name);
+  *group = avahi_entry_group_new(client, handleGroupStateChange, (void *)printer_name);
   if (!*group) {
     return avahi_strerror(avahi_client_errno(client));
   }

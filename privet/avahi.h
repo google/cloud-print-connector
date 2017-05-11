@@ -14,7 +14,7 @@
 #include <stdlib.h> // free
 
 const char *startAvahiClient(AvahiThreadedPoll **threaded_poll, AvahiClient **client);
-const char *addAvahiGroup(AvahiClient *client, AvahiEntryGroup **group,
+const char *addAvahiGroup(AvahiClient *client, AvahiEntryGroup **group, const char *printer_name,
     const char *service_name, unsigned short port, AvahiStringList *txt);
 const char *resetAvahiGroup(AvahiClient *client, AvahiEntryGroup *group, const char *service_name,
     unsigned short port, AvahiStringList *txt);
