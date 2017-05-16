@@ -253,6 +253,36 @@ func TestTrKMDuplex(t *testing.T) {
 	translationTest(t, ppd, []string{}, expected)
 }
 
+func TestTrBRDuplex(t *testing.T) {
+	ppd := `*PPD-Adobe: "4.3"
+*OpenUI *BRDuplex/Two-Sided Printing: PickOne
+*OrderDependency: 25 AnySetup *BRDuplex
+*DefaultBRDuplex: None
+*BRDuplex DuplexTumble/DuplexTumble: "          "
+*BRDuplex DuplexNoTumble/DuplexNoTumble: "          "
+*BRDuplex None/OFF: "          "
+*CloseUI: *BRDuplex
+`
+
+	expected := testdata{
+		&cdd.PrinterDescriptionSection{
+			Duplex: &cdd.Duplex{
+				Option: []cdd.DuplexOption{
+					cdd.DuplexOption{cdd.DuplexShortEdge, false},
+					cdd.DuplexOption{cdd.DuplexLongEdge, false},
+					cdd.DuplexOption{cdd.DuplexNoDuplex, true},
+				},
+			},
+		},
+		lib.DuplexVendorMap{
+			cdd.DuplexNoDuplex:  "BRDuplex:None",
+			cdd.DuplexLongEdge:  "BRDuplex:DuplexNoTumble",
+			cdd.DuplexShortEdge: "BRDuplex:DuplexTumble",
+		},
+	}
+	translationTest(t, ppd, []string{}, expected)
+}
+
 func TestTrDPI(t *testing.T) {
 	ppd := `*PPD-Adobe: "4.3"
 *OpenUI *Resolution/Resolution: PickOne
