@@ -58,9 +58,12 @@ func NewXMPP(jid, proxyName, server string, port uint16, pingTimeout, pingInterv
 		quit:           make(chan struct{}),
 	}
 
-	err := x.startXMPP()
-	if err != nil {
-		return nil, err
+	if err := x.startXMPP(); err != nil {
+		for err != nil {
+			log.Errorf("XMPP start failed, will try again in 10s: %s", err)
+			time.Sleep(10 * time.Second)
+			err = x.startXMPP()
+		}
 	}
 	go x.keepXMPPAlive()
 
@@ -81,7 +84,6 @@ func (x *XMPP) Quit() {
 }
 
 // startXMPP tries to start an XMPP conversation.
-// Tries multiple times before returning an error.
 func (x *XMPP) startXMPP() error {
 	if x.ix != nil {
 		go x.ix.Quit()
