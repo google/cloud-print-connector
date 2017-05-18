@@ -21,6 +21,7 @@ import (
 
 const (
 	ppdBoolean                 = "Boolean"
+	ppdBRDuplex                = "BRDuplex"
 	ppdCMAndResolution         = "CMAndResolution"
 	ppdCloseGroup              = "CloseGroup"
 	ppdCloseSubGroup           = "CloseSubGroup"
@@ -155,6 +156,9 @@ func translatePPD(ppd string, vendorPPDOptions []string) (*cdd.PrinterDescriptio
 		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
 	if e, exists := entriesByMainKeyword[ppdDuplex]; exists {
+		pds.Duplex, duplexMap = convertDuplex(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
+	} else if e, exists := entriesByMainKeyword[ppdBRDuplex]; exists {
 		pds.Duplex, duplexMap = convertDuplex(e)
 		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	} else if e, exists := entriesByMainKeyword[ppdKMDuplex]; exists {
