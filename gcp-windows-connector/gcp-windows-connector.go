@@ -171,6 +171,16 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 	}
 	defer pm.Quit()
 
+	statusHandle := svc.StatusHandle()
+	if statusHandle != 0 {
+		err = ws.StartPrinterNotifications(statusHandle)
+		if err != nil {
+			log.Error(err)
+		} else {
+			log.Info("Successfully registered for device notifications.")
+		}
+	}
+
 	if config.CloudPrintingEnable {
 		if config.LocalPrintingEnable {
 			log.Infof("Ready to rock as proxy '%s' and in local mode", config.ProxyName)
@@ -197,6 +207,15 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 			})
 
 			return false, 0
+
+		case svc.DeviceEvent:
+			log.Infof("Printers change notification received %d.", request.EventType)
+			// Delay the action to let the OS finish the process or we might
+			// not see the new printer. Even if we miss it eventually the timed updates
+			// will pick it up.
+			time.AfterFunc(time.Second*5, func() {
+				pm.SyncPrinters(false)
+			})
 
 		default:
 			log.Errorf("Received unsupported service command from service control manager: %d", request.Cmd)

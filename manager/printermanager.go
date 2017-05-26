@@ -105,7 +105,7 @@ func NewPrinterManager(native NativePrintSystem, gcp *gcp.GoogleCloudPrint, priv
 	// Sync once before returning, to make sure things are working.
 	// Ignore privet updates this first time because Privet always starts
 	// with zero printers.
-	if err = pm.syncPrinters(true); err != nil {
+	if err = pm.SyncPrinters(true); err != nil {
 		return nil, err
 	}
 
@@ -146,7 +146,7 @@ func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 		for {
 			select {
 			case <-t.C:
-				if err := pm.syncPrinters(false); err != nil {
+				if err := pm.SyncPrinters(false); err != nil {
 					log.Error(err)
 				}
 				t.Reset(interval)
@@ -158,7 +158,7 @@ func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 	}()
 }
 
-func (pm *PrinterManager) syncPrinters(ignorePrivet bool) error {
+func (pm *PrinterManager) SyncPrinters(ignorePrivet bool) error {
 	log.Info("Synchronizing printers, stand by")
 
 	// Get current snapshot of native printers.
@@ -442,7 +442,7 @@ func (pm *PrinterManager) printJob(nativePrinterName, filename, title, user, job
 	}
 }
 
-func (pm *PrinterManager)releaseJob(printerName string, nativeJobID uint32, jobID string) {
+func (pm *PrinterManager) releaseJob(printerName string, nativeJobID uint32, jobID string) {
 	if err := pm.native.ReleaseJob(printerName, nativeJobID); err != nil {
 		log.ErrorJob(jobID, err)
 	}
