@@ -15,5 +15,10 @@ ExecStart=/opt/cloud-print-connector/gcp-cups-connector -config-filename /opt/cl
 Restart=on-failure
 User=cloud-print-connector
 
+# Restart indefinitely to work around failure to start if network is down.
+# See https://github.com/google/cloud-print-connector/issues/160
+StartLimitInterval=0
+RestartSec=3
+
 [Install]
 WantedBy=multi-user.target
