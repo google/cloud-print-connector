@@ -50,13 +50,14 @@ type GoogleCloudPrint struct {
 	robotClient *http.Client
 	userClient  *http.Client
 	proxyName   string
+	useFcm bool
 
 	jobs              chan<- *lib.Job
 	downloadSemaphore *lib.Semaphore
 }
 
 // NewGoogleCloudPrint establishes a connection with GCP, returns a new GoogleCloudPrint object.
-func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL string, maxConcurrentDownload uint, jobs chan<- *lib.Job) (*GoogleCloudPrint, error) {
+func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL string, maxConcurrentDownload uint, jobs chan<- *lib.Job, useFcm bool) (*GoogleCloudPrint, error) {
 	robotClient, err := newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, robotRefreshToken, ScopeCloudPrint, ScopeGoogleTalk)
 	if err != nil {
 		return nil, err
@@ -75,6 +76,7 @@ func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName
 		robotClient:       robotClient,
 		userClient:        userClient,
 		proxyName:         proxyName,
+		useFcm: useFcm,
 		jobs:              jobs,
 		downloadSemaphore: lib.NewSemaphore(maxConcurrentDownload),
 	}
@@ -291,6 +293,10 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer) error {
 	sort.Strings(sortedKeys)
 	for _, key := range sortedKeys {
 		form.Add("tag", fmt.Sprintf("%s%s=%s", gcpTagPrefix, key, printer.Tags[key]))
+	}
+
+	if gcp.useFcm {
+		form.Add("tag", fmt.Sprintf("%s%s=%s", gcpTagPrefix, "fcm", "true"))
 	}
 
 	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"register", form)
@@ -546,6 +552,24 @@ func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 	return nil
 }
 
+// FCM Subscribe.
+func (gcp *GoogleCloudPrint) FcmSubscribe(subscribeUrl string) (interface{}, error) {
+	response, err := getWithRetry(gcp.robotClient, fmt.Sprintf("%s%s", gcp.baseURL, subscribeUrl))
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get Fcm Token: %s", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == 200 {
+		data, _ := ioutil.ReadAll(response.Body)
+		var f interface{}
+		json.Unmarshal(data, &f)
+		return f, nil
+	} else {
+		return nil, fmt.Errorf("Failed to get Fcm Token: %s", response)
+	}
+}
+
 // Ticket gets a ticket, aka print job options.
 func (gcp *GoogleCloudPrint) Ticket(gcpJobID string) (*cdd.CloudJobTicket, error) {
 	form := url.Values{}
@@ -718,8 +742,13 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 
 	gcp.downloadSemaphore.Acquire()
 	t := time.Now()
+	var downloadUrl string
+	if downloadUrl = job.FileURL; !strings.HasPrefix(job.FileURL,"http") {
+		// test env url need to prefix with http
+		downloadUrl = "http://" + job.FileURL
+	}
 	// Do not check err until semaphore is released and timer is stopped.
-	err = gcp.Download(file, job.FileURL)
+	err = gcp.Download(file, downloadUrl)
 	dt := time.Since(t)
 	gcp.downloadSemaphore.Release()
 	if err != nil {
