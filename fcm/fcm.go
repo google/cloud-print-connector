@@ -74,11 +74,11 @@ func NewFCM(g *gcp.GoogleCloudPrint, notifications chan<- notification.PrinterNo
 }
 
 func (f *FCM) Init()  {
-	if err := f.ConnectToFcm(f.notifications,f.dead,f.quit); err != nil {
+	if err := f.ConnectToFcm(f.notifications, f.dead, f.quit); err != nil {
 		for err != nil {
 			log.Errorf("FCM restart failed, will try again in 10s: %s", err)
 			time.Sleep(10 * time.Second)
-			err = f.ConnectToFcm(f.notifications,f.dead,f.quit)
+			err = f.ConnectToFcm(f.notifications, f.dead, f.quit)
 		}
 		log.Error("FCM conversation restarted successfully")
 	}
@@ -92,7 +92,7 @@ func (f *FCM) Quit() {
 	close(f.quit)
 }
 
-func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotification,dead chan<- struct{},quit chan<- struct{}) (error){
+func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotification, dead chan<- struct{}, quit chan<- struct{}) (error){
 	log.Debugf("Connecting to %s%s?token=%s", f.fcmServer, f.bindPath, f.GetToken())
 	resp, err := http.Get(fmt.Sprintf("%s%s?token=%s", f.fcmServer, f.bindPath, f.GetToken()))
 	if err != nil {
@@ -132,11 +132,11 @@ func (f *FCM) KeepFcmAlive() {
 		select {
 		case <-f.dead:
 			log.Error("FCM conversation died; restarting")
-			if err := f.ConnectToFcm(f.notifications,f.dead,f.quit); err != nil {
+			if err := f.ConnectToFcm(f.notifications, f.dead, f.quit); err != nil {
 				for err != nil {
 					log.Errorf("FCM connection restart failed, will try again in 10s: %s", err)
 					time.Sleep(10 * time.Second)
-					err = f.ConnectToFcm(f.notifications,f.dead,f.quit)
+					err = f.ConnectToFcm(f.notifications, f.dead, f.quit)
 				}
 				log.Error("FCM conversation restarted successfully")
 			}
