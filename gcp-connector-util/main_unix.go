@@ -116,6 +116,7 @@ func createCloudConfig(context *cli.Context, xmppJID, robotRefreshToken, userRef
 		UserRefreshToken:          userRefreshToken,
 		ShareScope:                shareScope,
 		ProxyName:                 proxyName,
+		FcmServerBindUrl:          context.String("fcm-server-bind-url"),
 		XMPPServer:                lib.DefaultConfig.XMPPServer,
 		XMPPPort:                  uint16(context.Int("xmpp-port")),
 		XMPPPingTimeout:           context.String("xmpp-ping-timeout"),
