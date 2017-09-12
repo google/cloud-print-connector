@@ -174,7 +174,7 @@ func getGCP(config *lib.Config) (*gcp.GoogleCloudPrint, error) {
 	return gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		0, nil)
+		0, nil, false)
 }
 
 // backfillConfigFile opens the config file, adds all missing keys
