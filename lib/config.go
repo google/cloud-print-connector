@@ -111,6 +111,9 @@ func (c *Config) commonSparse(context *cli.Context) *Config {
 	if s.GCPBaseURL == DefaultConfig.GCPBaseURL {
 		s.GCPBaseURL = ""
 	}
+	if s.FcmServerBindUrl == DefaultConfig.FcmServerBindUrl {
+		s.FcmServerBindUrl = ""
+	}
 	if s.GCPOAuthClientID == DefaultConfig.GCPOAuthClientID {
 		s.GCPOAuthClientID = ""
 	}
@@ -176,6 +179,9 @@ func (c *Config) commonBackfill(configMap map[string]interface{}) *Config {
 	}
 	if _, exists := configMap["gcp_base_url"]; !exists {
 		b.GCPBaseURL = DefaultConfig.GCPBaseURL
+	}
+	if _, exists := configMap["fcm_server_bind_url"]; !exists {
+		b.FcmServerBindUrl = DefaultConfig.FcmServerBindUrl
 	}
 	if _, exists := configMap["gcp_oauth_client_id"]; !exists {
 		b.GCPOAuthClientID = DefaultConfig.GCPOAuthClientID

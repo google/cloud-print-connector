@@ -148,7 +148,7 @@ func connector(context *cli.Context) error {
 			return cli.NewExitError(err.Error(), 1)
 		}
 		if useFcm {
-			f, err = fcm.NewFCM(g, notifications, config.GCPOAuthClientID, config.ProxyName)
+			f, err = fcm.NewFCM( config.GCPOAuthClientID, config.ProxyName, config.FcmServerBindUrl, g.FcmSubscribe, notifications)
 			if err != nil {
 				log.Fatal(err)
 				return cli.NewExitError(err.Error(), 1)
