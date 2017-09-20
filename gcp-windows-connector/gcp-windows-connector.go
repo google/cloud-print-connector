@@ -34,10 +34,7 @@ func main() {
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
 		lib.ConfigFilenameFlag,
-		cli.BoolFlag{
-			Name:  "gcp-use-fcm",
-			Usage: "Receive print notifications from FCM instead of XMPP",
-		},
+		lib.UseFcm,
 	}
 	app.Action = runService
 	app.Run(os.Args)
@@ -79,6 +76,7 @@ func runService(context *cli.Context) error {
 }
 
 func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s chan<- svc.Status) (bool, uint32) {
+	useFcm := context.Bool("gcp-use-fcm")
 	if service.interactive {
 		if err := log.Start(true); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to start event log: %s\n", err)
@@ -129,7 +127,6 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 	var g *gcp.GoogleCloudPrint
 	var x *xmpp.XMPP
 	var f *fcm.FCM
-	useFcm := context.Bool("gcp-use-fcm")
 	if config.CloudPrintingEnable {
 		xmppPingTimeout, err := time.ParseDuration(config.XMPPPingTimeout)
 		if err != nil {

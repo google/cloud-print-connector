@@ -48,10 +48,10 @@ type Data struct {
 type FcmMessage struct {
 	Category    string `json:"category"`
 	CollapseKey string `json:"collapse_key"`
-	Data        Data `json:"data"`
-	From       string `json:"from"`
-	MessageID  string `json:"message_id"`
-	TimeToLive int    `json:"time_to_live"`
+	Data        Data   `json:"data"`
+	From        string `json:"from"`
+	MessageID   string `json:"message_id"`
+	TimeToLive  int    `json:"time_to_live"`
 }
 
 func NewFCM(clientId string, proxyName string, fcmServerBindUrl string, FcmSubscribe func(string) (interface{}, error), notifications chan<- notification.PrinterNotification) (*FCM, error) {
@@ -70,6 +70,7 @@ func NewFCM(clientId string, proxyName string, fcmServerBindUrl string, FcmSubsc
 	return &f, nil
 }
 
+//  get token from GCP and connect to FCM.
 func (f *FCM) Init()  {
 	iidToken := f.GetToken()
 	if err := f.ConnectToFcm(f.notifications, iidToken, f.dead, f.quit); err != nil {
@@ -90,6 +91,7 @@ func (f *FCM) Quit() {
 	close(f.quit)
 }
 
+// Fcm notification listener
 func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotification, iidToken string, dead chan<- struct{}, quit chan<- struct{}) (error){
 	log.Debugf("Connecting to %s?token=%s", f.fcmServerBindURL, iidToken)
 	resp, err := http.Get(fmt.Sprintf("%s?token=%s", f.fcmServerBindURL, iidToken))
@@ -128,7 +130,7 @@ func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotificat
 	return nil
 }
 
-// keepFCMAlive restarts FCM when it fails.
+// Restart FCM connection when lost.
 func (f *FCM) KeepFcmAlive() {
 	for {
 		select {
@@ -151,7 +153,7 @@ func (f *FCM) KeepFcmAlive() {
 		}
 	}
 }
-
+// Returns cached token and Refresh token if needed.
 func (f *FCM) GetToken() (string){
 	if f.tokenRefreshTime == (time.Time{}) || time.Now().UTC().Sub(f.tokenRefreshTime).Seconds() > f.fcmTtlSecs {
 		result, err1 := f.FcmSubscribe(fmt.Sprintf("%s?client=%s&proxy=%s", gcpFcmSubscribePath, f.clientId, f.proxyName))

@@ -33,6 +33,11 @@ var (
 		Value: defaultConfigFilename,
 	}
 
+	UseFcm = cli.BoolFlag{
+		Name:  "gcp-use-fcm",
+		Usage: "Receive print notifications from FCM instead of XMPP",
+		}
+
 	// To be populated by something like:
 	// go install -ldflags "-X github.com/google/cloud-print-connector/lib.BuildDate=`date +%Y.%m.%d`"
 	BuildDate = "DEV"

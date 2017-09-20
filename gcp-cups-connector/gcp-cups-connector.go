@@ -39,14 +39,12 @@ func main() {
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
 		lib.ConfigFilenameFlag,
+		lib.UseFcm,
 		cli.BoolFlag{
 			Name:  "log-to-console",
 			Usage: "Log to STDERR, in addition to configured logging",
 		},
-		cli.BoolFlag{
-			Name:  "gcp-use-fcm",
-			Usage: "Receive print notifications from FCM instead of XMPP",
-		},
+
 	}
 	app.Action = connector
 	app.Run(os.Args)
@@ -60,6 +58,7 @@ func connector(context *cli.Context) error {
 
 	logToJournal := *config.LogToJournal && journal.Enabled()
 	logToConsole := context.Bool("log-to-console")
+	useFcm := context.Bool("gcp-use-fcm")
 
 	if logToJournal {
 		log.SetJournalEnabled(true)
@@ -124,7 +123,6 @@ func connector(context *cli.Context) error {
 	var g *gcp.GoogleCloudPrint
 	var x *xmpp.XMPP
 	var f *fcm.FCM
-	useFcm := context.Bool("gcp-use-fcm")
 	if config.CloudPrintingEnable {
 		xmppPingTimeout, err := time.ParseDuration(config.XMPPPingTimeout)
 		if err != nil {
