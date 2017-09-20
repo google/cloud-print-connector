@@ -24,9 +24,9 @@ type FCM struct {
 	fcmServerBindURL string
 	cachedToken      string
 	tokenRefreshTime time.Time
-	clientId         string
+	clientID         string
 	proxyName        string
-	fcmTtlSecs       float64
+	fcmTTLSecs       float64
 	FcmSubscribe     func(string) (interface{}, error)
 
 	notifications chan<- notification.PrinterNotification
@@ -36,8 +36,8 @@ type FCM struct {
 }
 
 type Notification struct {
-	Data                  [][]interface{}
-	Number                int
+	Data   [][]interface{}
+	Number int
 }
 
 type Data struct {
@@ -54,12 +54,12 @@ type FcmMessage struct {
 	TimeToLive  int    `json:"time_to_live"`
 }
 
-func NewFCM(clientId string, proxyName string, fcmServerBindUrl string, FcmSubscribe func(string) (interface{}, error), notifications chan<- notification.PrinterNotification) (*FCM, error) {
+func NewFCM(clientID string, proxyName string, fcmServerBindURL string, FcmSubscribe func(string) (interface{}, error), notifications chan<- notification.PrinterNotification) (*FCM, error) {
 	f := FCM{
-		fcmServerBindUrl,
+		fcmServerBindURL,
 		"",
 		time.Time{},
-		clientId,
+		clientID,
 		proxyName,
 		0,
 		FcmSubscribe,
@@ -71,7 +71,7 @@ func NewFCM(clientId string, proxyName string, fcmServerBindUrl string, FcmSubsc
 }
 
 //  get token from GCP and connect to FCM.
-func (f *FCM) Init()  {
+func (f *FCM) Init() {
 	iidToken := f.GetToken()
 	if err := f.ConnectToFcm(f.notifications, iidToken, f.dead, f.quit); err != nil {
 		for err != nil {
@@ -92,40 +92,40 @@ func (f *FCM) Quit() {
 }
 
 // Fcm notification listener
-func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotification, iidToken string, dead chan<- struct{}, quit chan<- struct{}) (error){
+func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotification, iidToken string, dead chan<- struct{}, quit chan<- struct{}) error {
 	log.Debugf("Connecting to %s?token=%s", f.fcmServerBindURL, iidToken)
 	resp, err := http.Get(fmt.Sprintf("%s?token=%s", f.fcmServerBindURL, iidToken))
 	if err != nil {
 		// failed for ever no need to retry
-		quit <- struct {}{}
+		quit <- struct{}{}
 		return err
 	}
 	if resp.StatusCode == 200 {
 		reader := bufio.NewReader(resp.Body)
-		go func (){
-		for {
-			line, err := reader.ReadBytes('\n')
-			if err == nil || err == io.EOF {
-				printerId := GetPrinterID(string(line))
-				if printerId != "" {
-					pn := notification.PrinterNotification{printerId, notification.PrinterNewJobs}
-					go func() {
-						fcmNotifications <- pn
-					}()
-				}
-				if err == io.EOF {
-					log.Info("DRAIN message received, client reconnecting.")
-					dead <- struct{}{}
+		go func() {
+			for {
+				line, err := reader.ReadBytes('\n')
+				if err == nil || err == io.EOF {
+					printerId := GetPrinterID(string(line))
+					if printerId != "" {
+						pn := notification.PrinterNotification{printerId, notification.PrinterNewJobs}
+						go func() {
+							fcmNotifications <- pn
+						}()
+					}
+					if err == io.EOF {
+						log.Info("DRAIN message received, client reconnecting.")
+						dead <- struct{}{}
+						break
+					}
+				} else {
+					// stop listening unknown error happened.
+					log.Errorf("%v", err)
+					quit <- struct{}{}
 					break
 				}
-			} else {
-				// stop listening unknown error happened.
-				log.Errorf("%v", err)
-				quit <- struct{}{}
-				break
 			}
-		}
-	}()
+		}()
 	}
 	return nil
 }
@@ -147,27 +147,28 @@ func (f *FCM) KeepFcmAlive() {
 			}
 
 		case <-f.quit:
-				log.Info("Fcm client Quitting ...")
-				// quitting keeping alive
-				return
+			log.Info("Fcm client Quitting ...")
+			// quitting keeping alive
+			return
 		}
 	}
 }
+
 // Returns cached token and Refresh token if needed.
-func (f *FCM) GetToken() (string){
-	if f.tokenRefreshTime == (time.Time{}) || time.Now().UTC().Sub(f.tokenRefreshTime).Seconds() > f.fcmTtlSecs {
-		result, err1 := f.FcmSubscribe(fmt.Sprintf("%s?client=%s&proxy=%s", gcpFcmSubscribePath, f.clientId, f.proxyName))
+func (f *FCM) GetToken() string {
+	if f.tokenRefreshTime == (time.Time{}) || time.Now().UTC().Sub(f.tokenRefreshTime).Seconds() > f.fcmTTLSecs {
+		result, err1 := f.FcmSubscribe(fmt.Sprintf("%s?client=%s&proxy=%s", gcpFcmSubscribePath, f.clientID, f.proxyName))
 		if err1 != nil {
 			log.Errorf("Unable to subscribe to FCM : %s", err1)
 			panic(err1)
 		}
 		token := result.(map[string]interface{})["token"]
-		ttlSeconds , err2 := strconv.ParseFloat(result.(map[string]interface{})["fcmttl"].(string), 64)
+		ttlSeconds, err2 := strconv.ParseFloat(result.(map[string]interface{})["fcmttl"].(string), 64)
 		if err2 != nil {
 			log.Errorf("Failed to parse FCM ttl  : %s", err2)
 			panic(err2)
 		}
-		f.fcmTtlSecs = ttlSeconds
+		f.fcmTTLSecs = ttlSeconds
 		log.Info("Updated FCM token.")
 		f.cachedToken = token.(string)
 		f.tokenRefreshTime = time.Now().UTC()
@@ -175,12 +176,12 @@ func (f *FCM) GetToken() (string){
 	return f.cachedToken
 }
 
-func GetPrinterID(sLine string) (string){
+func GetPrinterID(sLine string) string {
 	if strings.HasPrefix(sLine, "[") {
 		out := "{" + GetStringInBetween(sLine, "{", "}") + "}"
 		var f FcmMessage
 		json.Unmarshal([]byte(out), &f)
-		if f.Data == (Data {}){
+		if f.Data == (Data{}) {
 			return ""
 		}
 		return f.Data.Notification

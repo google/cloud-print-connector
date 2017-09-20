@@ -50,7 +50,7 @@ type GoogleCloudPrint struct {
 	robotClient *http.Client
 	userClient  *http.Client
 	proxyName   string
-	useFcm bool
+	useFcm      bool
 
 	jobs              chan<- *lib.Job
 	downloadSemaphore *lib.Semaphore
@@ -76,7 +76,7 @@ func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName
 		robotClient:       robotClient,
 		userClient:        userClient,
 		proxyName:         proxyName,
-		useFcm: useFcm,
+		useFcm:            useFcm,
 		jobs:              jobs,
 		downloadSemaphore: lib.NewSemaphore(maxConcurrentDownload),
 	}
@@ -743,7 +743,7 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 	gcp.downloadSemaphore.Acquire()
 	t := time.Now()
 	var downloadUrl string
-	if downloadUrl = job.FileURL; !strings.HasPrefix(job.FileURL,"http") {
+	if downloadUrl = job.FileURL; !strings.HasPrefix(job.FileURL, "http") {
 		// test env url need to prefix with http
 		downloadUrl = "http://" + job.FileURL
 	}

@@ -21,9 +21,9 @@ import (
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
 	"github.com/google/cloud-print-connector/log"
+	"github.com/google/cloud-print-connector/notification"
 	"github.com/google/cloud-print-connector/privet"
 	"github.com/google/cloud-print-connector/xmpp"
-	"github.com/google/cloud-print-connector/notification"
 )
 
 type NativePrintSystem interface {

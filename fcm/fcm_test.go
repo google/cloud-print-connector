@@ -1,18 +1,17 @@
 package fcm_test
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-	"fmt"
-	"encoding/json"
-	"net/http"
 )
 
 import (
 	"github.com/google/cloud-print-connector/fcm"
 	"github.com/google/cloud-print-connector/notification"
-
 )
 
 func TestFCM_ReceiveNotification(t *testing.T) {
@@ -34,7 +33,7 @@ func TestFCM_ReceiveNotification(t *testing.T) {
 	printerNotificationStr := `{"fcmttl":"2419200","request":{"params":{"client":["xyz"],"proxy":["xyz"]},"time":"0","user":"xyz","users":["xyz"]},"success":true,"token":"token","xsrf_token":"xyz"}`
 	json.Unmarshal([]byte(printerNotificationStr), &printerNotification)
 
-	f, err := fcm.NewFCM( "clientid", "",ts.URL, func(input string) (interface{}, error) {return printerNotification, nil}, notifications)
+	f, err := fcm.NewFCM("clientid", "", ts.URL, func(input string) (interface{}, error) { return printerNotification, nil }, notifications)
 	defer f.Quit()
 	if err != nil {
 		t.Fatal(err)
@@ -55,13 +54,12 @@ func TestFCM_ReceiveNotification(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		// time out
 		notifications <- notification.PrinterNotification{"dummy", notification.PrinterNewJobs}
-		} ()
-	message := <- notifications
+	}()
+	message := <-notifications
 
 	// verify if right message received.
-	if message.GCPID != "printerId"{
+	if message.GCPID != "printerId" {
 		t.Fatal("Did not receive right printer notification")
 	}
 
 }
-

@@ -20,16 +20,16 @@ import (
 
 	"github.com/coreos/go-systemd/journal"
 	"github.com/google/cloud-print-connector/cups"
+	"github.com/google/cloud-print-connector/fcm"
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
 	"github.com/google/cloud-print-connector/log"
 	"github.com/google/cloud-print-connector/manager"
 	"github.com/google/cloud-print-connector/monitor"
+	"github.com/google/cloud-print-connector/notification"
 	"github.com/google/cloud-print-connector/privet"
 	"github.com/google/cloud-print-connector/xmpp"
 	"github.com/urfave/cli"
-	"github.com/google/cloud-print-connector/fcm"
-	"github.com/google/cloud-print-connector/notification"
 )
 
 func main() {
@@ -44,7 +44,6 @@ func main() {
 			Name:  "log-to-console",
 			Usage: "Log to STDERR, in addition to configured logging",
 		},
-
 	}
 	app.Action = connector
 	app.Run(os.Args)
@@ -146,7 +145,7 @@ func connector(context *cli.Context) error {
 			return cli.NewExitError(err.Error(), 1)
 		}
 		if useFcm {
-			f, err = fcm.NewFCM( config.GCPOAuthClientID, config.ProxyName, config.FcmServerBindUrl, g.FcmSubscribe, notifications)
+			f, err = fcm.NewFCM(config.GCPOAuthClientID, config.ProxyName, config.FcmServerBindUrl, g.FcmSubscribe, notifications)
 			if err != nil {
 				log.Fatal(err)
 				return cli.NewExitError(err.Error(), 1)
