@@ -39,12 +39,13 @@ func TestFCM_ReceiveNotification(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	subscription, err := f.FcmSubscribe("clintid")
+	// This method is stubbed.
+	result, err := f.FcmSubscribe("SubscribeUrl")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	token := subscription.(map[string]interface{})["token"].(string)
+	token := result.(map[string]interface{})["token"].(string)
 	dead := make(chan struct{})
 	quit := make(chan struct{})
 

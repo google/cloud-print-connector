@@ -148,7 +148,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 			return false, 1
 		}
 		if useFcm {
-			f, err = fcm.NewFCM( config.GCPOAuthClientID, config.ProxyName, config.FcmServerBindUrl, g.FcmSubscribe, notifications)
+			f, err = fcm.NewFCM(config.GCPOAuthClientID, config.ProxyName, config.FcmServerBindUrl, g.FcmSubscribe, notifications)
 			if err != nil {
 				log.Fatal(err)
 				return cli.NewExitError(err.Error(), 1)
