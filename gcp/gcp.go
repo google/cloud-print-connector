@@ -742,8 +742,8 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 
 	gcp.downloadSemaphore.Acquire()
 	t := time.Now()
-	var downloadUrl string
-	if downloadUrl = job.FileURL; !strings.HasPrefix(job.FileURL, "http") {
+	downloadUrl := job.FileURL
+	if !strings.HasPrefix(downloadUrl, "http") {
 		// test env url need to prefix with http
 		downloadUrl = "http://" + job.FileURL
 	}

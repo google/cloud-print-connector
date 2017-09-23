@@ -72,7 +72,7 @@ func NewFCM(clientID string, proxyName string, fcmServerBindURL string, FcmSubsc
 
 //  get token from GCP and connect to FCM.
 func (f *FCM) Init() {
-	iidToken := f.GetToken()
+	iidToken := f.GetTokenWithRetry()
 	if err := f.ConnectToFcm(f.notifications, iidToken, f.dead, f.quit); err != nil {
 		for err != nil {
 			log.Errorf("FCM restart failed, will try again in 10s: %s", err)
@@ -135,7 +135,7 @@ func (f *FCM) KeepFcmAlive() {
 	for {
 		select {
 		case <-f.dead:
-			iidToken := f.GetToken()
+			iidToken := f.GetTokenWithRetry()
 			log.Error("FCM conversation died; restarting")
 			if err := f.ConnectToFcm(f.notifications, iidToken, f.dead, f.quit); err != nil {
 				for err != nil {
@@ -154,26 +154,42 @@ func (f *FCM) KeepFcmAlive() {
 	}
 }
 
+func (f *FCM) GetTokenWithRetry() string {
+	retryCount := 3
+	iidToken, err := f.GetToken()
+	for err != nil && retryCount < 3 {
+		retryCount -= 1
+		log.Errorf("unable to get FCM token from GCP server, will try again in 10s: %s", err)
+		time.Sleep(10 * time.Second)
+		iidToken, err = f.GetToken()
+	}
+	if err != nil {
+		log.Errorf("unable to get FCM token from GCP server.")
+		panic(err)
+	}
+	return iidToken
+}
+
 // Returns cached token and Refresh token if needed.
-func (f *FCM) GetToken() string {
+func (f *FCM) GetToken() (string, error) {
 	if f.tokenRefreshTime == (time.Time{}) || time.Now().UTC().Sub(f.tokenRefreshTime).Seconds() > f.fcmTTLSecs {
-		result, err1 := f.FcmSubscribe(fmt.Sprintf("%s?client=%s&proxy=%s", gcpFcmSubscribePath, f.clientID, f.proxyName))
-		if err1 != nil {
-			log.Errorf("Unable to subscribe to FCM : %s", err1)
-			panic(err1)
+		result, err := f.FcmSubscribe(fmt.Sprintf("%s?client=%s&proxy=%s", gcpFcmSubscribePath, f.clientID, f.proxyName))
+		if err != nil {
+			log.Errorf("Unable to subscribe to FCM : %s", err)
+			return "", err
 		}
 		token := result.(map[string]interface{})["token"]
-		ttlSeconds, err2 := strconv.ParseFloat(result.(map[string]interface{})["fcmttl"].(string), 64)
-		if err2 != nil {
-			log.Errorf("Failed to parse FCM ttl  : %s", err2)
-			panic(err2)
+		ttlSeconds, err := strconv.ParseFloat(result.(map[string]interface{})["fcmttl"].(string), 64)
+		if err != nil {
+			log.Errorf("Failed to parse FCM ttl  : %s", err)
+			return "", err
 		}
 		f.fcmTTLSecs = ttlSeconds
 		log.Info("Updated FCM token.")
 		f.cachedToken = token.(string)
 		f.tokenRefreshTime = time.Now().UTC()
 	}
-	return f.cachedToken
+	return f.cachedToken, nil
 }
 
 func GetPrinterID(sLine string) string {

@@ -14,17 +14,17 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/cloud-print-connector/fcm"
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
 	"github.com/google/cloud-print-connector/log"
 	"github.com/google/cloud-print-connector/manager"
+	"github.com/google/cloud-print-connector/notification"
 	"github.com/google/cloud-print-connector/winspool"
 	"github.com/google/cloud-print-connector/xmpp"
 	"github.com/urfave/cli"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/debug"
-	"github.com/google/cloud-print-connector/fcm"
-	"github.com/google/cloud-print-connector/notification"
 )
 
 func main() {
@@ -185,7 +185,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 	defer pm.Quit()
 
 	// Init FCM client after printers are registered
-	if useFcm {
+	if useFcm && config.CloudPrintingEnable {
 		f.Init()
 	}
 	statusHandle := svc.StatusHandle()

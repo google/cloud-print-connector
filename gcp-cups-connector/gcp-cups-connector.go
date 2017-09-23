@@ -208,7 +208,7 @@ func connector(context *cli.Context) error {
 	defer pm.Quit()
 
 	// Init FCM client after printers are registered
-	if useFcm {
+	if useFcm && config.CloudPrintingEnable {
 		f.Init()
 	}
 	m, err := monitor.NewMonitor(c, g, priv, pm, config.MonitorSocketFilename)
