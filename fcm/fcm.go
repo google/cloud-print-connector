@@ -35,23 +35,16 @@ type FCM struct {
 	quit chan struct{}
 }
 
-type Notification struct {
-	Data   [][]interface{}
-	Number int
-}
-
-type Data struct {
-	Notification string `json:"notification"`
-	Subtype      string `json:"subtype"`
-}
-
-type FcmMessage struct {
+type FCMMessage []struct {
+	From        string `json:"from"`
 	Category    string `json:"category"`
 	CollapseKey string `json:"collapse_key"`
-	Data        Data   `json:"data"`
-	From        string `json:"from"`
-	MessageID   string `json:"message_id"`
-	TimeToLive  int    `json:"time_to_live"`
+	Data struct {
+		Notification string `json:"notification"`
+		Subtype      string `json:"subtype"`
+	} `json:"data"`
+	MessageID  string `json:"message_id"`
+	TimeToLive int    `json:"time_to_live"`
 }
 
 func NewFCM(clientID string, proxyName string, fcmServerBindURL string, FcmSubscribe func(string) (interface{}, error), notifications chan<- notification.PrinterNotification) (*FCM, error) {
@@ -104,19 +97,20 @@ func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotificat
 		reader := bufio.NewReader(resp.Body)
 		go func() {
 			for {
-				line, err := reader.ReadBytes('\n')
-				if err == nil || err == io.EOF {
-					printerId := GetPrinterID(string(line))
+				sizeB, err := reader.ReadBytes('\n')
+				if err == io.EOF {
+					log.Info("DRAIN message received, client reconnecting.")
+					dead <- struct{}{}
+					break
+				}
+				size, _ := strconv.Atoi(strings.TrimSpace(string(sizeB)))
+				buffer := make([]byte, size)
+				_, err = reader.Read(buffer)
+				if err == nil {
+					printerId := GetPrinterID(string(buffer))
 					if printerId != "" {
 						pn := notification.PrinterNotification{printerId, notification.PrinterNewJobs}
-						go func() {
-							fcmNotifications <- pn
-						}()
-					}
-					if err == io.EOF {
-						log.Info("DRAIN message received, client reconnecting.")
-						dead <- struct{}{}
-						break
+						fcmNotifications <- pn
 					}
 				} else {
 					// stop listening unknown error happened.
@@ -193,24 +187,10 @@ func (f *FCM) GetToken() (string, error) {
 }
 
 func GetPrinterID(sLine string) string {
-	if strings.HasPrefix(sLine, "[") {
-		out := "{" + GetStringInBetween(sLine, "{", "}") + "}"
-		var f FcmMessage
-		json.Unmarshal([]byte(out), &f)
-		if f.Data == (Data{}) {
-			return ""
-		}
-		return f.Data.Notification
-	}
-	return ""
-}
-
-func GetStringInBetween(str string, start string, end string) (result string) {
-	s := strings.Index(str, start)
-	if s == -1 {
-		return
-	}
-	s += len(start)
-	e := strings.LastIndex(str, end)
-	return str[s:e]
+	var d [][]interface{}
+	var f FCMMessage
+	json.Unmarshal([]byte(sLine), &d)
+	s, _ := json.Marshal(d[0][1])
+	json.Unmarshal(s, &f)
+	return f[0].Data.Notification
 }
