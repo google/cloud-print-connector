@@ -90,6 +90,7 @@ func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotificat
 	resp, err := http.Get(fmt.Sprintf("%s?token=%s", f.fcmServerBindURL, iidToken))
 	if err != nil {
 		// failed for ever no need to retry
+		log.Errorf("%v", err)
 		quit <- struct{}{}
 		return err
 	}
@@ -97,24 +98,36 @@ func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotificat
 		reader := bufio.NewReader(resp.Body)
 		go func() {
 			for {
-				sizeB, err := reader.ReadBytes('\n')
-				if err == io.EOF {
-					log.Info("DRAIN message received, client reconnecting.")
-					dead <- struct{}{}
-					break
+				raw_input, err1 := reader.ReadBytes('\n')
+				inputA := strings.SplitN(string(raw_input), "\\n", 2)
+				notification_size := inputA[0]
+				notification_data1 := ""
+				if len(inputA) > 1 {
+					notification_data1 = inputA[1]
 				}
-				size, _ := strconv.Atoi(strings.TrimSpace(string(sizeB)))
-				buffer := make([]byte, size)
-				_, err = reader.Read(buffer)
-				if err == nil {
-					printerId := GetPrinterID(string(buffer))
-					if printerId != "" {
-						pn := notification.PrinterNotification{printerId, notification.PrinterNewJobs}
-						fcmNotifications <- pn
+				size, _ := strconv.Atoi(strings.TrimSpace(notification_size))
+				buffer_size := size - len(notification_data1)
+
+				// part of notification
+				notification_data2_buffer := make([]byte, buffer_size)
+				_, err2 := reader.Read(notification_data2_buffer)
+				if err1 == io.EOF  || err2 == io.EOF || (err2 == nil && err1 == nil) {
+					notificationS := string(notification_data2_buffer) + notification_data1
+					if len(notificationS) > 0  {
+						printerId := GetPrinterID(notificationS)
+						if printerId != "" {
+							pn := notification.PrinterNotification{printerId, notification.PrinterNewJobs}
+							fcmNotifications <- pn
+						}
+					}
+					if err2 == io.EOF || err1 == io.EOF {
+						log.Info("DRAIN message received, client reconnecting.")
+						dead <- struct{}{}
+						break
 					}
 				} else {
 					// stop listening unknown error happened.
-					log.Errorf("%v", err)
+					log.Errorf("%v,%v", err1, err2)
 					quit <- struct{}{}
 					break
 				}
