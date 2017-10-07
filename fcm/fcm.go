@@ -99,22 +99,33 @@ func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotificat
 		go func() {
 			for {
 				raw_input, err1 := reader.ReadBytes('\n')
-				inputA := strings.SplitN(string(raw_input), "\\n", 2)
-				notification_size := inputA[0]
+				input_chunks := strings.SplitN(string(raw_input), "\n", 2)
+				notification_size := strings.TrimSpace(input_chunks[0])
 				notification_data1 := ""
-				if len(inputA) > 1 {
-					notification_data1 = inputA[1]
+				if len(input_chunks) > 1 {
+					notification_data1 = strings.TrimSpace(input_chunks[1])
 				}
-				size, _ := strconv.Atoi(strings.TrimSpace(notification_size))
+				size, _ := strconv.Atoi(notification_size)
 				buffer_size := size - len(notification_data1)
 
-				// part of notification
-				notification_data2_buffer := make([]byte, buffer_size)
-				_, err2 := reader.Read(notification_data2_buffer)
-				if err1 == io.EOF  || err2 == io.EOF || (err2 == nil && err1 == nil) {
-					notificationS := string(notification_data2_buffer) + notification_data1
-					if len(notificationS) > 0  {
-						printerId := GetPrinterID(notificationS)
+				notification_data2 := ""
+				var err2 error
+				for 0 != buffer_size {
+					// part of notification
+					notification_data2_buffer := make([]byte, buffer_size)
+					n, err2 := reader.Read(notification_data2_buffer)
+					notification_data2 += string(notification_data2_buffer)
+					buffer_size -= n
+
+					if err2 != nil {
+						break
+					}
+				}
+				// process EOF signal after processing notification.
+				if err1 == io.EOF || err2 == io.EOF || (err2 == nil && err1 == nil) {
+					notification_string := notification_data1 + notification_data2
+					if len(notification_string) > 0 {
+						printerId := GetPrinterID(notification_string)
 						if printerId != "" {
 							pn := notification.PrinterNotification{printerId, notification.PrinterNewJobs}
 							fcmNotifications <- pn
@@ -127,7 +138,7 @@ func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotificat
 					}
 				} else {
 					// stop listening unknown error happened.
-					log.Errorf("%v,%v", err1, err2)
+					log.Errorf("Unexpected error happened on FCM listener: %v, %v", err1, err2)
 					quit <- struct{}{}
 					break
 				}

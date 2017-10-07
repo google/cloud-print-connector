@@ -1,24 +1,26 @@
 package fcm_test
 
 import (
-"encoding/json"
-"fmt"
-"net/http"
-"net/http/httptest"
-"testing"
-"time"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
 )
 
 import (
-"github.com/google/cloud-print-connector/fcm"
-"github.com/google/cloud-print-connector/notification"
+	"github.com/google/cloud-print-connector/fcm"
+	"github.com/google/cloud-print-connector/notification"
 )
 
 func TestFCM_ReceiveNotification(t *testing.T) {
 
 	// test FCM server
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		printerNotificationStr := `148\n[[4,[{"from":"xyz","category":"js","collapse_key":"xyz","data":{"notification":"printerId","subtype":"xyz"},"message_id":"xyz","time_to_live":60}]]]`
+		printerNotificationStr :=
+				`148
+[[4,[{"from":"xyz","category":"js","collapse_key":"xyz","data":{"notification":"printerId","subtype":"xyz"},"message_id":"xyz","time_to_live":60}]]]`
 		fmt.Fprint(w, printerNotificationStr)
 	}
 
@@ -62,6 +64,4 @@ func TestFCM_ReceiveNotification(t *testing.T) {
 	if message.GCPID != "printerId" {
 		t.Fatal("Did not receive right printer notification")
 	}
-
 }
-
