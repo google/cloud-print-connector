@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -116,7 +115,9 @@ func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotificat
 func GetPrinterID(reader *bufio.Reader) (string, error) {
 	raw_input, err := reader.ReadBytes('\n')
 	if err == nil {
-		buffer_size, _ := strconv.Atoi(strings.TrimSpace(string(raw_input)))
+		// Trim last \n char
+		raw_input = raw_input[:len(raw_input) - 1]
+		buffer_size, _ := strconv.Atoi(string(raw_input))
 		notification_buffer := make([]byte, buffer_size)
 		var sofar, sz int
 		for err == nil && sofar < buffer_size {
@@ -124,7 +125,7 @@ func GetPrinterID(reader *bufio.Reader) (string, error) {
 			sofar += sz
 		}
 
-		if sofar > 0 {
+		if sofar == buffer_size {
 			var d [][]interface{}
 			var f FCMMessage
 			json.Unmarshal([]byte(string(notification_buffer)), &d)
