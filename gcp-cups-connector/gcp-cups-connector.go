@@ -200,7 +200,7 @@ func connector(context *cli.Context) error {
 	}
 	pm, err := manager.NewPrinterManager(c, g, priv, nativePrinterPollInterval,
 		config.NativeJobQueueSize, *config.CUPSJobFullUsername, config.ShareScope,
-		jobs, notifications)
+		jobs, notifications, useFcm)
 	if err != nil {
 		log.Fatal(err)
 		return cli.NewExitError(err.Error(), 1)

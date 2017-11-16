@@ -22,25 +22,26 @@ type DuplexVendorMap map[cdd.DuplexType]string
 
 // CUPS: cups_dest_t; GCP: /register and /update interfaces
 type Printer struct {
-	GCPID              string                         //                                    GCP: printerid (GCP key)
-	Name               string                         // CUPS: cups_dest_t.name (CUPS key); GCP: name field
-	DefaultDisplayName string                         // CUPS: printer-info;                GCP: default_display_name field
-	UUID               string                         // CUPS: printer-uuid;                GCP: uuid field
-	Manufacturer       string                         // CUPS: PPD;                         GCP: manufacturer field
-	Model              string                         // CUPS: PPD;                         GCP: model field
-	GCPVersion         string                         //                                    GCP: gcpVersion field
-	SetupURL           string                         //                                    GCP: setup_url field
-	SupportURL         string                         //                                    GCP: support_url field
-	UpdateURL          string                         //                                    GCP: update_url field
-	ConnectorVersion   string                         //                                    GCP: firmware field
-	State              *cdd.PrinterStateSection       // CUPS: various;                     GCP: semantic_state field
-	Description        *cdd.PrinterDescriptionSection // CUPS: translated PPD;              GCP: capabilities field
-	CapsHash           string                         // CUPS: hash of PPD;                 GCP: capsHash field
-	Tags               map[string]string              // CUPS: all printer attributes;      GCP: repeated tag field
-	DuplexMap          DuplexVendorMap                // CUPS: PPD;
-	NativeJobSemaphore *Semaphore
-	QuotaEnabled       bool
-	DailyQuota         int
+	GCPID               string                         //                                    GCP: printerid (GCP key)
+	Name                string                         // CUPS: cups_dest_t.name (CUPS key); GCP: name field
+	DefaultDisplayName  string                         // CUPS: printer-info;                GCP: default_display_name field
+	UUID                string                         // CUPS: printer-uuid;                GCP: uuid field
+	Manufacturer        string                         // CUPS: PPD;                         GCP: manufacturer field
+	Model               string                         // CUPS: PPD;                         GCP: model field
+	GCPVersion          string                         //                                    GCP: gcpVersion field
+	SetupURL            string                         //                                    GCP: setup_url field
+	SupportURL          string                         //                                    GCP: support_url field
+	UpdateURL           string                         //                                    GCP: update_url field
+	ConnectorVersion    string                         //                                    GCP: firmware field
+	State               *cdd.PrinterStateSection       // CUPS: various;                     GCP: semantic_state field
+	Description         *cdd.PrinterDescriptionSection // CUPS: translated PPD;              GCP: capabilities field
+	CapsHash            string                         // CUPS: hash of PPD;                 GCP: capsHash field
+	Tags                map[string]string              // CUPS: all printer attributes;      GCP: repeated tag field
+	DuplexMap           DuplexVendorMap                // CUPS: PPD;
+	NativeJobSemaphore  *Semaphore
+	QuotaEnabled        bool
+	DailyQuota          int
+	NotificationChannel string
 }
 
 var rDeviceURIHostname *regexp.Regexp = regexp.MustCompile(
@@ -75,21 +76,22 @@ type PrinterDiff struct {
 	Operation PrinterDiffOperation
 	Printer   Printer
 
-	DefaultDisplayNameChanged bool
-	ManufacturerChanged       bool
-	ModelChanged              bool
-	GCPVersionChanged         bool
-	SetupURLChanged           bool
-	SupportURLChanged         bool
-	UpdateURLChanged          bool
-	ConnectorVersionChanged   bool
-	StateChanged              bool
-	DescriptionChanged        bool
-	CapsHashChanged           bool
-	TagsChanged               bool
-	DuplexMapChanged          bool
-	QuotaEnabledChanged       bool
-	DailyQuotaChanged         bool
+	DefaultDisplayNameChanged  bool
+	ManufacturerChanged        bool
+	ModelChanged               bool
+	GCPVersionChanged          bool
+	SetupURLChanged            bool
+	SupportURLChanged          bool
+	UpdateURLChanged           bool
+	ConnectorVersionChanged    bool
+	StateChanged               bool
+	DescriptionChanged         bool
+	CapsHashChanged            bool
+	TagsChanged                bool
+	DuplexMapChanged           bool
+	QuotaEnabledChanged        bool
+	DailyQuotaChanged          bool
+	NotificationChannelChanged bool
 }
 
 func printerSliceToMapByName(s []Printer) map[string]Printer {
@@ -219,11 +221,16 @@ func diffPrinter(pn, pg *Printer) PrinterDiff {
 		d.DailyQuotaChanged = true
 	}
 
+	if pg.NotificationChannel != pn.NotificationChannel {
+		d.NotificationChannelChanged = true
+	}
+
 	if d.DefaultDisplayNameChanged || d.ManufacturerChanged || d.ModelChanged ||
-		d.GCPVersionChanged || d.SetupURLChanged || d.SupportURLChanged ||
-		d.UpdateURLChanged || d.ConnectorVersionChanged || d.StateChanged ||
-		d.DescriptionChanged || d.CapsHashChanged || d.TagsChanged ||
-		d.DuplexMapChanged || d.QuotaEnabledChanged || d.DailyQuotaChanged {
+			d.GCPVersionChanged || d.SetupURLChanged || d.SupportURLChanged ||
+			d.UpdateURLChanged || d.ConnectorVersionChanged || d.StateChanged ||
+			d.DescriptionChanged || d.CapsHashChanged || d.TagsChanged ||
+			d.DuplexMapChanged || d.QuotaEnabledChanged || d.DailyQuotaChanged ||
+			d.NotificationChannelChanged {
 		return d
 	}
 
