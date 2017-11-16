@@ -42,6 +42,10 @@ const (
 	ScopeCloudPrint = "https://www.googleapis.com/auth/cloudprint"
 	ScopeGoogleTalk = "https://www.googleapis.com/auth/googletalk"
 	AccessType      = "offline"
+
+	// Printer Notification channel constants.
+	FCP_CHANNEL     = "FCM_CHANNEL"
+	XMPP_CHANNEL    = "XMPP_CHANNEL"
 )
 
 // GoogleCloudPrint is the interface between Go and the Google Cloud Print API.
@@ -286,6 +290,12 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer) error {
 	form.Set("capabilities", capabilities)
 	form.Set("capsHash", printer.CapsHash)
 
+	if gcp.useFcm {
+		form.Set("notification_channel", FCP_CHANNEL)
+	} else {
+		form.Set("notification_channel", XMPP_CHANNEL)
+	}
+
 	sortedKeys := make([]string, 0, len(printer.Tags))
 	for key := range printer.Tags {
 		sortedKeys = append(sortedKeys, key)
@@ -293,10 +303,6 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer) error {
 	sort.Strings(sortedKeys)
 	for _, key := range sortedKeys {
 		form.Add("tag", fmt.Sprintf("%s%s=%s", gcpTagPrefix, key, printer.Tags[key]))
-	}
-
-	if gcp.useFcm {
-		form.Add("tag", fmt.Sprintf("%s%s=%s", gcpTagPrefix, "fcm", "true"))
 	}
 
 	responseBody, _, _, err := postWithRetry(gcp.robotClient, gcp.baseURL+"register", form)
@@ -349,6 +355,9 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff) error {
 	}
 	if diff.ConnectorVersionChanged {
 		form.Set("firmware", diff.Printer.ConnectorVersion)
+	}
+	if diff.NotificationChannelChanged {
+		form.Set("notification_channel", diff.Printer.NotificationChannel)
 	}
 
 	if diff.StateChanged || diff.DescriptionChanged || diff.GCPVersionChanged {
@@ -414,22 +423,23 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, error) {
 
 	var printersData struct {
 		Printers []struct {
-			ID                 string                     `json:"id"`
-			Name               string                     `json:"name"`
-			DefaultDisplayName string                     `json:"defaultDisplayName"`
-			UUID               string                     `json:"uuid"`
-			Manufacturer       string                     `json:"manufacturer"`
-			Model              string                     `json:"model"`
-			GCPVersion         string                     `json:"gcpVersion"`
-			SetupURL           string                     `json:"setupUrl"`
-			SupportURL         string                     `json:"supportUrl"`
-			UpdateURL          string                     `json:"updateUrl"`
-			Firmware           string                     `json:"firmware"`
-			Capabilities       cdd.CloudDeviceDescription `json:"capabilities"`
-			CapsHash           string                     `json:"capsHash"`
-			Tags               []string                   `json:"tags"`
-			QueuedJobsCount    uint                       `json:"queuedJobsCount"`
-			SemanticState      cdd.CloudDeviceState       `json:"semanticState"`
+			ID                  string                     `json:"id"`
+			Name                string                     `json:"name"`
+			DefaultDisplayName  string                     `json:"defaultDisplayName"`
+			UUID                string                     `json:"uuid"`
+			Manufacturer        string                     `json:"manufacturer"`
+			Model               string                     `json:"model"`
+			GCPVersion          string                     `json:"gcpVersion"`
+			SetupURL            string                     `json:"setupUrl"`
+			SupportURL          string                     `json:"supportUrl"`
+			UpdateURL           string                     `json:"updateUrl"`
+			Firmware            string                     `json:"firmware"`
+			Capabilities        cdd.CloudDeviceDescription `json:"capabilities"`
+			CapsHash            string                     `json:"capsHash"`
+			Tags                []string                   `json:"tags"`
+			QueuedJobsCount     uint                       `json:"queuedJobsCount"`
+			SemanticState       cdd.CloudDeviceState       `json:"semanticState"`
+			NotificationChannel string                     `json:"notificationChannel"`
 		}
 	}
 	if err = json.Unmarshal(responseBody, &printersData); err != nil {
@@ -450,21 +460,22 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, error) {
 	}
 
 	printer := &lib.Printer{
-		GCPID:              p.ID,
-		Name:               p.Name,
-		DefaultDisplayName: p.DefaultDisplayName,
-		UUID:               p.UUID,
-		Manufacturer:       p.Manufacturer,
-		Model:              p.Model,
-		GCPVersion:         p.GCPVersion,
-		SetupURL:           p.SetupURL,
-		SupportURL:         p.SupportURL,
-		UpdateURL:          p.UpdateURL,
-		ConnectorVersion:   p.Firmware,
-		State:              p.SemanticState.Printer,
-		Description:        p.Capabilities.Printer,
-		CapsHash:           p.CapsHash,
-		Tags:               tags,
+		GCPID:               p.ID,
+		Name:                p.Name,
+		DefaultDisplayName:  p.DefaultDisplayName,
+		UUID:                p.UUID,
+		Manufacturer:        p.Manufacturer,
+		Model:               p.Model,
+		GCPVersion:          p.GCPVersion,
+		SetupURL:            p.SetupURL,
+		SupportURL:          p.SupportURL,
+		UpdateURL:           p.UpdateURL,
+		ConnectorVersion:    p.Firmware,
+		State:               p.SemanticState.Printer,
+		Description:         p.Capabilities.Printer,
+		CapsHash:            p.CapsHash,
+		Tags:                tags,
+		NotificationChannel: p.NotificationChannel,
 	}
 
 	return printer, p.QueuedJobsCount, err
