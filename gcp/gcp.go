@@ -567,7 +567,7 @@ func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 func (gcp *GoogleCloudPrint) FcmSubscribe(subscribeUrl string) (interface{}, error) {
 	response, err := getWithRetry(gcp.robotClient, fmt.Sprintf("%s%s", gcp.baseURL, subscribeUrl))
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get Fcm Token: %s", err)
+		return nil, fmt.Errorf("failed to get Fcm Token: %s", err)
 	}
 	defer response.Body.Close()
 
@@ -577,7 +577,7 @@ func (gcp *GoogleCloudPrint) FcmSubscribe(subscribeUrl string) (interface{}, err
 		json.Unmarshal(data, &f)
 		return f, nil
 	} else {
-		return nil, fmt.Errorf("Failed to get Fcm Token: %s", response)
+		return nil, fmt.Errorf("failed to get Fcm Token: %d", response.StatusCode)
 	}
 }
 
