@@ -57,10 +57,11 @@ type PrinterManager struct {
 	jobFullUsername    bool
 	shareScope         string
 
-	quit chan struct{}
+	quit   chan struct{}
+	useFcm bool
 }
 
-func NewPrinterManager(native NativePrintSystem, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, printerPollInterval time.Duration, nativeJobQueueSize uint, jobFullUsername bool, shareScope string, jobs <-chan *lib.Job, notifications <-chan notification.PrinterNotification) (*PrinterManager, error) {
+func NewPrinterManager(native NativePrintSystem, gcp *gcp.GoogleCloudPrint, privet *privet.Privet, printerPollInterval time.Duration, nativeJobQueueSize uint, jobFullUsername bool, shareScope string, jobs <-chan *lib.Job, notifications <-chan notification.PrinterNotification, useFcm bool) (*PrinterManager, error) {
 	var printers *lib.ConcurrentPrinterMap
 	var queuedJobsCount map[string]uint
 
@@ -100,7 +101,8 @@ func NewPrinterManager(native NativePrintSystem, gcp *gcp.GoogleCloudPrint, priv
 		jobFullUsername:    jobFullUsername,
 		shareScope:         shareScope,
 
-		quit: make(chan struct{}),
+		quit:   make(chan struct{}),
+		useFcm: useFcm,
 	}
 
 	// Sync once before returning, to make sure things are working.
@@ -177,6 +179,12 @@ func (pm *PrinterManager) SyncPrinters(ignorePrivet bool) error {
 		h = adler32.New()
 		lib.DeepHash(nativePrinters[i].Description, h)
 		nativePrinters[i].CapsHash = fmt.Sprintf("%x", h.Sum(nil))
+
+		if pm.useFcm {
+			nativePrinters[i].NotificationChannel = gcp.FCP_CHANNEL
+		} else {
+			nativePrinters[i].NotificationChannel = gcp.XMPP_CHANNEL
+		}
 	}
 
 	// Compare the snapshot to what we know currently.
