@@ -76,7 +76,7 @@ func runService(context *cli.Context) error {
 }
 
 func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s chan<- svc.Status) (bool, uint32) {
-	useFcm := context.Bool("gcp-use-fcm")
+	useFcm := service.context.Bool("gcp-use-fcm")
 	if service.interactive {
 		if err := log.Start(true); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to start event log: %s\n", err)
@@ -151,7 +151,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 			f, err = fcm.NewFCM(config.GCPOAuthClientID, config.ProxyName, config.FcmServerBindUrl, g.FcmSubscribe, notifications)
 			if err != nil {
 				log.Fatal(err)
-				return cli.NewExitError(err.Error(), 1)
+				return false, 1
 			}
 			defer f.Quit()
 		} else {
