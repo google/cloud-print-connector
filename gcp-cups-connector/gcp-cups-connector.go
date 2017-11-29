@@ -39,7 +39,6 @@ func main() {
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
 		lib.ConfigFilenameFlag,
-		lib.UseFcm,
 		cli.BoolFlag{
 			Name:  "log-to-console",
 			Usage: "Log to STDERR, in addition to configured logging",
@@ -57,7 +56,7 @@ func connector(context *cli.Context) error {
 
 	logToJournal := *config.LogToJournal && journal.Enabled()
 	logToConsole := context.Bool("log-to-console")
-	useFcm := context.Bool("gcp-use-fcm")
+	useFcm := config.FcmNotificationsEnable
 
 	if logToJournal {
 		log.SetJournalEnabled(true)

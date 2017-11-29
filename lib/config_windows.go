@@ -28,6 +28,9 @@ type Config struct {
 	// Enable cloud discovery and printing.
 	CloudPrintingEnable bool `json:"cloud_printing_enable"`
 
+	// Enable fcm notifications instead of xmpp notifications.
+	FcmNotificationsEnable bool `json:"fcm_notifications_enable"`
+
 	// Associated with root account. XMPP credential.
 	XMPPJID string `json:"xmpp_jid,omitempty"`
 
@@ -140,10 +143,11 @@ var DefaultConfig = Config{
 		"Microsoft XPS Document Writer",
 		"Google Cloud Printer",
 	},
-	PrinterWhitelist:    []string{},
-	LocalPrintingEnable: true,
-	CloudPrintingEnable: false,
-	LogLevel:            "INFO",
+	PrinterWhitelist:       []string{},
+	LocalPrintingEnable:    true,
+	CloudPrintingEnable:    false,
+	FcmNotificationsEnable: false,
+	LogLevel:               "INFO",
 
 	LocalPortLow:  26000,
 	LocalPortHigh: 26999,

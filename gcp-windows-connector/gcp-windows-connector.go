@@ -34,7 +34,6 @@ func main() {
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
 		lib.ConfigFilenameFlag,
-		lib.UseFcm,
 	}
 	app.Action = runService
 	app.Run(os.Args)
@@ -76,7 +75,7 @@ func runService(context *cli.Context) error {
 }
 
 func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s chan<- svc.Status) (bool, uint32) {
-	useFcm := service.context.Bool("gcp-use-fcm")
+	useFcm := context.FcmNotificationsEnable
 	if service.interactive {
 		if err := log.Start(true); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to start event log: %s\n", err)
