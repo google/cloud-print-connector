@@ -33,11 +33,6 @@ var (
 		Value: defaultConfigFilename,
 	}
 
-	UseFcm = cli.BoolFlag{
-		Name:  "gcp-use-fcm",
-		Usage: "Receive print notifications from FCM instead of XMPP",
-	}
-
 	// To be populated by something like:
 	// go install -ldflags "-X github.com/google/cloud-print-connector/lib.BuildDate=`date +%Y.%m.%d`"
 	BuildDate = "DEV"
@@ -229,6 +224,9 @@ func (c *Config) commonBackfill(configMap map[string]interface{}) *Config {
 	}
 	if _, exists := configMap["cloud_printing_enable"]; !exists {
 		b.CloudPrintingEnable = DefaultConfig.CloudPrintingEnable
+	}
+	if _, exists := configMap["fcm_notifications_enable"]; !exists {
+		b.FcmNotificationsEnable = DefaultConfig.FcmNotificationsEnable
 	}
 	if _, exists := configMap["log_level"]; !exists {
 		b.LogLevel = DefaultConfig.LogLevel

@@ -30,6 +30,9 @@ type Config struct {
 	// Enable cloud discovery and printing.
 	CloudPrintingEnable bool `json:"cloud_printing_enable"`
 
+	// Enable fcm notifications instead of xmpp notifications.
+	FcmNotificationsEnable bool `json:"fcm_notifications_enable"`
+
 	// Associated with root account. XMPP credential.
 	XMPPJID string `json:"xmpp_jid,omitempty"`
 
@@ -156,8 +159,9 @@ type Config struct {
 // Omitted Config fields are omitted on purpose; they are unique per
 // connector instance.
 var DefaultConfig = Config{
-	LocalPrintingEnable: true,
-	CloudPrintingEnable: false,
+	LocalPrintingEnable:    true,
+	CloudPrintingEnable:    false,
+	FcmNotificationsEnable: false,
 
 	XMPPServer:                "talk.google.com",
 	XMPPPort:                  443,
