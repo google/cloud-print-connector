@@ -145,7 +145,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 			log.Fatal(err)
 			return false, 1
 		}
-		if useFcm {
+		if config.FcmNotificationsEnable {
 			f, err = fcm.NewFCM(config.GCPOAuthClientID, config.ProxyName, config.FcmServerBindUrl, g.FcmSubscribe, notifications)
 			if err != nil {
 				log.Fatal(err)
@@ -176,7 +176,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 	}
 	pm, err := manager.NewPrinterManager(ws, g, nil, nativePrinterPollInterval,
 		config.NativeJobQueueSize, *config.CUPSJobFullUsername, config.ShareScope, jobs, notifications,
-		useFcm)
+		config.FcmNotificationsEnable)
 	if err != nil {
 		log.Fatal(err)
 		return false, 1
@@ -184,7 +184,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 	defer pm.Quit()
 
 	// Init FCM client after printers are registered
-	if useFcm && config.CloudPrintingEnable {
+	if config.FcmNotificationsEnable && config.CloudPrintingEnable {
 		f.Init()
 	}
 	statusHandle := svc.StatusHandle()
