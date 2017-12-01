@@ -163,7 +163,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 		}
 	}
 
-	ws, err := winspool.NewWinSpool(*config.PrefixJobIDToJobTitle, config.DisplayNamePrefix, config.PrinterBlacklist, config.PrinterWhitelist)
+	ws, err := winspool.NewWinSpool(*config.PrefixJobIDToJobTitle, config.DisplayNamePrefix, config.PrinterBlacklist, config.PrinterWhitelist, config.FcmNotificationsEnable)
 	if err != nil {
 		log.Fatal(err)
 		return false, 1
