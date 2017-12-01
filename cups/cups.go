@@ -143,7 +143,8 @@ type CUPS struct {
 
 func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix string,
 	printerAttributes, vendorPPDOptions []string, maxConnections uint, connectTimeout time.Duration,
-	printerBlacklist, printerWhitelist []string, ignoreRawPrinters bool, ignoreClassPrinters bool) (*CUPS, error) {
+	printerBlacklist, printerWhitelist []string, ignoreRawPrinters bool, ignoreClassPrinters bool,
+	fcmNotificationsEnable bool) (*CUPS, error) {
 	if err := checkPrinterAttributes(printerAttributes); err != nil {
 		return nil, err
 	}
@@ -154,7 +155,7 @@ func NewCUPS(infoToDisplayName, prefixJobIDToJobTitle bool, displayNamePrefix st
 	}
 	pc := newPPDCache(cc, vendorPPDOptions)
 
-	systemTags, err := getSystemTags()
+	systemTags, err := getSystemTags(fcmNotificationsEnable)
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +370,7 @@ func uname() (string, string, string, string, string, error) {
 		C.GoString(&name.machine[0]), nil
 }
 
-func getSystemTags() (map[string]string, error) {
+func getSystemTags(fcmNotificationsEnable bool) (map[string]string, error) {
 	tags := make(map[string]string)
 
 	tags["connector-version"] = lib.BuildDate
@@ -379,7 +380,11 @@ func getSystemTags() (map[string]string, error) {
 	}
 	tags["system-arch"] = runtime.GOARCH
 	tags["system-golang-version"] = runtime.Version()
-
+	if fcmNotificationsEnable {
+		tags["system-notifications-channel"] = "fcm"
+	} else {
+		tags["system-notifications-channel"] = "xmpp"
+	}
 	sysname, nodename, release, version, machine, err := uname()
 	if err != nil {
 		return nil, fmt.Errorf("CUPS failed to call uname while initializing: %s", err)
