@@ -414,7 +414,7 @@ func initConfigFile(context *cli.Context) error {
 		if context.IsSet("proxy-name") {
 			proxyName = context.String("proxy-name")
 		} else {
-			proxyName = uuid.NewV4().String()
+			proxyName = uuid.Must(uuid.NewV4()).String()
 		}
 
 		var userClient *http.Client
