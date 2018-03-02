@@ -10,16 +10,16 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"strings"
 	"sync"
 
-	"github.com/codegangsta/cli"
-	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/gcp"
-	"github.com/google/cups-connector/lib"
+	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/gcp"
+	"github.com/google/cloud-print-connector/lib"
+	"github.com/urfave/cli"
 )
 
 var commonCommands = []cli.Command{
@@ -29,9 +29,14 @@ var commonCommands = []cli.Command{
 		Action: deleteAllGCPPrinters,
 	},
 	cli.Command{
-		Name:   "update-config-file",
-		Usage:  "Add new options to config file after update",
-		Action: updateConfigFile,
+		Name:   "backfill-config-file",
+		Usage:  "Add all keys, with default values, to the config file",
+		Action: backfillConfigFile,
+	},
+	cli.Command{
+		Name:   "sparse-config-file",
+		Usage:  "Remove all keys, with non-default values, from the config file",
+		Action: sparseConfigFile,
 	},
 	cli.Command{
 		Name:   "delete-gcp-job",
@@ -75,7 +80,7 @@ var commonCommands = []cli.Command{
 	},
 	cli.Command{
 		Name:   "show-gcp-printer-status",
-		Usage:  "Shows the current status of a printer and it's jobs",
+		Usage:  "Shows the current status of a printer and its jobs",
 		Action: showGCPPrinterStatus,
 		Flags: []cli.Flag{
 			cli.StringFlag{
@@ -90,16 +95,16 @@ var commonCommands = []cli.Command{
 		Flags: []cli.Flag{
 			cli.StringFlag{
 				Name:  "printer-id",
-				Usage: "Printer to share.",
+				Usage: "Printer to share",
 			},
 			cli.StringFlag{
 				Name:  "email",
-				Usage: "Group or user to share with.",
+				Usage: "Group or user to share with",
 			},
 			cli.StringFlag{
 				Name:  "role",
 				Value: "USER",
-				Usage: "Role granted. user or manager.",
+				Usage: "Role granted. user or manager",
 			},
 			cli.BoolTFlag{
 				Name:  "skip-notification",
@@ -113,255 +118,178 @@ var commonCommands = []cli.Command{
 	},
 	cli.Command{
 		Name:   "unshare-gcp-printer",
-		Usage:  "Removes user or group access to printer.",
+		Usage:  "Removes user or group access to printer",
 		Action: unshareGCPPrinter,
 		Flags: []cli.Flag{
 			cli.StringFlag{
 				Name:  "printer-id",
-				Usage: "Printer to unshare.",
+				Usage: "Printer to unshare",
 			},
 			cli.StringFlag{
 				Name:  "email",
-				Usage: "Group or user to remove.",
+				Usage: "Group or user to remove",
 			},
 			cli.BoolFlag{
 				Name:  "public",
-				Usage: "Remove public printer access.",
+				Usage: "Remove public printer access",
 			},
 		},
 	},
 	cli.Command{
 		Name:   "update-gcp-printer",
-		Usage:  "Modifies settings for a printer.",
+		Usage:  "Modifies settings for a printer",
 		Action: updateGCPPrinter,
 		Flags: []cli.Flag{
 			cli.StringFlag{
 				Name:  "printer-id",
-				Usage: "Printer to update.",
+				Usage: "Printer to update",
 			},
 			cli.BoolFlag{
 				Name:  "enable-quota",
-				Usage: "Set a daily per-user quota.",
+				Usage: "Set a daily per-user quota",
 			},
 			cli.BoolFlag{
 				Name:  "disable-quota",
-				Usage: "Disable daily per-user quota.",
+				Usage: "Disable daily per-user quota",
 			},
 			cli.IntFlag{
 				Name:  "daily-quota",
-				Usage: "Pages per-user per-day.",
+				Usage: "Pages per-user per-day",
 			},
 		},
 	},
 }
 
 // getConfig returns a config object
-func getConfig(context *cli.Context) *lib.Config {
+func getConfig(context *cli.Context) (*lib.Config, error) {
 	config, _, err := lib.GetConfig(context)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, err
 	}
-	return config
+	return config, nil
 }
 
 // getGCP returns a GoogleCloudPrint object
-func getGCP(config *lib.Config) *gcp.GoogleCloudPrint {
-	gcp, err := gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
+func getGCP(config *lib.Config) (*gcp.GoogleCloudPrint, error) {
+	return gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 		config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 		config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-		0, nil)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	return gcp
+		0, nil, false)
 }
 
-// commonUpdateConfig updates the config object, with the help of configMap,
-// which can indicate the absence of a value.
-// Returns true if config was changed.
-//
-// Each platform should define a function updateConfig(*lib.Config, map[string]interface{})
-// which may call this function.
-func commonUpdateConfig(config *lib.Config, configMap map[string]interface{}) bool {
-	dirty := false
-
-	if _, exists := configMap["xmpp_server"]; !exists {
-		dirty = true
-		fmt.Println("Added xmpp_server")
-		config.XMPPServer = lib.DefaultConfig.XMPPServer
-	}
-	if _, exists := configMap["xmpp_port"]; !exists {
-		dirty = true
-		fmt.Println("Added xmpp_port")
-		config.XMPPPort = lib.DefaultConfig.XMPPPort
-	}
-	if _, exists := configMap["gcp_xmpp_ping_timeout"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_xmpp_ping_timeout")
-		config.XMPPPingTimeout = lib.DefaultConfig.XMPPPingTimeout
-	}
-	if _, exists := configMap["gcp_xmpp_ping_interval_default"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_xmpp_ping_interval_default")
-		config.XMPPPingInterval = lib.DefaultConfig.XMPPPingInterval
-	}
-	if _, exists := configMap["gcp_base_url"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_base_url")
-		config.GCPBaseURL = lib.DefaultConfig.GCPBaseURL
-	}
-	if _, exists := configMap["gcp_oauth_client_id"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_oauth_client_id")
-		config.GCPOAuthClientID = lib.DefaultConfig.GCPOAuthClientID
-	}
-	if _, exists := configMap["gcp_oauth_client_secret"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_oauth_client_secret")
-		config.GCPOAuthClientSecret = lib.DefaultConfig.GCPOAuthClientSecret
-	}
-	if _, exists := configMap["gcp_oauth_auth_url"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_oauth_auth_url")
-		config.GCPOAuthAuthURL = lib.DefaultConfig.GCPOAuthAuthURL
-	}
-	if _, exists := configMap["gcp_oauth_token_url"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_oauth_token_url")
-		config.GCPOAuthTokenURL = lib.DefaultConfig.GCPOAuthTokenURL
-	}
-	if _, exists := configMap["gcp_max_concurrent_downloads"]; !exists {
-		dirty = true
-		fmt.Println("Added gcp_max_concurrent_downloads")
-		config.GCPMaxConcurrentDownloads = lib.DefaultConfig.GCPMaxConcurrentDownloads
-	}
-	if _, exists := configMap["cups_job_queue_size"]; !exists {
-		dirty = true
-		fmt.Println("Added cups_job_queue_size")
-		config.NativeJobQueueSize = lib.DefaultConfig.NativeJobQueueSize
-	}
-	if _, exists := configMap["cups_printer_poll_interval"]; !exists {
-		dirty = true
-		fmt.Println("Added cups_printer_poll_interval")
-		config.NativePrinterPollInterval = lib.DefaultConfig.NativePrinterPollInterval
-	}
-	if _, exists := configMap["prefix_job_id_to_job_title"]; !exists {
-		dirty = true
-		fmt.Println("Added prefix_job_id_to_job_title")
-		config.PrefixJobIDToJobTitle = lib.DefaultConfig.PrefixJobIDToJobTitle
-	}
-	if _, exists := configMap["display_name_prefix"]; !exists {
-		dirty = true
-		fmt.Println("Added display_name_prefix")
-		config.DisplayNamePrefix = lib.DefaultConfig.DisplayNamePrefix
-	}
-	if _, exists := configMap["printer_blacklist"]; !exists {
-		dirty = true
-		fmt.Println("Added printer_blacklist")
-		config.PrinterBlacklist = lib.DefaultConfig.PrinterBlacklist
-	}
-	if _, exists := configMap["local_printing_enable"]; !exists {
-		dirty = true
-		fmt.Println("Added local_printing_enable")
-		config.LocalPrintingEnable = lib.DefaultConfig.LocalPrintingEnable
-	}
-	if _, exists := configMap["cloud_printing_enable"]; !exists {
-		dirty = true
-		_, robot_token_exists := configMap["robot_refresh_token"]
-		fmt.Println("Added cloud_printing_enable")
-		if robot_token_exists {
-			config.CloudPrintingEnable = true
-		} else {
-			config.CloudPrintingEnable = lib.DefaultConfig.CloudPrintingEnable
-		}
-	}
-	if _, exists := configMap["log_level"]; !exists {
-		dirty = true
-		fmt.Println("Added log_level")
-		config.LogLevel = lib.DefaultConfig.LogLevel
-	}
-
-	return dirty
-}
-
-// updateConfigFile opens the config file, adds any missing fields,
-// writes the config file back.
-func updateConfigFile(context *cli.Context) {
-	config, configFilename, err := lib.GetConfig(context)
+// backfillConfigFile opens the config file, adds all missing keys
+// and default values, then writes the config file back.
+func backfillConfigFile(context *cli.Context) error {
+	config, cfBefore, err := lib.GetConfig(context)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
-	if configFilename == "" {
-		fmt.Println("Could not find a config file to update")
-		return
+	if cfBefore == "" {
+		return fmt.Errorf("Could not find a config file to backfill")
 	}
 
 	// Same config in []byte format.
-	configRaw, err := ioutil.ReadFile(configFilename)
+	configRaw, err := ioutil.ReadFile(cfBefore)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	// Same config in map format so that we can detect missing keys.
 	var configMap map[string]interface{}
 	if err = json.Unmarshal(configRaw, &configMap); err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
-	dirty := updateConfig(config, configMap)
-
-	if dirty {
-		config.ToFile(context)
-		fmt.Printf("Wrote %s\n", configFilename)
+	if cfWritten, err := config.Backfill(configMap).ToFile(context); err != nil {
+		return fmt.Errorf("Failed to write config file: %s", err)
 	} else {
-		fmt.Println("Nothing to update")
+		fmt.Printf("Wrote %s\n", cfWritten)
 	}
+	return nil
+}
+
+// sparseConfigFile opens the config file, removes most keys
+// that have default values, then writes the config file back.
+func sparseConfigFile(context *cli.Context) error {
+	config, cfBefore, err := lib.GetConfig(context)
+	if err != nil {
+		return err
+	}
+	if cfBefore == "" {
+		return errors.New("Could not find a config file to sparse")
+	}
+
+	if cfWritten, err := config.Sparse(context).ToFile(context); err != nil {
+		return fmt.Errorf("Failed to write config file: %s\n", err)
+	} else {
+		fmt.Printf("Wrote %s\n", cfWritten)
+	}
+	return nil
 }
 
 // deleteAllGCPPrinters finds all GCP printers associated with this
 // connector, deletes them from GCP.
-func deleteAllGCPPrinters(context *cli.Context) {
-	config := getConfig(context)
-	gcp := getGCP(config)
+func deleteAllGCPPrinters(context *cli.Context) error {
+	config, err := getConfig(context)
+	if err != nil {
+		return err
+	}
+	gcp, err := getGCP(config)
+	if err != nil {
+		return err
+	}
 
 	printers, err := gcp.List()
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	var wg sync.WaitGroup
 	for gcpID, name := range printers {
 		wg.Add(1)
 		go func(gcpID, name string) {
+			defer wg.Done()
 			err := gcp.Delete(gcpID)
 			if err != nil {
 				fmt.Printf("Failed to delete %s \"%s\": %s\n", gcpID, name, err)
 			} else {
 				fmt.Printf("Deleted %s \"%s\" from GCP\n", gcpID, name)
 			}
-			wg.Done()
 		}(gcpID, name)
 	}
 	wg.Wait()
+	return nil
 }
 
 // deleteGCPJob deletes one GCP job
-func deleteGCPJob(context *cli.Context) {
-	config := getConfig(context)
-	gcp := getGCP(config)
-
-	err := gcp.DeleteJob(context.String("job-id"))
+func deleteGCPJob(context *cli.Context) error {
+	config, err := getConfig(context)
 	if err != nil {
-		fmt.Printf("Failed to delete GCP job %s: %s\n", context.String("job-id"), err)
-	} else {
-		fmt.Printf("Deleted GCP job %s\n", context.String("job-id"))
+		return err
 	}
+	gcp, err := getGCP(config)
+	if err != nil {
+		return err
+	}
+
+	err = gcp.DeleteJob(context.String("job-id"))
+	if err != nil {
+		return fmt.Errorf("Failed to delete GCP job %s: %s\n", context.String("job-id"), err)
+	}
+	fmt.Printf("Deleted GCP job %s\n", context.String("job-id"))
+	return nil
 }
 
 // cancelGCPJob cancels one GCP job
-func cancelGCPJob(context *cli.Context) {
-	config := getConfig(context)
-	gcp := getGCP(config)
+func cancelGCPJob(context *cli.Context) error {
+	config, err := getConfig(context)
+	if err != nil {
+		return err
+	}
+	gcp, err := getGCP(config)
+	if err != nil {
+		return err
+	}
 
 	cancelState := cdd.PrintJobStateDiff{
 		State: &cdd.JobState{
@@ -370,23 +298,29 @@ func cancelGCPJob(context *cli.Context) {
 		},
 	}
 
-	err := gcp.Control(context.String("job-id"), &cancelState)
+	err = gcp.Control(context.String("job-id"), &cancelState)
 	if err != nil {
-		fmt.Printf("Failed to cancel GCP job %s: %s\n", context.String("job-id"), err)
-	} else {
-		fmt.Printf("Canceled GCP job %s\n", context.String("job-id"))
+		return fmt.Errorf("Failed to cancel GCP job %s: %s", context.String("job-id"), err)
 	}
+	fmt.Printf("Canceled GCP job %s\n", context.String("job-id"))
+	return nil
 }
 
 // deleteAllGCPPrinterJobs finds all GCP printer jobs associated with a
 // a given printer id and deletes them.
-func deleteAllGCPPrinterJobs(context *cli.Context) {
-	config := getConfig(context)
-	gcp := getGCP(config)
+func deleteAllGCPPrinterJobs(context *cli.Context) error {
+	config, err := getConfig(context)
+	if err != nil {
+		return err
+	}
+	gcp, err := getGCP(config)
+	if err != nil {
+		return err
+	}
 
 	jobs, err := gcp.Fetch(context.String("printer-id"))
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	if len(jobs) == 0 {
@@ -409,17 +343,24 @@ func deleteAllGCPPrinterJobs(context *cli.Context) {
 	for _ = range jobs {
 		<-ch
 	}
+	return nil
 }
 
 // cancelAllGCPPrinterJobs finds all GCP printer jobs associated with a
 // a given printer id and cancels them.
-func cancelAllGCPPrinterJobs(context *cli.Context) {
-	config := getConfig(context)
-	gcp := getGCP(config)
+func cancelAllGCPPrinterJobs(context *cli.Context) error {
+	config, err := getConfig(context)
+	if err != nil {
+		return err
+	}
+	gcp, err := getGCP(config)
+	if err != nil {
+		return err
+	}
 
 	jobs, err := gcp.Fetch(context.String("printer-id"))
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	if len(jobs) == 0 {
@@ -449,16 +390,23 @@ func cancelAllGCPPrinterJobs(context *cli.Context) {
 	for _ = range jobs {
 		<-ch
 	}
+	return nil
 }
 
 // showGCPPrinterStatus shows the current status of a GCP printer and it's jobs
-func showGCPPrinterStatus(context *cli.Context) {
-	config := getConfig(context)
-	gcp := getGCP(config)
+func showGCPPrinterStatus(context *cli.Context) error {
+	config, err := getConfig(context)
+	if err != nil {
+		return err
+	}
+	gcp, err := getGCP(config)
+	if err != nil {
+		return err
+	}
 
 	printer, _, err := gcp.Printer(context.String("printer-id"))
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	fmt.Println("Name:", printer.DefaultDisplayName)
@@ -466,7 +414,7 @@ func showGCPPrinterStatus(context *cli.Context) {
 
 	jobs, err := gcp.Jobs(context.String("printer-id"))
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	// Only init common states. Unusual states like DRAFT will only be shown
@@ -488,12 +436,19 @@ func showGCPPrinterStatus(context *cli.Context) {
 	for state, count := range jobStateCounts {
 		fmt.Println(" ", state, ":", count)
 	}
+	return nil
 }
 
 // shareGCPPrinter shares a GCP printer
-func shareGCPPrinter(context *cli.Context) {
-	config := getConfig(context)
-	gcpConn := getGCP(config)
+func shareGCPPrinter(context *cli.Context) error {
+	config, err := getConfig(context)
+	if err != nil {
+		return err
+	}
+	gcpConn, err := getGCP(config)
+	if err != nil {
+		return err
+	}
 
 	var role gcp.Role
 	switch strings.ToUpper(context.String("role")) {
@@ -502,11 +457,10 @@ func shareGCPPrinter(context *cli.Context) {
 	case "MANAGER":
 		role = gcp.Manager
 	default:
-		fmt.Println("role should be user or manager.")
-		return
+		return fmt.Errorf("role should be user or manager.")
 	}
 
-	err := gcpConn.Share(context.String("printer-id"), context.String("email"),
+	err = gcpConn.Share(context.String("printer-id"), context.String("email"),
 		role, context.Bool("skip-notification"), context.Bool("public"))
 	var sharedWith string
 	if context.Bool("public") {
@@ -515,18 +469,24 @@ func shareGCPPrinter(context *cli.Context) {
 		sharedWith = context.String("email")
 	}
 	if err != nil {
-		fmt.Printf("Failed to share GCP printer %s with %s: %s\n", context.String("printer-id"), sharedWith, err)
-	} else {
-		fmt.Printf("Shared GCP printer %s with %s\n", context.String("printer-id"), sharedWith)
+		return fmt.Errorf("Failed to share GCP printer %s with %s: %s\n", context.String("printer-id"), sharedWith, err)
 	}
+	fmt.Printf("Shared GCP printer %s with %s\n", context.String("printer-id"), sharedWith)
+	return nil
 }
 
 // unshareGCPPrinter unshares a GCP printer.
-func unshareGCPPrinter(context *cli.Context) {
-	config := getConfig(context)
-	gcpConn := getGCP(config)
+func unshareGCPPrinter(context *cli.Context) error {
+	config, err := getConfig(context)
+	if err != nil {
+		return err
+	}
+	gcpConn, err := getGCP(config)
+	if err != nil {
+		return err
+	}
 
-	err := gcpConn.Unshare(context.String("printer-id"), context.String("email"), context.Bool("public"))
+	err = gcpConn.Unshare(context.String("printer-id"), context.String("email"), context.Bool("public"))
 	var sharedWith string
 	if context.Bool("public") {
 		sharedWith = "public"
@@ -534,16 +494,22 @@ func unshareGCPPrinter(context *cli.Context) {
 		sharedWith = context.String("email")
 	}
 	if err != nil {
-		fmt.Printf("Failed to unshare GCP printer %s with %s: %s\n", context.String("printer-id"), sharedWith, err)
-	} else {
-		fmt.Printf("Unshared GCP printer %s with %s\n", context.String("printer-id"), sharedWith)
+		return fmt.Errorf("Failed to unshare GCP printer %s with %s: %s\n", context.String("printer-id"), sharedWith, err)
 	}
+	fmt.Printf("Unshared GCP printer %s with %s\n", context.String("printer-id"), sharedWith)
+	return nil
 }
 
 // updateGCPPrinter updates settings for a GCP printer.
-func updateGCPPrinter(context *cli.Context) {
-	config := getConfig(context)
-	gcpConn := getGCP(config)
+func updateGCPPrinter(context *cli.Context) error {
+	config, err := getConfig(context)
+	if err != nil {
+		return err
+	}
+	gcpConn, err := getGCP(config)
+	if err != nil {
+		return err
+	}
 
 	var diff lib.PrinterDiff
 	diff.Printer = lib.Printer{GCPID: context.String("printer-id")}
@@ -559,10 +525,11 @@ func updateGCPPrinter(context *cli.Context) {
 		diff.Printer.DailyQuota = context.Int("daily-quota")
 		diff.DailyQuotaChanged = true
 	}
-	err := gcpConn.Update(&diff)
+	err = gcpConn.Update(&diff)
 	if err != nil {
-		fmt.Printf("Failed to update GCP printer %s: %s", context.String("printer-id"), err)
+		return fmt.Errorf("Failed to update GCP printer %s: %s", context.String("printer-id"), err)
 	} else {
 		fmt.Printf("Updated GCP printer %s", context.String("printer-id"))
 	}
+	return nil
 }

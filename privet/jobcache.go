@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/log"
+	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/log"
 )
 
 // Jobs expire after this much time.

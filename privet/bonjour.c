@@ -51,10 +51,11 @@ void registerCallback(CFNetServiceRef service, CFStreamError *streamError, void 
 // startBonjour starts and returns a bonjour service.
 //
 // Returns a registered service. Returns NULL and sets err on failure.
-CFNetServiceRef startBonjour(const char *name, const char *type, unsigned short int port, const char *ty, const char *url, const char *id, const char *cs, char **err) {
+CFNetServiceRef startBonjour(const char *name, const char *type, unsigned short int port, const char *ty, const char *note, const char *url, const char *id, const char *cs, char **err) {
 	CFStringRef nameCF = CFStringCreateWithCString(NULL, name, kCFStringEncodingASCII);
 	CFStringRef typeCF = CFStringCreateWithCString(NULL, type, kCFStringEncodingASCII);
 	CFStringRef tyCF = CFStringCreateWithCString(NULL, ty, kCFStringEncodingASCII);
+        CFStringRef noteCF = CFStringCreateWithCString(NULL, note, kCFStringEncodingASCII);
 	CFStringRef urlCF = CFStringCreateWithCString(NULL, url, kCFStringEncodingASCII);
 	CFStringRef idCF = CFStringCreateWithCString(NULL, id, kCFStringEncodingASCII);
 	CFStringRef csCF = CFStringCreateWithCString(NULL, cs, kCFStringEncodingASCII);
@@ -63,6 +64,9 @@ CFNetServiceRef startBonjour(const char *name, const char *type, unsigned short 
 			&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
 	CFDictionarySetValue(dict, CFSTR("txtvers"), CFSTR("1"));
 	CFDictionarySetValue(dict, CFSTR("ty"), tyCF);
+        if (CFStringGetLength(noteCF) > 0) {
+		CFDictionarySetValue(dict, CFSTR("note"), noteCF);
+        }
 	CFDictionarySetValue(dict, CFSTR("url"), urlCF);
 	CFDictionarySetValue(dict, CFSTR("type"), CFSTR("printer"));
 	CFDictionarySetValue(dict, CFSTR("id"), idCF);
@@ -89,6 +93,7 @@ CFNetServiceRef startBonjour(const char *name, const char *type, unsigned short 
 
 	CFRelease(typeCF);
 	CFRelease(tyCF);
+	CFRelease(noteCF);
 	CFRelease(urlCF);
 	CFRelease(idCF);
 	CFRelease(csCF);
@@ -99,8 +104,9 @@ CFNetServiceRef startBonjour(const char *name, const char *type, unsigned short 
 }
 
 // updateBonjour updates the TXT record of service.
-void updateBonjour(CFNetServiceRef service, const char *ty, const char *url, const char *id, const char *cs) {
+void updateBonjour(CFNetServiceRef service, const char *ty, const char *note, const char *url, const char *id, const char *cs) {
 	CFStringRef tyCF = CFStringCreateWithCString(NULL, ty, kCFStringEncodingASCII);
+	CFStringRef noteCF = CFStringCreateWithCString(NULL, note, kCFStringEncodingASCII);
 	CFStringRef urlCF = CFStringCreateWithCString(NULL, url, kCFStringEncodingASCII);
 	CFStringRef idCF = CFStringCreateWithCString(NULL, id, kCFStringEncodingASCII);
 	CFStringRef csCF = CFStringCreateWithCString(NULL, cs, kCFStringEncodingASCII);
@@ -109,6 +115,9 @@ void updateBonjour(CFNetServiceRef service, const char *ty, const char *url, con
 			&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
 	CFDictionarySetValue(dict, CFSTR("txtvers"), CFSTR("1"));
 	CFDictionarySetValue(dict, CFSTR("ty"), tyCF);
+        if (CFStringGetLength(noteCF) > 0) {
+		CFDictionarySetValue(dict, CFSTR("note"), noteCF);
+        }
 	CFDictionarySetValue(dict, CFSTR("url"), urlCF);
 	CFDictionarySetValue(dict, CFSTR("type"), CFSTR("printer"));
 	CFDictionarySetValue(dict, CFSTR("id"), idCF);
@@ -118,6 +127,7 @@ void updateBonjour(CFNetServiceRef service, const char *ty, const char *url, con
 	CFNetServiceSetTXTData(service, txt);
 
 	CFRelease(tyCF);
+	CFRelease(noteCF);
 	CFRelease(urlCF);
 	CFRelease(idCF);
 	CFRelease(csCF);

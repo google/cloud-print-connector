@@ -316,8 +316,7 @@ type TypedValueCapability struct {
 }
 
 type Color struct {
-	Option    []ColorOption `json:"option"`
-	VendorKey string        `json:"-"`
+	Option []ColorOption `json:"option"`
 }
 
 type ColorType string
@@ -339,8 +338,7 @@ type ColorOption struct {
 }
 
 type Duplex struct {
-	Option    []DuplexOption `json:"option"`
-	VendorKey string         `json:"-"`
+	Option []DuplexOption `json:"option"`
 }
 
 type DuplexType string
@@ -354,7 +352,6 @@ const (
 type DuplexOption struct {
 	Type      DuplexType `json:"type"`       // default = "NO_DUPLEX"
 	IsDefault bool       `json:"is_default"` // default = false
-	VendorID  string     `json:"-"`
 }
 
 type PageOrientation struct {

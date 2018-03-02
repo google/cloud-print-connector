@@ -1,0 +1,17 @@
+language: go
+
+go:
+  - "1.9.x"
+  - "1.10.x"
+  - "1.x"
+  - master
+
+os:
+  - linux
+  - osx
+
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get -qq update ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install -y libcups2-dev libavahi-client-dev ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update ; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install bazaar ; fi

@@ -9,19 +9,21 @@ https://developers.google.com/open-source/licenses/bsd
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
-	"github.com/codegangsta/cli"
-	"github.com/google/cups-connector/gcp"
-	"github.com/google/cups-connector/lib"
+	"github.com/google/cloud-print-connector/gcp"
+	"github.com/google/cloud-print-connector/lib"
+	"github.com/satori/go.uuid"
+	"github.com/urfave/cli"
 
 	"golang.org/x/oauth2"
 )
@@ -33,12 +35,46 @@ const (
 )
 
 var commonInitFlags = []cli.Flag{
+	cli.StringFlag{
+		Name:  "gcp-oauth-token-poll-url",
+		Usage: "OAuth token poll URL",
+		Value: gcpOAuthTokenPollURL,
+	},
+	cli.StringFlag{
+		Name:  "gcp-base-url",
+		Usage: "GCP base URL",
+		Value: lib.DefaultConfig.GCPBaseURL,
+	},
+	cli.StringFlag{
+		Name:  "gcp-oauth-device-code-url",
+		Usage: "OAuth device code URL",
+		Value: gcpOAuthDeviceCodeURL,
+	},
+	cli.StringFlag{
+		Name:  "gcp-oauth-token-url",
+		Usage: "OAuth token URL",
+		Value: lib.DefaultConfig.GCPOAuthTokenURL,
+	},
+	cli.StringFlag{
+		Name:  "gcp-oauth-auth-url",
+		Usage: "OAuth auth URL",
+		Value: lib.DefaultConfig.GCPOAuthAuthURL,
+	},
 	cli.DurationFlag{
 		Name:  "gcp-api-timeout",
 		Usage: "GCP API timeout, for debugging",
 		Value: 30 * time.Second,
 	},
-
+	cli.StringFlag{
+		Name:  "gcp-oauth-client-id",
+		Usage: "Identifies the CUPS Connector to the Google Cloud Print cloud service",
+		Value: lib.DefaultConfig.GCPOAuthClientID,
+	},
+	cli.StringFlag{
+		Name:  "gcp-oauth-client-secret",
+		Usage: "Goes along with the Client ID. Not actually secret",
+		Value: lib.DefaultConfig.GCPOAuthClientSecret,
+	},
 	cli.StringFlag{
 		Name:  "gcp-user-refresh-token",
 		Usage: "GCP user refresh token, useful when managing many connectors",
@@ -100,21 +136,49 @@ var commonInitFlags = []cli.Flag{
 	},
 	cli.StringFlag{
 		Name:  "log-level",
-		Usage: "Minimum event severity to log: PANIC, ERROR, WARN, INFO, DEBUG, VERBOSE",
+		Usage: "Minimum event severity to log: FATAL, ERROR, WARNING, INFO, DEBUG",
 		Value: lib.DefaultConfig.LogLevel,
 	},
+	cli.IntFlag{
+		Name:  "local-port-low",
+		Usage: "Local HTTP API server port range, low",
+		Value: int(lib.DefaultConfig.LocalPortLow),
+	},
+	cli.IntFlag{
+		Name:  "local-port-high",
+		Usage: "Local HTTP API server port range, high",
+		Value: int(lib.DefaultConfig.LocalPortHigh),
+	},
+}
+
+func postWithRetry(url string, data url.Values) (*http.Response, error) {
+	backoff := lib.Backoff{}
+	for {
+		response, err := http.PostForm(url, data)
+		if err == nil {
+			return response, err
+		}
+		fmt.Printf("POST to %s failed with error: %s\n", url, err)
+
+		p, retryAgain := backoff.Pause()
+		if !retryAgain {
+			return response, err
+		}
+		fmt.Printf("retrying POST to %s in %s\n", url, p)
+		time.Sleep(p)
+	}
 }
 
 // getUserClientFromUser follows the token acquisition steps outlined here:
 // https://developers.google.com/identity/protocols/OAuth2ForDevices
-func getUserClientFromUser(context *cli.Context) (*http.Client, string) {
+func getUserClientFromUser(context *cli.Context) (*http.Client, string, error) {
 	form := url.Values{
-		"client_id": {lib.DefaultConfig.GCPOAuthClientID},
+		"client_id": {context.String("gcp-oauth-client-id")},
 		"scope":     {gcp.ScopeCloudPrint},
 	}
-	response, err := http.PostForm(gcpOAuthDeviceCodeURL, form)
+	response, err := postWithRetry(context.String("gcp-oauth-device-code-url"), form)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, "", err
 	}
 
 	var r struct {
@@ -132,13 +196,13 @@ func getUserClientFromUser(context *cli.Context) (*http.Client, string) {
 	return pollOAuthConfirmation(context, r.DeviceCode, r.Interval)
 }
 
-func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int) (*http.Client, string) {
+func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int) (*http.Client, string, error) {
 	config := oauth2.Config{
-		ClientID:     lib.DefaultConfig.GCPOAuthClientID,
-		ClientSecret: lib.DefaultConfig.GCPOAuthClientSecret,
+		ClientID:     context.String("gcp-oauth-client-id"),
+		ClientSecret: context.String("gcp-oauth-client-secret"),
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  lib.DefaultConfig.GCPOAuthAuthURL,
-			TokenURL: lib.DefaultConfig.GCPOAuthTokenURL,
+			AuthURL:  context.String("gcp-oauth-auth-url"),
+			TokenURL: context.String("gcp-oauth-token-url"),
 		},
 		RedirectURL: gcp.RedirectURL,
 		Scopes:      []string{gcp.ScopeCloudPrint},
@@ -148,14 +212,14 @@ func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int
 		time.Sleep(time.Duration(interval) * time.Second)
 
 		form := url.Values{
-			"client_id":     {lib.DefaultConfig.GCPOAuthClientID},
-			"client_secret": {lib.DefaultConfig.GCPOAuthClientSecret},
+			"client_id":     {context.String("gcp-oauth-client-id")},
+			"client_secret": {context.String("gcp-oauth-client-secret")},
 			"code":          {deviceCode},
 			"grant_type":    {gcpOAuthGrantTypeDevice},
 		}
-		response, err := http.PostForm(gcpOAuthTokenPollURL, form)
+		response, err := postWithRetry(context.String("gcp-oauth-token-poll-url"), form)
 		if err != nil {
-			log.Fatalln(err)
+			return nil, "", err
 		}
 
 		var r struct {
@@ -171,12 +235,12 @@ func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int
 			token := &oauth2.Token{RefreshToken: r.RefreshToken}
 			client := config.Client(oauth2.NoContext, token)
 			client.Timeout = context.Duration("gcp-api-timeout")
-			return client, r.RefreshToken
+			return client, r.RefreshToken, nil
 		case "authorization_pending":
 		case "slow_down":
 			interval *= 2
 		default:
-			log.Fatalln(err)
+			return nil, "", err
 		}
 	}
 
@@ -186,8 +250,8 @@ func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int
 // getUserClientFromToken creates a user client with just a refresh token.
 func getUserClientFromToken(context *cli.Context) *http.Client {
 	config := &oauth2.Config{
-		ClientID:     lib.DefaultConfig.GCPOAuthClientID,
-		ClientSecret: lib.DefaultConfig.GCPOAuthClientSecret,
+		ClientID:     context.String("gcp-oauth-client-id"),
+		ClientSecret: context.String("gcp-oauth-client-secret"),
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  lib.DefaultConfig.GCPOAuthAuthURL,
 			TokenURL: lib.DefaultConfig.GCPOAuthTokenURL,
@@ -204,17 +268,16 @@ func getUserClientFromToken(context *cli.Context) *http.Client {
 }
 
 // initRobotAccount creates a GCP robot account for this connector.
-func initRobotAccount(context *cli.Context, userClient *http.Client) (string, string) {
+func initRobotAccount(context *cli.Context, userClient *http.Client) (string, string, error) {
 	params := url.Values{}
-	params.Set("oauth_client_id", lib.DefaultConfig.GCPOAuthClientID)
-
-	url := fmt.Sprintf("%s%s?%s", lib.DefaultConfig.GCPBaseURL, "createrobot", params.Encode())
+	params.Set("oauth_client_id", context.String("gcp-oauth-client-id"))
+	url := fmt.Sprintf("%s%s?%s", context.String("gcp-base-url"), "createrobot", params.Encode())
 	response, err := userClient.Get(url)
 	if err != nil {
-		log.Fatalln(err)
+		return "", "", err
 	}
 	if response.StatusCode != http.StatusOK {
-		log.Fatalf("Failed to initialize robot account: %s\n", response.Status)
+		return "", "", fmt.Errorf("Failed to initialize robot account: %s", response.Status)
 	}
 
 	var robotInit struct {
@@ -225,22 +288,22 @@ func initRobotAccount(context *cli.Context, userClient *http.Client) (string, st
 	}
 
 	if err = json.NewDecoder(response.Body).Decode(&robotInit); err != nil {
-		log.Fatalln(err)
+		return "", "", err
 	}
 	if !robotInit.Success {
-		log.Fatalf("Failed to initialize robot account: %s\n", robotInit.Message)
+		return "", "", fmt.Errorf("Failed to initialize robot account: %s", robotInit.Message)
 	}
 
-	return robotInit.XMPPJID, robotInit.AuthCode
+	return robotInit.XMPPJID, robotInit.AuthCode, nil
 }
 
-func verifyRobotAccount(authCode string) string {
+func verifyRobotAccount(context *cli.Context, authCode string) (string, error) {
 	config := &oauth2.Config{
-		ClientID:     lib.DefaultConfig.GCPOAuthClientID,
-		ClientSecret: lib.DefaultConfig.GCPOAuthClientSecret,
+		ClientID:     context.String("gcp-oauth-client-id"),
+		ClientSecret: context.String("gcp-oauth-client-secret"),
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  lib.DefaultConfig.GCPOAuthAuthURL,
-			TokenURL: lib.DefaultConfig.GCPOAuthTokenURL,
+			AuthURL: context.String("gcp-oauth-auth-url"),
+			TokenURL: context.String("gcp-oauth-token-url"),
 		},
 		RedirectURL: gcp.RedirectURL,
 		Scopes:      []string{gcp.ScopeCloudPrint, gcp.ScopeGoogleTalk},
@@ -248,51 +311,46 @@ func verifyRobotAccount(authCode string) string {
 
 	token, err := config.Exchange(oauth2.NoContext, authCode)
 	if err != nil {
-		log.Fatalln(err)
+		return "", err
 	}
 
-	return token.RefreshToken
+	return token.RefreshToken, nil
 }
 
-func createRobotAccount(context *cli.Context, userClient *http.Client) (string, string) {
-	xmppJID, authCode := initRobotAccount(context, userClient)
-	token := verifyRobotAccount(authCode)
+func createRobotAccount(context *cli.Context, userClient *http.Client) (string, string, error) {
+	xmppJID, authCode, err := initRobotAccount(context, userClient)
+	if err != nil {
+		return "", "", err
+	}
+	token, err := verifyRobotAccount(context, authCode)
+	if err != nil {
+		return "", "", err
+	}
 
-	return xmppJID, token
+	return xmppJID, token, nil
 }
 
-func writeConfigFile(context *cli.Context, config *lib.Config) string {
-	if configFilename, err := config.ToFile(context); err != nil {
-		log.Fatalln(err)
+func scanString(prompt string) (string, error) {
+	fmt.Println(prompt)
+	reader := bufio.NewReader(os.Stdin)
+	if answer, err := reader.ReadString('\n'); err != nil {
+		return "", err
 	} else {
-		return configFilename
+		answer = strings.TrimSpace(answer) // remove newline
+		fmt.Println("")
+		return answer, nil
 	}
-	panic("unreachable")
 }
 
-func scanNonEmptyString(prompt string) string {
-	for {
-		var answer string
-		fmt.Println(prompt)
-		if length, err := fmt.Scan(&answer); err != nil {
-			log.Fatalln(err)
-		} else if length > 0 {
-			fmt.Println("")
-			return answer
-		}
-	}
-	panic("unreachable")
-}
-
-func scanYesOrNo(question string) bool {
+func scanYesOrNo(question string) (bool, error) {
 	for {
 		var answer string
 		fmt.Println(question)
 		if _, err := fmt.Scan(&answer); err != nil {
-			log.Fatalln(err)
+			return false, err
 		} else if parsed, value := stringToBool(answer); parsed {
 			fmt.Println("")
-			return value
+			return value, nil
 		}
 	}
 	panic("unreachable")
@@ -314,70 +372,101 @@ func stringToBool(val string) (bool, bool) {
 	return false, false
 }
 
-func initConfigFile(context *cli.Context) {
+func initConfigFile(context *cli.Context) error {
+	var err error
+
 	var localEnable bool
-	if context.IsSet("local-printing-enable") {
+	if runtime.GOOS == "windows" {
+		// Remove this if block when Privet support is added to Windows.
+		localEnable = false
+	} else if context.IsSet("local-printing-enable") {
 		localEnable = context.Bool("local-printing-enable")
 	} else {
-		fmt.Println("\"Local printing\" means that clients print directly to the connector via local subnet,")
-		fmt.Println("and that an Internet connection is neither necessary nor used.")
-		localEnable = scanYesOrNo("Enable local printing?")
+		fmt.Println("\"Local printing\" means that clients print directly to the connector via")
+		fmt.Println("local subnet, and that an Internet connection is neither necessary nor used.")
+		localEnable, err = scanYesOrNo("Enable local printing?")
+		if err != nil {
+			return err
+		}
 	}
 
 	var cloudEnable bool
-	if context.IsSet("cloud-printing-enable") {
+	if runtime.GOOS == "windows" {
+		// Remove this if block when Privet support is added to Windows.
+		cloudEnable = true
+	} else if localEnable == false {
+		cloudEnable = true
+	} else if context.IsSet("cloud-printing-enable") {
 		cloudEnable = context.Bool("cloud-printing-enable")
 	} else {
 		fmt.Println("\"Cloud printing\" means that clients can print from anywhere on the Internet,")
 		fmt.Println("and that printers must be explicitly shared with users.")
-		cloudEnable = scanYesOrNo("Enable cloud printing?")
-	}
-
-	if !localEnable && !cloudEnable {
-		log.Fatalln("Try again. Either local or cloud (or both) must be enabled for the connector to do something.")
+		cloudEnable, err = scanYesOrNo("Enable cloud printing?")
+		if err != nil {
+			return err
+		}
 	}
 
 	var config *lib.Config
 
 	var xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName string
 	if cloudEnable {
-		if context.IsSet("share-scope") {
-			shareScope = context.String("share-scope")
-		} else if scanYesOrNo("Retain the user OAuth token to enable automatic sharing?") {
-			shareScope = scanNonEmptyString("User or group email address to share with:")
-		}
-
 		if context.IsSet("proxy-name") {
 			proxyName = context.String("proxy-name")
 		} else {
-			proxyName = scanNonEmptyString("Proxy name for this connector:")
+			v4, err := uuid.NewV4()
+			if err != nil {
+				return err
+			}
+			proxyName = v4.String()
 		}
 
 		var userClient *http.Client
+		var urt string
 		if context.IsSet("gcp-user-refresh-token") {
 			userClient = getUserClientFromToken(context)
-			if shareScope != "" {
-				userRefreshToken = context.String("gcp-user-refresh-token")
-			}
 		} else {
-			var urt string
-			userClient, urt = getUserClientFromUser(context)
-			if shareScope != "" {
+			userClient, urt, err = getUserClientFromUser(context)
+			if err != nil {
+				return err
+			}
+		}
+
+		xmppJID, robotRefreshToken, err = createRobotAccount(context, userClient)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println("Acquired OAuth credentials for robot account")
+		fmt.Println("")
+
+		if context.IsSet("share-scope") {
+			shareScope = context.String("share-scope")
+		} else {
+			shareScope, err = scanString("Enter the email address of a user or group with whom all printers will automatically be shared or leave blank to disable automatic sharing:")
+			if err != nil {
+				return err
+			}
+		}
+
+		if shareScope != "" {
+			if context.IsSet("gcp-user-refresh-token") {
+				userRefreshToken = context.String("gcp-user-refresh-token")
+			} else {
 				userRefreshToken = urt
 			}
 		}
 
-		xmppJID, robotRefreshToken = createRobotAccount(context, userClient)
-
-		fmt.Println("Acquired OAuth credentials for robot account")
-		fmt.Println("")
 		config = createCloudConfig(context, xmppJID, robotRefreshToken, userRefreshToken, shareScope, proxyName, localEnable)
 
 	} else {
 		config = createLocalConfig(context)
 	}
 
-	configFilename := writeConfigFile(context, config)
+	configFilename, err := config.Sparse(context).ToFile(context)
+	if err != nil {
+		return err
+	}
 	fmt.Printf("The config file %s is ready to rock.\n", configFilename)
 	if cloudEnable {
 		fmt.Println("Keep it somewhere safe, as it contains an OAuth refresh token.")
@@ -387,5 +476,8 @@ func initConfigFile(context *cli.Context) {
 	if _, err := os.Stat(socketDirectory); os.IsNotExist(err) {
 		fmt.Println("")
 		fmt.Printf("When the connector runs, be sure the socket directory %s exists.\n", socketDirectory)
+	} else if err != nil {
+		return err
 	}
+	return nil
 }

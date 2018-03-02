@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/google/cups-connector/lib"
+	"github.com/google/cloud-print-connector/lib"
 )
 
 // Privet managers local discovery and printing.
@@ -21,6 +21,7 @@ type Privet struct {
 	apis      map[string]*privetAPI
 	apisMutex sync.RWMutex // Protects apis
 	zc        *zeroconf
+	pm        *portManager
 
 	jobs chan<- *lib.Job
 	jc   jobCache
@@ -32,7 +33,7 @@ type Privet struct {
 // NewPrivet constructs a new Privet object.
 //
 // getProximityToken should be GoogleCloudPrint.ProximityToken()
-func NewPrivet(jobs chan<- *lib.Job, gcpBaseURL string, getProximityToken func(string, string) ([]byte, int, error)) (*Privet, error) {
+func NewPrivet(jobs chan<- *lib.Job, portLow, portHigh uint16, gcpBaseURL string, getProximityToken func(string, string) ([]byte, int, error)) (*Privet, error) {
 	zc, err := newZeroconf()
 	if err != nil {
 		return nil, err
@@ -42,6 +43,7 @@ func NewPrivet(jobs chan<- *lib.Job, gcpBaseURL string, getProximityToken func(s
 		xsrf: newXSRFSecret(),
 		apis: make(map[string]*privetAPI),
 		zc:   zc,
+		pm:   newPortManager(portLow, portHigh),
 
 		jobs: jobs,
 		jc:   *newJobCache(),
@@ -60,7 +62,12 @@ func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func(string) (lib.Pr
 		online = true
 	}
 
-	api, err := newPrivetAPI(printer.GCPID, printer.Name, p.gcpBaseURL, p.xsrf, online, &p.jc, p.jobs, getPrinter, p.getProximityToken)
+	listener, err := p.pm.listen()
+	if err != nil {
+		return err
+	}
+
+	api, err := newPrivetAPI(printer.GCPID, printer.Name, p.gcpBaseURL, p.xsrf, online, &p.jc, p.jobs, getPrinter, p.getProximityToken, listener)
 	if err != nil {
 		return err
 	}
@@ -69,7 +76,7 @@ func (p *Privet) AddPrinter(printer lib.Printer, getPrinter func(string) (lib.Pr
 	if online {
 		localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
 	}
-	err = p.zc.addPrinter(printer.Name, api.port(), localDefaultDisplayName, p.gcpBaseURL, printer.GCPID, online)
+	err = p.zc.addPrinter(printer.Name, api.port(), localDefaultDisplayName, "", p.gcpBaseURL, printer.GCPID, online)
 	if err != nil {
 		api.quit()
 		return err
@@ -95,7 +102,7 @@ func (p *Privet) UpdatePrinter(diff *lib.PrinterDiff) error {
 		localDefaultDisplayName = fmt.Sprintf("%s (local)", localDefaultDisplayName)
 	}
 
-	return p.zc.updatePrinterTXT(diff.Printer.GCPID, localDefaultDisplayName, p.gcpBaseURL, diff.Printer.GCPID, online)
+	return p.zc.updatePrinterTXT(diff.Printer.GCPID, localDefaultDisplayName, "", p.gcpBaseURL, diff.Printer.GCPID, online)
 }
 
 // DeletePrinter removes a printer from Privet.

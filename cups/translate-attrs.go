@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://developers.google.com/open-source/licenses/bsd
 
-// +build linux darwin
+// +build linux darwin freebsd
 
 package cups
 
@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/log"
+	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/log"
 )
 
 // translateAttrs extracts a PrinterDescriptionSection, PrinterStateSection, name, default diplay name, UUID, and tags from maps of tags (CUPS attributes)
@@ -67,6 +67,17 @@ func getUUID(printerTags map[string][]string) string {
 }
 
 func getState(printerTags map[string][]string) cdd.CloudDeviceStateType {
+	// Some CUPS backends (e.g. usb-darwin) add offline-report
+	// to printer-state-reasons when the printer is offline/disconnected
+	reasons, exists := printerTags[attrPrinterStateReasons]
+	if exists && len(reasons) > 0 {
+		for _, reason := range reasons {
+			if reason == "offline-report" {
+				return cdd.CloudDeviceStateStopped
+			}
+		}
+	}
+
 	if s, ok := printerTags[attrPrinterState]; ok {
 		switch s[0] {
 		case "3":
@@ -434,17 +445,17 @@ func convertCopies(printerTags map[string][]string) *cdd.Copies {
 
 var colorByKeyword = map[string]cdd.ColorOption{
 	"auto": cdd.ColorOption{
-		VendorID: fmt.Sprintf("%s%s%s", attrPrintColorMode, internalKeySeparator, "auto"),
+		VendorID: attrPrintColorMode + internalKeySeparator + "auto",
 		Type:     cdd.ColorTypeAuto,
 		CustomDisplayNameLocalized: cdd.NewLocalizedString("Auto"),
 	},
 	"color": cdd.ColorOption{
-		VendorID: fmt.Sprintf("%s%s%s", attrPrintColorMode, internalKeySeparator, "color"),
+		VendorID: attrPrintColorMode + internalKeySeparator + "color",
 		Type:     cdd.ColorTypeStandardColor,
 		CustomDisplayNameLocalized: cdd.NewLocalizedString("Color"),
 	},
 	"monochrome": cdd.ColorOption{
-		VendorID: fmt.Sprintf("%s%s%s", attrPrintColorMode, internalKeySeparator, "monochrome"),
+		VendorID: attrPrintColorMode + internalKeySeparator + "monochrome",
 		Type:     cdd.ColorTypeStandardMonochrome,
 		CustomDisplayNameLocalized: cdd.NewLocalizedString("Monochrome"),
 	},
@@ -456,18 +467,19 @@ func convertColorAttrs(printerTags map[string][]string) *cdd.Color {
 		return nil
 	}
 
+	c := cdd.Color{}
+
 	colorDefault, exists := printerTags[attrPrintColorModeDefault]
 	if !exists || len(colorDefault) != 1 {
 		colorDefault = colorSupported[:1]
 	}
 
-	var c cdd.Color
 	for _, color := range colorSupported {
 		var co cdd.ColorOption
 		var exists bool
 		if co, exists = colorByKeyword[color]; !exists {
 			co = cdd.ColorOption{
-				VendorID: fmt.Sprintf("%s%s%s", attrPrintColorMode, internalKeySeparator, color),
+				VendorID: attrPrintColorMode + internalKeySeparator + color,
 				Type:     cdd.ColorTypeCustomColor,
 				CustomDisplayNameLocalized: cdd.NewLocalizedString(color),
 			}
