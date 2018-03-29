@@ -3,7 +3,7 @@ if [ $# -eq 0 ]; then
   echo "Usage: $me <version>"
   exit 1
 fi
-CONNECTOR_VERSION=$1
+export CONNECTOR_VERSION=$1
 LDFLAGS="github.com/google/cloud-print-connector/lib.BuildDate=$CONNECTOR_VERSION"
 CONNECTOR_DIR=$GOPATH/src/github.com/google/cloud-print-connector
 MSI_FILE="$CONNECTOR_DIR/wix/windows-connector-$CONNECTOR_VERSION.msi"
@@ -42,5 +42,7 @@ if [[ $rc != 0 ]]; then
   echo "Error $rc with WIX light.exe. Exiting."
   exit $rc
 fi
+
+rm $CONNECTOR_DIR/wix/dependencies.wxs
 
 echo "Successfully generated $MSI_FILE"

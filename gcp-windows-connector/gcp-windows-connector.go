@@ -14,13 +14,15 @@ import (
 	"os"
 	"time"
 
-	"github.com/urfave/cli"
+	"github.com/google/cloud-print-connector/fcm"
 	"github.com/google/cloud-print-connector/gcp"
 	"github.com/google/cloud-print-connector/lib"
 	"github.com/google/cloud-print-connector/log"
 	"github.com/google/cloud-print-connector/manager"
+	"github.com/google/cloud-print-connector/notification"
 	"github.com/google/cloud-print-connector/winspool"
 	"github.com/google/cloud-print-connector/xmpp"
+	"github.com/urfave/cli"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/debug"
 )
@@ -56,16 +58,20 @@ type service struct {
 func runService(context *cli.Context) error {
 	interactive, err := svc.IsAnInteractiveSession()
 	if err != nil {
-		return fmt.Errorf("Failed to detect interactive session: %s", err)
+		return cli.NewExitError(fmt.Sprintf("Failed to detect interactive session: %s", err), 1)
 	}
 
 	s := service{context, interactive}
 
 	if interactive {
-		return debug.Run(lib.ConnectorName, &s)
+		err = debug.Run(lib.ConnectorName, &s)
 	} else {
-		return svc.Run(lib.ConnectorName, &s)
+		err = svc.Run(lib.ConnectorName, &s)
 	}
+	if err != nil {
+		err = cli.NewExitError(err.Error(), 1)
+	}
+	return err
 }
 
 func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s chan<- svc.Status) (bool, uint32) {
@@ -114,10 +120,11 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 	}
 
 	jobs := make(chan *lib.Job, 10)
-	xmppNotifications := make(chan xmpp.PrinterNotification, 5)
+	notifications := make(chan notification.PrinterNotification, 5)
 
 	var g *gcp.GoogleCloudPrint
 	var x *xmpp.XMPP
+	var f *fcm.FCM
 	if config.CloudPrintingEnable {
 		xmppPingTimeout, err := time.ParseDuration(config.XMPPPingTimeout)
 		if err != nil {
@@ -133,22 +140,30 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 		g, err = gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 			config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 			config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-			config.GCPMaxConcurrentDownloads, jobs)
+			config.GCPMaxConcurrentDownloads, jobs, config.FcmNotificationsEnable)
 		if err != nil {
 			log.Fatal(err)
 			return false, 1
 		}
-
-		x, err = xmpp.NewXMPP(config.XMPPJID, config.ProxyName, config.XMPPServer, config.XMPPPort,
-			xmppPingTimeout, xmppPingInterval, g.GetRobotAccessToken, xmppNotifications)
-		if err != nil {
-			log.Fatal(err)
-			return false, 1
+		if config.FcmNotificationsEnable {
+			f, err = fcm.NewFCM(config.GCPOAuthClientID, config.ProxyName, config.FcmServerBindUrl, g.FcmSubscribe, notifications)
+			if err != nil {
+				log.Fatal(err)
+				return false, 1
+			}
+			defer f.Quit()
+		} else {
+			x, err = xmpp.NewXMPP(config.XMPPJID, config.ProxyName, config.XMPPServer, config.XMPPPort,
+				xmppPingTimeout, xmppPingInterval, g.GetRobotAccessToken, notifications)
+			if err != nil {
+				log.Fatal(err)
+				return false, 1
+			}
+			defer x.Quit()
 		}
-		defer x.Quit()
 	}
 
-	ws, err := winspool.NewWinSpool(*config.PrefixJobIDToJobTitle, config.DisplayNamePrefix, config.PrinterBlacklist, config.PrinterWhitelist)
+	ws, err := winspool.NewWinSpool(*config.PrefixJobIDToJobTitle, config.DisplayNamePrefix, config.PrinterBlacklist, config.PrinterWhitelist, config.FcmNotificationsEnable)
 	if err != nil {
 		log.Fatal(err)
 		return false, 1
@@ -160,12 +175,27 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 		return false, 1
 	}
 	pm, err := manager.NewPrinterManager(ws, g, nil, nativePrinterPollInterval,
-		config.NativeJobQueueSize, *config.CUPSJobFullUsername, config.ShareScope, jobs, xmppNotifications)
+		config.NativeJobQueueSize, *config.CUPSJobFullUsername, config.ShareScope, jobs, notifications,
+		config.FcmNotificationsEnable)
 	if err != nil {
 		log.Fatal(err)
 		return false, 1
 	}
 	defer pm.Quit()
+
+	// Init FCM client after printers are registered
+	if config.FcmNotificationsEnable && config.CloudPrintingEnable {
+		f.Init()
+	}
+	statusHandle := svc.StatusHandle()
+	if statusHandle != 0 {
+		err = ws.StartPrinterNotifications(statusHandle)
+		if err != nil {
+			log.Error(err)
+		} else {
+			log.Info("Successfully registered for device notifications.")
+		}
+	}
 
 	if config.CloudPrintingEnable {
 		if config.LocalPrintingEnable {
@@ -193,6 +223,15 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 			})
 
 			return false, 0
+
+		case svc.DeviceEvent:
+			log.Infof("Printers change notification received %d.", request.EventType)
+			// Delay the action to let the OS finish the process or we might
+			// not see the new printer. Even if we miss it eventually the timed updates
+			// will pick it up.
+			time.AfterFunc(time.Second*5, func() {
+				pm.SyncPrinters(false)
+			})
 
 		default:
 			log.Errorf("Received unsupported service command from service control manager: %d", request.Cmd)

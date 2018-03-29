@@ -35,6 +35,31 @@ const (
 )
 
 var commonInitFlags = []cli.Flag{
+	cli.StringFlag{
+		Name:  "gcp-oauth-token-poll-url",
+		Usage: "OAuth token poll URL",
+		Value: gcpOAuthTokenPollURL,
+	},
+	cli.StringFlag{
+		Name:  "gcp-base-url",
+		Usage: "GCP base URL",
+		Value: lib.DefaultConfig.GCPBaseURL,
+	},
+	cli.StringFlag{
+		Name:  "gcp-oauth-device-code-url",
+		Usage: "OAuth device code URL",
+		Value: gcpOAuthDeviceCodeURL,
+	},
+	cli.StringFlag{
+		Name:  "gcp-oauth-token-url",
+		Usage: "OAuth token URL",
+		Value: lib.DefaultConfig.GCPOAuthTokenURL,
+	},
+	cli.StringFlag{
+		Name:  "gcp-oauth-auth-url",
+		Usage: "OAuth auth URL",
+		Value: lib.DefaultConfig.GCPOAuthAuthURL,
+	},
 	cli.DurationFlag{
 		Name:  "gcp-api-timeout",
 		Usage: "GCP API timeout, for debugging",
@@ -151,7 +176,7 @@ func getUserClientFromUser(context *cli.Context) (*http.Client, string, error) {
 		"client_id": {context.String("gcp-oauth-client-id")},
 		"scope":     {gcp.ScopeCloudPrint},
 	}
-	response, err := postWithRetry(gcpOAuthDeviceCodeURL, form)
+	response, err := postWithRetry(context.String("gcp-oauth-device-code-url"), form)
 	if err != nil {
 		return nil, "", err
 	}
@@ -176,8 +201,8 @@ func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int
 		ClientID:     context.String("gcp-oauth-client-id"),
 		ClientSecret: context.String("gcp-oauth-client-secret"),
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  lib.DefaultConfig.GCPOAuthAuthURL,
-			TokenURL: lib.DefaultConfig.GCPOAuthTokenURL,
+			AuthURL:  context.String("gcp-oauth-auth-url"),
+			TokenURL: context.String("gcp-oauth-token-url"),
 		},
 		RedirectURL: gcp.RedirectURL,
 		Scopes:      []string{gcp.ScopeCloudPrint},
@@ -192,7 +217,7 @@ func pollOAuthConfirmation(context *cli.Context, deviceCode string, interval int
 			"code":          {deviceCode},
 			"grant_type":    {gcpOAuthGrantTypeDevice},
 		}
-		response, err := postWithRetry(gcpOAuthTokenPollURL, form)
+		response, err := postWithRetry(context.String("gcp-oauth-token-poll-url"), form)
 		if err != nil {
 			return nil, "", err
 		}
@@ -246,8 +271,7 @@ func getUserClientFromToken(context *cli.Context) *http.Client {
 func initRobotAccount(context *cli.Context, userClient *http.Client) (string, string, error) {
 	params := url.Values{}
 	params.Set("oauth_client_id", context.String("gcp-oauth-client-id"))
-
-	url := fmt.Sprintf("%s%s?%s", lib.DefaultConfig.GCPBaseURL, "createrobot", params.Encode())
+	url := fmt.Sprintf("%s%s?%s", context.String("gcp-base-url"), "createrobot", params.Encode())
 	response, err := userClient.Get(url)
 	if err != nil {
 		return "", "", err
@@ -278,8 +302,8 @@ func verifyRobotAccount(context *cli.Context, authCode string) (string, error) {
 		ClientID:     context.String("gcp-oauth-client-id"),
 		ClientSecret: context.String("gcp-oauth-client-secret"),
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  lib.DefaultConfig.GCPOAuthAuthURL,
-			TokenURL: lib.DefaultConfig.GCPOAuthTokenURL,
+			AuthURL: context.String("gcp-oauth-auth-url"),
+			TokenURL: context.String("gcp-oauth-token-url"),
 		},
 		RedirectURL: gcp.RedirectURL,
 		Scopes:      []string{gcp.ScopeCloudPrint, gcp.ScopeGoogleTalk},
@@ -390,7 +414,11 @@ func initConfigFile(context *cli.Context) error {
 		if context.IsSet("proxy-name") {
 			proxyName = context.String("proxy-name")
 		} else {
-			proxyName = uuid.NewV4().String()
+			v4, err := uuid.NewV4()
+			if err != nil {
+				return err
+			}
+			proxyName = v4.String()
 		}
 
 		var userClient *http.Client

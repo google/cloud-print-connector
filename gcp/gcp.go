@@ -42,6 +42,10 @@ const (
 	ScopeCloudPrint = "https://www.googleapis.com/auth/cloudprint"
 	ScopeGoogleTalk = "https://www.googleapis.com/auth/googletalk"
 	AccessType      = "offline"
+
+	// Printer Notification channel constants.
+	FCP_CHANNEL     = "FCM_CHANNEL"
+	XMPP_CHANNEL    = "XMPP_CHANNEL"
 )
 
 // GoogleCloudPrint is the interface between Go and the Google Cloud Print API.
@@ -50,13 +54,14 @@ type GoogleCloudPrint struct {
 	robotClient *http.Client
 	userClient  *http.Client
 	proxyName   string
+	useFcm      bool
 
 	jobs              chan<- *lib.Job
 	downloadSemaphore *lib.Semaphore
 }
 
 // NewGoogleCloudPrint establishes a connection with GCP, returns a new GoogleCloudPrint object.
-func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL string, maxConcurrentDownload uint, jobs chan<- *lib.Job) (*GoogleCloudPrint, error) {
+func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName, oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL string, maxConcurrentDownload uint, jobs chan<- *lib.Job, useFcm bool) (*GoogleCloudPrint, error) {
 	robotClient, err := newClient(oauthClientID, oauthClientSecret, oauthAuthURL, oauthTokenURL, robotRefreshToken, ScopeCloudPrint, ScopeGoogleTalk)
 	if err != nil {
 		return nil, err
@@ -75,6 +80,7 @@ func NewGoogleCloudPrint(baseURL, robotRefreshToken, userRefreshToken, proxyName
 		robotClient:       robotClient,
 		userClient:        userClient,
 		proxyName:         proxyName,
+		useFcm:            useFcm,
 		jobs:              jobs,
 		downloadSemaphore: lib.NewSemaphore(maxConcurrentDownload),
 	}
@@ -284,6 +290,12 @@ func (gcp *GoogleCloudPrint) Register(printer *lib.Printer) error {
 	form.Set("capabilities", capabilities)
 	form.Set("capsHash", printer.CapsHash)
 
+	if gcp.useFcm {
+		form.Set("notification_channel", FCP_CHANNEL)
+	} else {
+		form.Set("notification_channel", XMPP_CHANNEL)
+	}
+
 	sortedKeys := make([]string, 0, len(printer.Tags))
 	for key := range printer.Tags {
 		sortedKeys = append(sortedKeys, key)
@@ -343,6 +355,9 @@ func (gcp *GoogleCloudPrint) Update(diff *lib.PrinterDiff) error {
 	}
 	if diff.ConnectorVersionChanged {
 		form.Set("firmware", diff.Printer.ConnectorVersion)
+	}
+	if diff.NotificationChannelChanged {
+		form.Set("notification_channel", diff.Printer.NotificationChannel)
 	}
 
 	if diff.StateChanged || diff.DescriptionChanged || diff.GCPVersionChanged {
@@ -408,22 +423,23 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, error) {
 
 	var printersData struct {
 		Printers []struct {
-			ID                 string                     `json:"id"`
-			Name               string                     `json:"name"`
-			DefaultDisplayName string                     `json:"defaultDisplayName"`
-			UUID               string                     `json:"uuid"`
-			Manufacturer       string                     `json:"manufacturer"`
-			Model              string                     `json:"model"`
-			GCPVersion         string                     `json:"gcpVersion"`
-			SetupURL           string                     `json:"setupUrl"`
-			SupportURL         string                     `json:"supportUrl"`
-			UpdateURL          string                     `json:"updateUrl"`
-			Firmware           string                     `json:"firmware"`
-			Capabilities       cdd.CloudDeviceDescription `json:"capabilities"`
-			CapsHash           string                     `json:"capsHash"`
-			Tags               []string                   `json:"tags"`
-			QueuedJobsCount    uint                       `json:"queuedJobsCount"`
-			SemanticState      cdd.CloudDeviceState       `json:"semanticState"`
+			ID                  string                     `json:"id"`
+			Name                string                     `json:"name"`
+			DefaultDisplayName  string                     `json:"defaultDisplayName"`
+			UUID                string                     `json:"uuid"`
+			Manufacturer        string                     `json:"manufacturer"`
+			Model               string                     `json:"model"`
+			GCPVersion          string                     `json:"gcpVersion"`
+			SetupURL            string                     `json:"setupUrl"`
+			SupportURL          string                     `json:"supportUrl"`
+			UpdateURL           string                     `json:"updateUrl"`
+			Firmware            string                     `json:"firmware"`
+			Capabilities        cdd.CloudDeviceDescription `json:"capabilities"`
+			CapsHash            string                     `json:"capsHash"`
+			Tags                []string                   `json:"tags"`
+			QueuedJobsCount     uint                       `json:"queuedJobsCount"`
+			SemanticState       cdd.CloudDeviceState       `json:"semanticState"`
+			NotificationChannel string                     `json:"notificationChannel"`
 		}
 	}
 	if err = json.Unmarshal(responseBody, &printersData); err != nil {
@@ -444,21 +460,22 @@ func (gcp *GoogleCloudPrint) Printer(gcpID string) (*lib.Printer, uint, error) {
 	}
 
 	printer := &lib.Printer{
-		GCPID:              p.ID,
-		Name:               p.Name,
-		DefaultDisplayName: p.DefaultDisplayName,
-		UUID:               p.UUID,
-		Manufacturer:       p.Manufacturer,
-		Model:              p.Model,
-		GCPVersion:         p.GCPVersion,
-		SetupURL:           p.SetupURL,
-		SupportURL:         p.SupportURL,
-		UpdateURL:          p.UpdateURL,
-		ConnectorVersion:   p.Firmware,
-		State:              p.SemanticState.Printer,
-		Description:        p.Capabilities.Printer,
-		CapsHash:           p.CapsHash,
-		Tags:               tags,
+		GCPID:               p.ID,
+		Name:                p.Name,
+		DefaultDisplayName:  p.DefaultDisplayName,
+		UUID:                p.UUID,
+		Manufacturer:        p.Manufacturer,
+		Model:               p.Model,
+		GCPVersion:          p.GCPVersion,
+		SetupURL:            p.SetupURL,
+		SupportURL:          p.SupportURL,
+		UpdateURL:           p.UpdateURL,
+		ConnectorVersion:    p.Firmware,
+		State:               p.SemanticState.Printer,
+		Description:         p.Capabilities.Printer,
+		CapsHash:            p.CapsHash,
+		Tags:                tags,
+		NotificationChannel: p.NotificationChannel,
 	}
 
 	return printer, p.QueuedJobsCount, err
@@ -544,6 +561,24 @@ func (gcp *GoogleCloudPrint) Download(dst io.Writer, url string) error {
 	}
 
 	return nil
+}
+
+// FCM Subscribe.
+func (gcp *GoogleCloudPrint) FcmSubscribe(subscribeUrl string) (interface{}, error) {
+	response, err := getWithRetry(gcp.robotClient, fmt.Sprintf("%s%s", gcp.baseURL, subscribeUrl))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Fcm Token: %s", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == 200 {
+		data, _ := ioutil.ReadAll(response.Body)
+		var f interface{}
+		json.Unmarshal(data, &f)
+		return f, nil
+	} else {
+		return nil, fmt.Errorf("failed to get Fcm Token: %d", response.StatusCode)
+	}
 }
 
 // Ticket gets a ticket, aka print job options.
@@ -718,8 +753,13 @@ func (gcp *GoogleCloudPrint) assembleJob(job *Job) (*cdd.CloudJobTicket, string,
 
 	gcp.downloadSemaphore.Acquire()
 	t := time.Now()
+	downloadUrl := job.FileURL
+	if !strings.HasPrefix(downloadUrl, "http") {
+		// test env url need to prefix with http
+		downloadUrl = "http://" + job.FileURL
+	}
 	// Do not check err until semaphore is released and timer is stopped.
-	err = gcp.Download(file, job.FileURL)
+	err = gcp.Download(file, downloadUrl)
 	dt := time.Since(t)
 	gcp.downloadSemaphore.Release()
 	if err != nil {

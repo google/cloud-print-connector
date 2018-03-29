@@ -13,19 +13,10 @@ import (
 	"time"
 
 	"github.com/google/cloud-print-connector/log"
+	"github.com/google/cloud-print-connector/notification"
 )
 
 type PrinterNotificationType uint8
-
-const (
-	PrinterNewJobs PrinterNotificationType = iota
-	PrinterDelete
-)
-
-type PrinterNotification struct {
-	GCPID string
-	Type  PrinterNotificationType
-}
 
 type XMPP struct {
 	jid            string
@@ -36,7 +27,7 @@ type XMPP struct {
 	pingInterval   time.Duration
 	getAccessToken func() (string, error)
 
-	notifications chan<- PrinterNotification
+	notifications chan<- notification.PrinterNotification
 	dead          chan struct{}
 
 	quit chan struct{}
@@ -44,7 +35,7 @@ type XMPP struct {
 	ix *internalXMPP
 }
 
-func NewXMPP(jid, proxyName, server string, port uint16, pingTimeout, pingInterval time.Duration, getAccessToken func() (string, error), notifications chan<- PrinterNotification) (*XMPP, error) {
+func NewXMPP(jid, proxyName, server string, port uint16, pingTimeout, pingInterval time.Duration, getAccessToken func() (string, error), notifications chan<- notification.PrinterNotification) (*XMPP, error) {
 	x := XMPP{
 		jid:            jid,
 		proxyName:      proxyName,
@@ -58,9 +49,12 @@ func NewXMPP(jid, proxyName, server string, port uint16, pingTimeout, pingInterv
 		quit:           make(chan struct{}),
 	}
 
-	err := x.startXMPP()
-	if err != nil {
-		return nil, err
+	if err := x.startXMPP(); err != nil {
+		for err != nil {
+			log.Errorf("XMPP start failed, will try again in 10s: %s", err)
+			time.Sleep(10 * time.Second)
+			err = x.startXMPP()
+		}
 	}
 	go x.keepXMPPAlive()
 
@@ -81,7 +75,6 @@ func (x *XMPP) Quit() {
 }
 
 // startXMPP tries to start an XMPP conversation.
-// Tries multiple times before returning an error.
 func (x *XMPP) startXMPP() error {
 	if x.ix != nil {
 		go x.ix.Quit()

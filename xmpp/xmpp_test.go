@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/cloud-print-connector/notification"
 	"github.com/google/cloud-print-connector/xmpp"
 )
 
@@ -53,7 +54,7 @@ func TestXMPP_proxyauth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ch := make(chan<- xmpp.PrinterNotification)
+	ch := make(chan<- notification.PrinterNotification)
 	x, err := xmpp.NewXMPP("jid@example.com", "proxyName", strs[0], uint16(port), time.Minute, time.Minute, func() (string, error) {
 		return "accessToken", nil
 	}, ch)
@@ -85,7 +86,7 @@ func testXMPP_reconnect(t *testing.T) {
 		http.DefaultTransport = orig
 	}()
 
-	ch := make(chan<- xmpp.PrinterNotification)
+	ch := make(chan<- notification.PrinterNotification)
 	x, err := xmpp.NewXMPP("jid@example.com", "proxyName", "127.0.0.1", ts.port, time.Minute, time.Minute, func() (string, error) {
 		return "accessToken", nil
 	}, ch)
@@ -113,7 +114,7 @@ func TestXMPP_ping(t *testing.T) {
 		http.DefaultTransport = orig
 	}()
 
-	ch := make(chan<- xmpp.PrinterNotification)
+	ch := make(chan<- notification.PrinterNotification)
 	x, err := xmpp.NewXMPP("jid@example.com", "proxyName", "127.0.0.1", ts.port, time.Second, time.Second, func() (string, error) {
 		return "accessToken", nil
 	}, ch)
@@ -145,7 +146,7 @@ func testXMPP_pingtimeout(t *testing.T) {
 		http.DefaultTransport = orig
 	}()
 
-	ch := make(chan<- xmpp.PrinterNotification)
+	ch := make(chan<- notification.PrinterNotification)
 	x, err := xmpp.NewXMPP("jid@example.com", "proxyName", "127.0.0.1", ts.port, time.Millisecond, time.Millisecond, func() (string, error) {
 		return "accessToken", nil
 	}, ch)

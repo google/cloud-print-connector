@@ -30,6 +30,9 @@ type Config struct {
 	// Enable cloud discovery and printing.
 	CloudPrintingEnable bool `json:"cloud_printing_enable"`
 
+	// Enable fcm notifications instead of xmpp notifications.
+	FcmNotificationsEnable bool `json:"fcm_notifications_enable"`
+
 	// Associated with root account. XMPP credential.
 	XMPPJID string `json:"xmpp_jid,omitempty"`
 
@@ -44,6 +47,9 @@ type Config struct {
 
 	// User-chosen name of this proxy. Should be unique per Google user account.
 	ProxyName string `json:"proxy_name,omitempty"`
+
+	// FCM url client should listen on.
+	FcmServerBindUrl string `json:"fcm_server_bind_url,omitempty"`
 
 	// XMPP server FQDN.
 	XMPPServer string `json:"xmpp_server,omitempty"`
@@ -153,13 +159,15 @@ type Config struct {
 // Omitted Config fields are omitted on purpose; they are unique per
 // connector instance.
 var DefaultConfig = Config{
-	LocalPrintingEnable: true,
-	CloudPrintingEnable: false,
+	LocalPrintingEnable:    true,
+	CloudPrintingEnable:    false,
+	FcmNotificationsEnable: false,
 
 	XMPPServer:                "talk.google.com",
 	XMPPPort:                  443,
 	XMPPPingTimeout:           "5s",
 	XMPPPingInterval:          "2m",
+	FcmServerBindUrl:          "https://fcm-stream.googleapis.com/fcm/connect/bind",
 	GCPBaseURL:                "https://www.google.com/cloudprint/",
 	GCPOAuthClientID:          "539833558011-35iq8btpgas80nrs3o7mv99hm95d4dv6.apps.googleusercontent.com",
 	GCPOAuthClientSecret:      "V9BfPOvdiYuw12hDx5Y5nR0a",

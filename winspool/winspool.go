@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/cloud-print-connector/cdd"
 	"github.com/google/cloud-print-connector/lib"
+	"golang.org/x/sys/windows"
 )
 
 // winspoolPDS represents capabilities that WinSpool always provides.
@@ -48,8 +49,8 @@ type WinSpool struct {
 	printerWhitelist      map[string]interface{}
 }
 
-func NewWinSpool(prefixJobIDToJobTitle bool, displayNamePrefix string, printerBlacklist []string, printerWhitelist []string) (*WinSpool, error) {
-	systemTags, err := getSystemTags()
+func NewWinSpool(prefixJobIDToJobTitle bool, displayNamePrefix string, printerBlacklist []string, printerWhitelist []string, fcmNotificationsEnable bool) (*WinSpool, error) {
+	systemTags, err := getSystemTags(fcmNotificationsEnable)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +75,7 @@ func NewWinSpool(prefixJobIDToJobTitle bool, displayNamePrefix string, printerBl
 	return &ws, nil
 }
 
-func getSystemTags() (map[string]string, error) {
+func getSystemTags(fcmNotificationsEnable bool) (map[string]string, error) {
 	tags := make(map[string]string)
 
 	tags["connector-version"] = lib.BuildDate
@@ -84,6 +85,11 @@ func getSystemTags() (map[string]string, error) {
 	}
 	tags["system-arch"] = runtime.GOARCH
 	tags["system-golang-version"] = runtime.Version()
+	if fcmNotificationsEnable {
+		tags["system-notifications-channel"] = "fcm"
+	} else {
+		tags["system-notifications-channel"] = "xmpp"
+	}
 	tags["system-windows-version"] = GetWindowsVersion()
 
 	return tags, nil
@@ -928,6 +934,11 @@ func (ws *WinSpool) ReleaseJob(printerName string, jobID uint32) error {
 	}
 
 	return nil
+}
+
+func (ws *WinSpool) StartPrinterNotifications(handle windows.Handle) error {
+	err := RegisterDeviceNotification(handle)
+	return err
 }
 
 // The following functions are not relevant to Windows printing, but are required by the NativePrintSystem interface.
