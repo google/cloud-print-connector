@@ -6,7 +6,15 @@ fi
 export CONNECTOR_VERSION=$1
 LDFLAGS="github.com/google/cloud-print-connector/lib.BuildDate=$CONNECTOR_VERSION"
 CONNECTOR_DIR=$GOPATH/src/github.com/google/cloud-print-connector
-MSI_FILE="$CONNECTOR_DIR/wix/windows-connector-$CONNECTOR_VERSION.msi"
+
+arch=$(arch)
+if [[ "$arch" == "i686" ]]; then
+  wixarch="x86"
+elif [[ "$arch" == "x86_64" ]]; then
+  wixarch="x64"
+fi
+
+MSI_FILE="$CONNECTOR_DIR/wix/windows-connector-$CONNECTOR_VERSION-$arch.msi"
 
 echo "Running go get..."
 go get -ldflags -X="$LDFLAGS" -v github.com/google/cloud-print-connector/...
@@ -25,7 +33,7 @@ if [[ $rc != 0 ]]; then
 fi
 
 echo "Running WIX candle.exe..."
-"$WIX/bin/candle.exe" -arch x64 "$CONNECTOR_DIR/wix/windows-connector.wxs" \
+"$WIX/bin/candle.exe" -arch $wixarch "$CONNECTOR_DIR/wix/windows-connector-$wixarch.wxs" \
   "$CONNECTOR_DIR/wix/dependencies.wxs"
 rc=$?
 if [[ $rc != 0 ]]; then
