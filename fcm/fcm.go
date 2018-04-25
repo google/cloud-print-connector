@@ -31,6 +31,7 @@ type FCM struct {
 	dead          chan struct{}
 
 	quit chan struct{}
+	backoff backoff
 }
 
 type FCMMessage []struct {
@@ -57,6 +58,7 @@ func NewFCM(clientID string, proxyName string, fcmServerBindURL string, FcmSubsc
 		notifications,
 		make(chan struct{}),
 		make(chan struct{}),
+		backoff{0, time.Second * 5, time.Minute * 5},
 	}
 	return &f, nil
 }
@@ -66,10 +68,13 @@ func (f *FCM) Init() {
 	iidToken := f.GetTokenWithRetry()
 	if err := f.ConnectToFcm(f.notifications, iidToken, f.dead, f.quit); err != nil {
 		for err != nil {
-			log.Errorf("FCM restart failed, will try again in 10s: %s", err)
-			time.Sleep(10 * time.Second)
+			f.backoff.addError()
+			log.Errorf("FCM restart failed, will try again in %4.0f s: %s",
+				f.backoff.delay().Seconds(), err)
+			time.Sleep(f.backoff.delay())
 			err = f.ConnectToFcm(f.notifications, iidToken, f.dead, f.quit)
 		}
+		f.backoff.reset()
 		log.Info("FCM conversation restarted successfully")
 	}
 
@@ -87,9 +92,8 @@ func (f *FCM) ConnectToFcm(fcmNotifications chan<- notification.PrinterNotificat
 	log.Debugf("Connecting to %s?token=%s", f.fcmServerBindURL, iidToken)
 	resp, err := http.Get(fmt.Sprintf("%s?token=%s", f.fcmServerBindURL, iidToken))
 	if err != nil {
-		// failed for ever no need to retry
+		// retrying exponentially
 		log.Errorf("%v", err)
-		quit <- struct{}{}
 		return err
 	}
 	if resp.StatusCode == 200 {
@@ -137,6 +141,42 @@ func GetPrinterID(reader *bufio.Reader) (string, error) {
 	return "", err
 }
 
+type backoff struct {
+	// The number of consecutive connection errors.
+	numErrors uint
+	// The minimum amount of time to backoff.
+	minBackoff time.Duration
+	// The maximum amount of time to backoff.
+	maxBackoff time.Duration
+}
+
+// Computes the amount of time to delay based on the number of errors.
+func (b *backoff) delay() time.Duration {
+	if b.numErrors == 0 {
+		// Never delay when there are no errors.
+		return 0
+	}
+	curDelay := b.minBackoff
+	for i := uint(1); i < b.numErrors; i++ {
+		curDelay = curDelay * 2
+	}
+	if curDelay > b.maxBackoff {
+		return b.maxBackoff
+	}
+	return curDelay
+}
+
+// Adds an observed error to inform the backoff delay decision.
+func (b *backoff) addError() {
+	log.Info("err count")
+	b.numErrors++
+}
+
+// Resets the backoff back to having no errors.
+func (b *backoff) reset() {
+	b.numErrors = 0
+}
+
 // Restart FCM connection when lost.
 func (f *FCM) KeepFcmAlive() {
 	for {
@@ -146,10 +186,13 @@ func (f *FCM) KeepFcmAlive() {
 			log.Error("FCM conversation died; restarting")
 			if err := f.ConnectToFcm(f.notifications, iidToken, f.dead, f.quit); err != nil {
 				for err != nil {
-					log.Errorf("FCM connection restart failed, will try again in 10s: %s", err)
-					time.Sleep(10 * time.Second)
+					f.backoff.addError()
+					log.Errorf("FCM connection restart failed, will try again in %4.0f s: %s",
+						f.backoff.delay().Seconds(), err)
+					time.Sleep(f.backoff.delay())
 					err = f.ConnectToFcm(f.notifications, iidToken, f.dead, f.quit)
 				}
+				f.backoff.reset()
 				log.Info("FCM conversation restarted successfully")
 			}
 
