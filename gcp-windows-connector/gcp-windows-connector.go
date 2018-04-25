@@ -75,7 +75,6 @@ func runService(context *cli.Context) error {
 }
 
 func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s chan<- svc.Status) (bool, uint32) {
-	useFcm := context.FcmNotificationsEnable
 	if service.interactive {
 		if err := log.Start(true); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to start event log: %s\n", err)
@@ -141,12 +140,12 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 		g, err = gcp.NewGoogleCloudPrint(config.GCPBaseURL, config.RobotRefreshToken,
 			config.UserRefreshToken, config.ProxyName, config.GCPOAuthClientID,
 			config.GCPOAuthClientSecret, config.GCPOAuthAuthURL, config.GCPOAuthTokenURL,
-			config.GCPMaxConcurrentDownloads, jobs, useFcm)
+			config.GCPMaxConcurrentDownloads, jobs, config.FcmNotificationsEnable)
 		if err != nil {
 			log.Fatal(err)
 			return false, 1
 		}
-		if useFcm {
+		if config.FcmNotificationsEnable {
 			f, err = fcm.NewFCM(config.GCPOAuthClientID, config.ProxyName, config.FcmServerBindUrl, g.FcmSubscribe, notifications)
 			if err != nil {
 				log.Fatal(err)
@@ -164,7 +163,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 		}
 	}
 
-	ws, err := winspool.NewWinSpool(*config.PrefixJobIDToJobTitle, config.DisplayNamePrefix, config.PrinterBlacklist, config.PrinterWhitelist)
+	ws, err := winspool.NewWinSpool(*config.PrefixJobIDToJobTitle, config.DisplayNamePrefix, config.PrinterBlacklist, config.PrinterWhitelist, config.FcmNotificationsEnable)
 	if err != nil {
 		log.Fatal(err)
 		return false, 1
@@ -177,7 +176,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 	}
 	pm, err := manager.NewPrinterManager(ws, g, nil, nativePrinterPollInterval,
 		config.NativeJobQueueSize, *config.CUPSJobFullUsername, config.ShareScope, jobs, notifications,
-		useFcm)
+		config.FcmNotificationsEnable)
 	if err != nil {
 		log.Fatal(err)
 		return false, 1
@@ -185,7 +184,7 @@ func (service *service) Execute(args []string, r <-chan svc.ChangeRequest, s cha
 	defer pm.Quit()
 
 	// Init FCM client after printers are registered
-	if useFcm && config.CloudPrintingEnable {
+	if config.FcmNotificationsEnable && config.CloudPrintingEnable {
 		f.Init()
 	}
 	statusHandle := svc.StatusHandle()
