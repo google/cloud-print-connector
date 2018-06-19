@@ -188,18 +188,29 @@ func (cc *cupsCore) getPPD(printername *C.char, modtime *C.time_t) (*C.char, err
 		// Cache miss.
 		return buffer, nil
 
+	case C.HTTP_STATUS_NOT_FOUND:
+		// return error so printer is deleted
+		if len(C.GoString(buffer)) > 0 {
+			os.Remove(C.GoString(buffer))
+		}
+		C.free(unsafe.Pointer(buffer))
+		return nil, errors.New("Printer not found")
+
 	default:
+		// treat other errors as cache hits in case they are temporary
 		if len(C.GoString(buffer)) > 0 {
 			os.Remove(C.GoString(buffer))
 		}
 		C.free(unsafe.Pointer(buffer))
 		cupsLastError := C.cupsLastError()
 		if cupsLastError != C.IPP_STATUS_OK {
-			return nil, fmt.Errorf("Failed to call cupsGetPPD3(): %d %s",
-				int(cupsLastError), C.GoString(C.cupsLastErrorString()))
+			log.ErrorPrinter(C.GoString(printername), fmt.Errorf("Failed to call cupsGetPPD3(): %d %s",
+				int(cupsLastError), C.GoString(C.cupsLastErrorString())))
+			return nil, nil
 		}
 
-		return nil, fmt.Errorf("Failed to call cupsGetPPD3(); HTTP status: %d", int(httpStatus))
+		log.ErrorPrinter(C.GoString(printername), fmt.Errorf("Failed to call cupsGetPPD3(); HTTP status: %d", int(httpStatus)))
+		return nil, nil
 	}
 }
 

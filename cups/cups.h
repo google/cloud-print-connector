@@ -49,6 +49,7 @@ http_t *httpConnect2(const char *host, int port, http_addrlist_t *addrlist, int 
 # define HTTP_ENCRYPTION_ALWAYS       HTTP_ENCRYPT_ALWAYS
 # define HTTP_STATUS_OK               HTTP_OK
 # define HTTP_STATUS_NOT_MODIFIED     HTTP_NOT_MODIFIED
+# define HTTP_STATUS_NOT_FOUND        HTTP_NOT_FOUND
 # define IPP_OP_CUPS_GET_PRINTERS     CUPS_GET_PRINTERS
 # define IPP_OP_GET_JOB_ATTRIBUTES    IPP_GET_JOB_ATTRIBUTES
 # define IPP_STATUS_OK                IPP_OK
