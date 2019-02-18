@@ -195,7 +195,7 @@ func (c *CUPS) ConnQtyOpen() uint {
 	return c.cc.connQtyOpen()
 }
 
-// ConnQtyOpen gets the maximum quantity of open CUPS connections.
+// ConnQtyMax gets the maximum quantity of open CUPS connections.
 func (c *CUPS) ConnQtyMax() uint {
 	return c.cc.connQtyMax()
 }
