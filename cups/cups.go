@@ -254,13 +254,19 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 
 		// Check whitelist/blacklist in loop once we have printer name.
 		// Avoids unnecessary processing of excluded printers.
-		if _, exists := ws.printerBlacklist[name]; exists {
+		if _, exists := c.printerBlacklist[name]; exists {
 			log.Debugf("Ignoring blacklisted printer %s", name)
+			if a == nil {
+				break
+			}
 			continue
 		}
-		if len(ws.printerWhitelist) != 0 {
-			if _, exists := ws.printerWhitelist[name]; !exists {
+		if len(c.printerWhitelist) != 0 {
+			if _, exists := c.printerWhitelist[name]; !exists {
 				log.Debugf("Ignoring non-whitelisted printer %s", name)
+				if a == nil {
+					break
+				}
 				continue
 			}
 		}
