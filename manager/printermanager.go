@@ -162,7 +162,7 @@ func (pm *PrinterManager) syncPrintersPeriodically(interval time.Duration) {
 }
 
 func (pm *PrinterManager) SyncPrinters(ignorePrivet bool) error {
-	log.Debug("Synchronizing printers, stand by")
+	log.Info("Synchronizing printers, stand by")
 
 	// Get current snapshot of native printers.
 	nativePrinters, err := pm.native.GetPrinters()
@@ -190,7 +190,7 @@ func (pm *PrinterManager) SyncPrinters(ignorePrivet bool) error {
 	// Compare the snapshot to what we know currently.
 	diffs := lib.DiffPrinters(nativePrinters, pm.printers.GetAll())
 	if diffs == nil {
-		log.Debugf("Printers are already in sync; there are %d", len(nativePrinters))
+		log.Infof("Printers are already in sync; there are %d", len(nativePrinters))
 		return nil
 	}
 
@@ -209,7 +209,7 @@ func (pm *PrinterManager) SyncPrinters(ignorePrivet bool) error {
 
 	// Update what we know.
 	pm.printers.Refresh(currentPrinters)
-	log.Debugf("Finished synchronizing %d printers", len(currentPrinters))
+	log.Infof("Finished synchronizing %d printers", len(currentPrinters))
 
 	return nil
 }
