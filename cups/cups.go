@@ -222,8 +222,6 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 	}
 
 	printers := c.responseToPrinters(response)
-	printers = lib.FilterBlacklistPrinters(printers, c.printerBlacklist)
-	printers = lib.FilterWhitelistPrinters(printers, c.printerWhitelist)
 
 	if c.ignoreRawPrinters {
 		printers = filterRawPrinters(printers)
@@ -253,6 +251,20 @@ func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 		}
 		mAttributes := attributesToMap(attributes)
 		pds, pss, name, defaultDisplayName, uuid, tags := translateAttrs(mAttributes)
+
+		// Check whitelist/blacklist in loop once we have printer name.
+		// Avoids unnecessary processing of excluded printers.
+		if _, exists := ws.printerBlacklist[name]; exists {
+			log.Debugf("Ignoring blacklisted printer %s", name)
+			continue
+		}
+		if len(ws.printerWhitelist) != 0 {
+			if _, exists := ws.printerWhitelist[name]; !exists {
+				log.Debugf("Ignoring non-whitelisted printer %s", name)
+				continue
+			}
+		}
+
 		if !c.infoToDisplayName || defaultDisplayName == "" {
 			defaultDisplayName = name
 		}
