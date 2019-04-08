@@ -326,8 +326,8 @@ func (ws *WinSpool) GetPrinters() ([]lib.Printer, error) {
 			log.Debugf("Ignoring blacklisted printer %s", printerName)
 			continue
 		}
-		if (len(ws.printerWhitelist) != 0) {
-			if _, exists := ws.printerWhitelist[printerName]; ! exists {
+		if len(ws.printerWhitelist) != 0 {
+			if _, exists := ws.printerWhitelist[printerName]; !exists {
 				log.Debugf("Ignoring non-whitelisted printer %s", printerName)
 				continue
 			}
