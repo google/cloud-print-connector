@@ -18,6 +18,7 @@ import (
 
 	"github.com/google/cloud-print-connector/cdd"
 	"github.com/google/cloud-print-connector/lib"
+	"github.com/google/cloud-print-connector/log"
 	"golang.org/x/sys/windows"
 )
 
@@ -318,11 +319,23 @@ func (ws *WinSpool) GetPrinters() ([]lib.Printer, error) {
 	printers := make([]lib.Printer, 0, len(pi2s))
 	for _, pi2 := range pi2s {
 		printerName := pi2.GetPrinterName()
+
+		// Check whitelist/blacklist in loop once we have printerName.
+		// Avoids unnecessary processing of excluded printers.
+		if _, exists := ws.printerBlacklist[printerName]; exists {
+			log.Debugf("Ignoring blacklisted printer %s", printerName)
+			continue
+		}
+		if len(ws.printerWhitelist) != 0 {
+			if _, exists := ws.printerWhitelist[printerName]; !exists {
+				log.Debugf("Ignoring non-whitelisted printer %s", printerName)
+				continue
+			}
+		}
 		portName := pi2.GetPortName()
 		devMode := pi2.GetDevMode()
 
 		manufacturer, model := getManModel(pi2.GetDriverName())
-
 		printer := lib.Printer{
 			Name:               printerName,
 			DefaultDisplayName: ws.displayNamePrefix + printerName,
@@ -449,8 +462,6 @@ func (ws *WinSpool) GetPrinters() ([]lib.Printer, error) {
 		printers = append(printers, printer)
 	}
 
-	printers = lib.FilterBlacklistPrinters(printers, ws.printerBlacklist)
-	printers = lib.FilterWhitelistPrinters(printers, ws.printerWhitelist)
 	printers = addStaticDescriptionToPrinters(printers)
 	printers = ws.addSystemTagsToPrinters(printers)
 

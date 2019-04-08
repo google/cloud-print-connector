@@ -240,28 +240,6 @@ func diffPrinter(pn, pg *Printer) PrinterDiff {
 	}
 }
 
-func FilterBlacklistPrinters(printers []Printer, list map[string]interface{}) []Printer {
-	return filterPrinters(printers, list, false)
-}
-
-func FilterWhitelistPrinters(printers []Printer, list map[string]interface{}) []Printer {
-	if len(list) == 0 {
-		return printers // Empty whitelist means don't use whitelist
-	}
-
-	return filterPrinters(printers, list, true)
-}
-
-func filterPrinters(printers []Printer, list map[string]interface{}, isWhitelist bool) []Printer {
-	result := make([]Printer, 0, len(printers))
-	for i := range printers {
-		if _, exists := list[printers[i].Name]; exists == isWhitelist {
-			result = append(result, printers[i])
-		}
-	}
-	return result
-}
-
 // FilterRawPrinters splits a slice of printers into non-raw and raw.
 func FilterRawPrinters(printers []Printer) ([]Printer, []Printer) {
 	notRaw, raw := make([]Printer, 0, len(printers)), make([]Printer, 0, 0)
