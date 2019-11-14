@@ -35,116 +35,116 @@ const (
 )
 
 var commonInitFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "gcp-oauth-token-poll-url",
 		Usage: "OAuth token poll URL",
 		Value: gcpOAuthTokenPollURL,
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "gcp-base-url",
 		Usage: "GCP base URL",
 		Value: lib.DefaultConfig.GCPBaseURL,
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "gcp-oauth-device-code-url",
 		Usage: "OAuth device code URL",
 		Value: gcpOAuthDeviceCodeURL,
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "gcp-oauth-token-url",
 		Usage: "OAuth token URL",
 		Value: lib.DefaultConfig.GCPOAuthTokenURL,
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "gcp-oauth-auth-url",
 		Usage: "OAuth auth URL",
 		Value: lib.DefaultConfig.GCPOAuthAuthURL,
 	},
-	cli.DurationFlag{
+	&cli.DurationFlag{
 		Name:  "gcp-api-timeout",
 		Usage: "GCP API timeout, for debugging",
 		Value: 30 * time.Second,
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "gcp-oauth-client-id",
 		Usage: "Identifies the CUPS Connector to the Google Cloud Print cloud service",
 		Value: lib.DefaultConfig.GCPOAuthClientID,
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "gcp-oauth-client-secret",
 		Usage: "Goes along with the Client ID. Not actually secret",
 		Value: lib.DefaultConfig.GCPOAuthClientSecret,
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "gcp-user-refresh-token",
 		Usage: "GCP user refresh token, useful when managing many connectors",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "share-scope",
 		Usage: "Scope (user or group email address) to automatically share printers with",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "proxy-name",
 		Usage: "Name for this connector instance. Should be unique per Google user account",
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:  "xmpp-port",
 		Usage: "XMPP port number",
 		Value: int(lib.DefaultConfig.XMPPPort),
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "xmpp-ping-timeout",
 		Usage: "XMPP ping timeout (give up waiting for ping response after this)",
 		Value: lib.DefaultConfig.XMPPPingTimeout,
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "xmpp-ping-interval",
 		Usage: "XMPP ping interval (ping every this often)",
 		Value: lib.DefaultConfig.XMPPPingInterval,
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:  "gcp-max-concurrent-downloads",
 		Usage: "Maximum quantity of PDFs to download concurrently from GCP cloud service",
 		Value: int(lib.DefaultConfig.GCPMaxConcurrentDownloads),
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:  "native-job-queue-size",
 		Usage: "Native job queue size",
 		Value: int(lib.DefaultConfig.NativeJobQueueSize),
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "native-printer-poll-interval",
 		Usage: "Interval, in seconds, between native printer state polls",
 		Value: lib.DefaultConfig.NativePrinterPollInterval,
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "prefix-job-id-to-job-title",
 		Usage: "Whether to add the job ID to the beginning of the job title",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "display-name-prefix",
 		Usage: "Prefix to add to GCP printer's display name",
 		Value: lib.DefaultConfig.DisplayNamePrefix,
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "local-printing-enable",
 		Usage: "Enable local discovery and printing (aka GCP 2.0 or Privet)",
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "cloud-printing-enable",
 		Usage: "Enable cloud discovery and printing",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "log-level",
 		Usage: "Minimum event severity to log: FATAL, ERROR, WARNING, INFO, DEBUG",
 		Value: lib.DefaultConfig.LogLevel,
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:  "local-port-low",
 		Usage: "Local HTTP API server port range, low",
 		Value: int(lib.DefaultConfig.LocalPortLow),
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:  "local-port-high",
 		Usage: "Local HTTP API server port range, high",
 		Value: int(lib.DefaultConfig.LocalPortHigh),

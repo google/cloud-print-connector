@@ -17,73 +17,76 @@ import (
 )
 
 var unixInitFlags = []cli.Flag{
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "log-file-name",
 		Usage: "Log file name, full path",
 		Value: lib.DefaultConfig.LogFileName,
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:  "log-file-max-megabytes",
 		Usage: "Log file max size, in megabytes",
 		Value: int(lib.DefaultConfig.LogFileMaxMegabytes),
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:  "log-max-files",
 		Usage: "Maximum log file quantity before rollover",
 		Value: int(lib.DefaultConfig.LogMaxFiles),
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "log-to-journal",
 		Usage: "Log to the systemd journal (if available) instead of to log-file-name",
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "monitor-socket-filename",
 		Usage: "Filename of unix socket for connector-check to talk to connector",
 		Value: lib.DefaultConfig.MonitorSocketFilename,
 	},
-	cli.IntFlag{
+	&cli.IntFlag{
 		Name:  "cups-max-connections",
 		Usage: "Max connections to CUPS server",
 		Value: int(lib.DefaultConfig.CUPSMaxConnections),
 	},
-	cli.StringFlag{
+	&cli.StringFlag{
 		Name:  "cups-connect-timeout",
 		Usage: "CUPS timeout for opening a new connection",
 		Value: lib.DefaultConfig.CUPSConnectTimeout,
 	},
-	cli.BoolFlag{
+	&cli.BoolFlag{
 		Name:  "cups-job-full-username",
 		Usage: "Whether to use the full username (joe@example.com) in CUPS jobs",
 	},
-	cli.BoolTFlag{
+	&cli.BoolFlag{
 		Name:  "cups-ignore-raw-printers",
 		Usage: "Whether to ignore CUPS raw printers",
+		DefaultText: "1",
 	},
-	cli.BoolTFlag{
+	&cli.BoolFlag{
 		Name:  "cups-ignore-class-printers",
 		Usage: "Whether to ignore CUPS class printers",
+		DefaultText: "1",
 	},
-	cli.BoolTFlag{
+	&cli.BoolFlag{
 		Name:  "copy-printer-info-to-display-name",
 		Usage: "Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName",
+		DefaultText: "1",
 	},
 }
 
-var unixCommands = []cli.Command{
-	cli.Command{
+var unixCommands = []*cli.Command{
+	&cli.Command{
 		Name:      "init",
-		ShortName: "i",
+		Aliases:   []string{"i"},
 		Usage:     "Creates a config file",
 		Action:    initConfigFile,
 		Flags:     append(commonInitFlags, unixInitFlags...),
 	},
-	cli.Command{
+	&cli.Command{
 		Name:      "monitor",
-		ShortName: "m",
+		Aliases: []string{"m"},
 		Usage:     "Read stats from a running connector",
 		Action:    monitorConnector,
 		Flags: []cli.Flag{
-			cli.DurationFlag{
+			&cli.DurationFlag{
 				Name:  "monitor-timeout",
 				Usage: "wait for a monitor response no more than this long",
 				Value: 10 * time.Second,
@@ -98,7 +101,7 @@ func main() {
 	app.Usage = lib.ConnectorName + " for CUPS utility tools"
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
-		lib.ConfigFilenameFlag,
+		&lib.ConfigFilenameFlag,
 	}
 	app.Commands = append(unixCommands, commonCommands...)
 
