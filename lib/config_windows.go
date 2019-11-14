@@ -159,7 +159,7 @@ var DefaultConfig = Config{
 // If the ConfigFilename exists, then it is returned as an absolute path.
 // If neither of those exist, the absolute ConfigFilename is returned.
 func getConfigFilename(context *cli.Context) (string, bool) {
-	cf := context.GlobalString("config-filename")
+	cf := context.String("config-filename")
 
 	if filepath.IsAbs(cf) {
 		// Absolute path specified; user knows what they want.
