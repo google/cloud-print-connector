@@ -33,7 +33,7 @@ func main() {
 	app.Usage = lib.ConnectorName + " for Windows"
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
-		lib.ConfigFilenameFlag,
+		&lib.ConfigFilenameFlag,
 	}
 	app.Action = runService
 	app.Run(os.Args)

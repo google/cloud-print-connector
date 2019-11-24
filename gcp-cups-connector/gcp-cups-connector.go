@@ -38,8 +38,8 @@ func main() {
 	app.Usage = lib.ConnectorName + " for CUPS"
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
-		lib.ConfigFilenameFlag,
-		cli.BoolFlag{
+		&lib.ConfigFilenameFlag,
+		&cli.BoolFlag{
 			Name:  "log-to-console",
 			Usage: "Log to STDERR, in addition to configured logging",
 		},

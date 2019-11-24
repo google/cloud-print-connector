@@ -20,40 +20,40 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 )
 
-var windowsCommands = []cli.Command{
-	cli.Command{
+var windowsCommands = []*cli.Command{
+	&cli.Command{
 		Name:      "init",
-		ShortName: "i",
+		Aliases:   []string{"i"},
 		Usage:     "Create a config file",
 		Action:    initConfigFile,
 		Flags:     commonInitFlags,
 	},
-	cli.Command{
+	&cli.Command{
 		Name:   "install-event-log",
 		Usage:  "Install registry entries for the event log",
 		Action: installEventLog,
 	},
-	cli.Command{
+	&cli.Command{
 		Name:   "remove-event-log",
 		Usage:  "Remove registry entries for the event log",
 		Action: removeEventLog,
 	},
-	cli.Command{
+	&cli.Command{
 		Name:   "create-service",
 		Usage:  "Create a service in the local service control manager",
 		Action: createService,
 	},
-	cli.Command{
+	&cli.Command{
 		Name:   "delete-service",
 		Usage:  "Delete an existing service in the local service control manager",
 		Action: deleteService,
 	},
-	cli.Command{
+	&cli.Command{
 		Name:   "start-service",
 		Usage:  "Start the service in the local service control manager",
 		Action: startService,
 	},
-	cli.Command{
+	&cli.Command{
 		Name:   "stop-service",
 		Usage:  "Stop the service in the local service control manager",
 		Action: stopService,
@@ -178,7 +178,7 @@ func main() {
 	app.Usage = lib.ConnectorName + " for Windows utility tools"
 	app.Version = lib.BuildDate
 	app.Flags = []cli.Flag{
-		lib.ConfigFilenameFlag,
+		&lib.ConfigFilenameFlag,
 	}
 	app.Commands = append(windowsCommands, commonCommands...)
 
