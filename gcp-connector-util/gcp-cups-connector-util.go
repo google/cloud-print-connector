@@ -109,7 +109,6 @@ var commonCommands = []cli.Command{
 			&cli.BoolFlag{
 				Name:  "skip-notification",
 				Usage: "Skip sending email notice. Defaults to true",
-				DefaultText: "1",
 			},
 			&cli.BoolFlag{
 				Name:  "public",

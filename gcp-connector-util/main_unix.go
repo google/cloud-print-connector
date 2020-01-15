@@ -58,17 +58,14 @@ var unixInitFlags = []cli.Flag{
 	&cli.BoolFlag{
 		Name:  "cups-ignore-raw-printers",
 		Usage: "Whether to ignore CUPS raw printers",
-		DefaultText: "1",
 	},
 	&cli.BoolFlag{
 		Name:  "cups-ignore-class-printers",
 		Usage: "Whether to ignore CUPS class printers",
-		DefaultText: "1",
 	},
 	&cli.BoolFlag{
 		Name:  "copy-printer-info-to-display-name",
 		Usage: "Whether to copy the CUPS printer's printer-info attribute to the GCP printer's defaultDisplayName",
-		DefaultText: "1",
 	},
 }
 
