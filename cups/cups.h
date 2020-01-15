@@ -19,6 +19,9 @@ https://developers.google.com/open-source/licenses/bsd
 #include <sys/utsname.h> // uname
 #include <time.h>        // time_t
 
+/* https://bugs.launchpad.net/bugs/1859685 */
+#include "cups-private.h"
+
 extern const char
 	*JOB_STATE,
 	*JOB_MEDIA_SHEETS_COMPLETED,
