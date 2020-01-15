@@ -22,23 +22,23 @@ import (
 	"github.com/urfave/cli"
 )
 
-var commonCommands = []*cli.Command{
-	&cli.Command{
+var commonCommands = []cli.Command{
+	cli.Command{
 		Name:   "delete-all-gcp-printers",
 		Usage:  "Delete all printers associated with this connector",
 		Action: deleteAllGCPPrinters,
 	},
-	&cli.Command{
+	cli.Command{
 		Name:   "backfill-config-file",
 		Usage:  "Add all keys, with default values, to the config file",
 		Action: backfillConfigFile,
 	},
-	&cli.Command{
+	cli.Command{
 		Name:   "sparse-config-file",
 		Usage:  "Remove all keys, with non-default values, from the config file",
 		Action: sparseConfigFile,
 	},
-	&cli.Command{
+	cli.Command{
 		Name:   "delete-gcp-job",
 		Usage:  "Deletes one GCP job",
 		Action: deleteGCPJob,
@@ -48,7 +48,7 @@ var commonCommands = []*cli.Command{
 			},
 		},
 	},
-	&cli.Command{
+	cli.Command{
 		Name:   "cancel-gcp-job",
 		Usage:  "Cancels one GCP job",
 		Action: cancelGCPJob,
@@ -58,7 +58,7 @@ var commonCommands = []*cli.Command{
 			},
 		},
 	},
-	&cli.Command{
+	cli.Command{
 		Name:   "delete-all-gcp-printer-jobs",
 		Usage:  "Delete all queued jobs associated with a printer",
 		Action: deleteAllGCPPrinterJobs,
@@ -68,7 +68,7 @@ var commonCommands = []*cli.Command{
 			},
 		},
 	},
-	&cli.Command{
+	cli.Command{
 		Name:   "cancel-all-gcp-printer-jobs",
 		Usage:  "Cancels all queued jobs associated with a printer",
 		Action: cancelAllGCPPrinterJobs,
@@ -78,7 +78,7 @@ var commonCommands = []*cli.Command{
 			},
 		},
 	},
-	&cli.Command{
+	cli.Command{
 		Name:   "show-gcp-printer-status",
 		Usage:  "Shows the current status of a printer and its jobs",
 		Action: showGCPPrinterStatus,
@@ -88,7 +88,7 @@ var commonCommands = []*cli.Command{
 			},
 		},
 	},
-	&cli.Command{
+	cli.Command{
 		Name:   "share-gcp-printer",
 		Usage:  "Shares a printer with user or group",
 		Action: shareGCPPrinter,
@@ -117,7 +117,7 @@ var commonCommands = []*cli.Command{
 			},
 		},
 	},
-	&cli.Command{
+	cli.Command{
 		Name:   "unshare-gcp-printer",
 		Usage:  "Removes user or group access to printer",
 		Action: unshareGCPPrinter,
@@ -136,7 +136,7 @@ var commonCommands = []*cli.Command{
 			},
 		},
 	},
-	&cli.Command{
+	cli.Command{
 		Name:   "update-gcp-printer",
 		Usage:  "Modifies settings for a printer",
 		Action: updateGCPPrinter,

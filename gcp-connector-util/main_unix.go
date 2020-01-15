@@ -72,15 +72,15 @@ var unixInitFlags = []cli.Flag{
 	},
 }
 
-var unixCommands = []*cli.Command{
-	&cli.Command{
+var unixCommands = []cli.Command{
+	cli.Command{
 		Name:      "init",
 		Aliases:   []string{"i"},
 		Usage:     "Creates a config file",
 		Action:    initConfigFile,
 		Flags:     append(commonInitFlags, unixInitFlags...),
 	},
-	&cli.Command{
+	cli.Command{
 		Name:      "monitor",
 		Aliases: []string{"m"},
 		Usage:     "Read stats from a running connector",
