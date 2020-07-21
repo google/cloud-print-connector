@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://developers.google.com/open-source/licenses/bsd
 
-// +build linux darwin
+// +build linux darwin freebsd
 
 package cups
 
@@ -14,12 +14,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/log"
+	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/lib"
+	"github.com/google/cloud-print-connector/log"
 )
 
 const (
 	ppdBoolean                 = "Boolean"
+	ppdBRDuplex                = "BRDuplex"
 	ppdCMAndResolution         = "CMAndResolution"
 	ppdCloseGroup              = "CloseGroup"
 	ppdCloseSubGroup           = "CloseSubGroup"
@@ -88,6 +90,7 @@ var (
 		`(hpcups|hpijs|HPLIP),?\s+\d+(\.\d+)*|requires proprietary plugin` +
 		`)\s*$`)
 	rPageSize              = regexp.MustCompile(`([\d.]+)(?:mm|in)?x([\d.]+)(mm|in)?`)
+	rPageSizeInPoints      = regexp.MustCompile(`w([\d.]+)h([\d.]+)`)
 	rColor                 = regexp.MustCompile(`(?i)^(?:cmy|rgb|color)`)
 	rGray                  = regexp.MustCompile(`(?i)^(?:gray|black|mono)`)
 	rCMAndResolutionPrefix = regexp.MustCompile(`(?i)^(?:on|off)\s*-?\s*`)
@@ -123,49 +126,85 @@ type entry struct {
 	options      []statement
 }
 
-// translatePPD extracts a PrinterDescriptionSection, manufacturer string, and model string
+// translatePPD extracts a PrinterDescriptionSection, manufacturer string, model string, and DuplexVendorMap
 // from a PPD string.
-func translatePPD(ppd string) (*cdd.PrinterDescriptionSection, string, string) {
+func translatePPD(ppd string, vendorPPDOptions []string) (*cdd.PrinterDescriptionSection, string, string, lib.DuplexVendorMap) {
 	statements := ppdToStatements(ppd)
 	openUIStatements, installables, uiConstraints, standAlones := groupStatements(statements)
 	openUIStatements = filterConstraints(openUIStatements, installables, uiConstraints)
 	entriesByMainKeyword, entriesByTranslation := openUIStatementsToEntries(openUIStatements)
 
+	consideredMainKeywords := make(map[string]struct{})
+
 	pds := cdd.PrinterDescriptionSection{
 		VendorCapability: &[]cdd.VendorCapability{},
 	}
+
+	var duplexMap lib.DuplexVendorMap
 	if e, exists := entriesByMainKeyword[ppdPageSize]; exists {
 		pds.MediaSize = convertMediaSize(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
 	if e, exists := entriesByMainKeyword[ppdColorModel]; exists {
 		pds.Color = convertColorPPD(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	} else if e, exists := entriesByMainKeyword[ppdCMAndResolution]; exists {
 		pds.Color = convertColorPPD(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	} else if e, exists := entriesByMainKeyword[ppdSelectColor]; exists {
 		pds.Color = convertColorPPD(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
 	if e, exists := entriesByMainKeyword[ppdDuplex]; exists {
-		pds.Duplex = convertDuplex(e)
+		pds.Duplex, duplexMap = convertDuplex(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
+	} else if e, exists := entriesByMainKeyword[ppdBRDuplex]; exists {
+		pds.Duplex, duplexMap = convertDuplex(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	} else if e, exists := entriesByMainKeyword[ppdKMDuplex]; exists {
-		pds.Duplex = convertDuplex(e)
+		pds.Duplex, duplexMap = convertDuplex(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
 	if e, exists := entriesByMainKeyword[ppdResolution]; exists {
 		pds.DPI = convertDPI(e)
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
 	if e, exists := entriesByMainKeyword[ppdOutputBin]; exists {
 		*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
 	if jobType, exists := entriesByMainKeyword[ppdJobType]; exists {
 		if lockedPrintPassword, exists := entriesByMainKeyword[ppdLockedPrintPassword]; exists {
 			vc := convertRicohLockedPrintPassword(jobType, lockedPrintPassword)
 			if vc != nil {
 				*pds.VendorCapability = append(*pds.VendorCapability, *vc)
+				consideredMainKeywords[jobType.mainKeyword] = struct{}{}
+				consideredMainKeywords[lockedPrintPassword.mainKeyword] = struct{}{}
 			}
 		}
 	}
 	if e, exists := entriesByTranslation[ppdPrintQualityTranslation]; exists {
 		*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
+		consideredMainKeywords[e.mainKeyword] = struct{}{}
 	}
+
+	vendorPPDOptionsMap := make(map[string]struct{}, len(vendorPPDOptions))
+	for _, o := range vendorPPDOptions {
+		vendorPPDOptionsMap[o] = struct{}{}
+	}
+	_, translateAllVendorPPDOptions := vendorPPDOptionsMap["all"]
+	for _, e := range entriesByMainKeyword {
+		if _, exists := consideredMainKeywords[e.mainKeyword]; exists {
+			continue
+		}
+		if !translateAllVendorPPDOptions {
+			if _, exists := vendorPPDOptionsMap[e.mainKeyword]; !exists {
+				continue
+			}
+		}
+		*pds.VendorCapability = append(*pds.VendorCapability, *convertVendorCapability(e))
+	}
+
 	if len(*pds.VendorCapability) == 0 {
 		// Don't generate invalid CDD JSON.
 		pds.VendorCapability = nil
@@ -186,7 +225,7 @@ func translatePPD(ppd string) (*cdd.PrinterDescriptionSection, string, string) {
 	}
 	model = strings.TrimLeft(strings.TrimPrefix(model, manufacturer), " ")
 
-	return &pds, manufacturer, model
+	return &pds, manufacturer, model, duplexMap
 }
 
 // ppdToStatements converts a PPD file to a slice of statements.
@@ -391,7 +430,7 @@ func convertMargins(hwMargins string) *cdd.Margins {
 		if intValue > 0 {
 			marginsType = cdd.MarginsStandard
 		}
-		marginsMicrons[i-1] = pointsToMicrons(intValue)
+		marginsMicrons[i-1] = pointsToMicrons(float32(intValue))
 	}
 
 	// HWResolution format: left, bottom, right, top.
@@ -472,11 +511,11 @@ func convertColorPPD(e entry) *cdd.Color {
 		}
 	}
 
-	c := cdd.Color{VendorKey: e.mainKeyword}
+	c := cdd.Color{}
 	if len(colorOptions) == 1 {
 		colorName := cleanupColorName(colorOptions[0].optionKeyword, colorOptions[0].translation)
 		co := cdd.ColorOption{
-			VendorID: colorOptions[0].optionKeyword,
+			VendorID: e.mainKeyword + internalKeySeparator + colorOptions[0].optionKeyword,
 			Type:     cdd.ColorTypeStandardColor,
 			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 		}
@@ -485,7 +524,7 @@ func convertColorPPD(e entry) *cdd.Color {
 		for _, o := range colorOptions {
 			colorName := cleanupColorName(o.optionKeyword, o.translation)
 			co := cdd.ColorOption{
-				VendorID: o.optionKeyword,
+				VendorID: e.mainKeyword + internalKeySeparator + o.optionKeyword,
 				Type:     cdd.ColorTypeCustomColor,
 				CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 			}
@@ -496,7 +535,7 @@ func convertColorPPD(e entry) *cdd.Color {
 	if len(grayOptions) == 1 {
 		colorName := cleanupColorName(grayOptions[0].optionKeyword, grayOptions[0].translation)
 		co := cdd.ColorOption{
-			VendorID: grayOptions[0].optionKeyword,
+			VendorID: e.mainKeyword + internalKeySeparator + grayOptions[0].optionKeyword,
 			Type:     cdd.ColorTypeStandardMonochrome,
 			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 		}
@@ -505,7 +544,7 @@ func convertColorPPD(e entry) *cdd.Color {
 		for _, o := range grayOptions {
 			colorName := cleanupColorName(o.optionKeyword, o.translation)
 			co := cdd.ColorOption{
-				VendorID: o.optionKeyword,
+				VendorID: e.mainKeyword + internalKeySeparator + o.optionKeyword,
 				Type:     cdd.ColorTypeCustomMonochrome,
 				CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 			}
@@ -516,7 +555,7 @@ func convertColorPPD(e entry) *cdd.Color {
 	for _, o := range otherOptions {
 		colorName := cleanupColorName(o.optionKeyword, o.translation)
 		co := cdd.ColorOption{
-			VendorID: o.optionKeyword,
+			VendorID: e.mainKeyword + internalKeySeparator + o.optionKeyword,
 			Type:     cdd.ColorTypeCustomMonochrome,
 			CustomDisplayNameLocalized: cdd.NewLocalizedString(colorName),
 		}
@@ -528,7 +567,7 @@ func convertColorPPD(e entry) *cdd.Color {
 	}
 
 	for i := range c.Option {
-		if c.Option[i].VendorID == e.defaultValue {
+		if c.Option[i].VendorID == e.mainKeyword+internalKeySeparator+e.defaultValue {
 			c.Option[i].IsDefault = true
 			return &c
 		}
@@ -538,41 +577,47 @@ func convertColorPPD(e entry) *cdd.Color {
 	return &c
 }
 
-func convertDuplex(e entry) *cdd.Duplex {
-	d := cdd.Duplex{VendorKey: e.mainKeyword}
+func convertDuplex(e entry) (*cdd.Duplex, lib.DuplexVendorMap) {
+	d := cdd.Duplex{}
+	duplexMap := lib.DuplexVendorMap{}
 
 	var foundDefault bool
 	for _, o := range e.options {
 		def := o.optionKeyword == e.defaultValue
 		switch o.optionKeyword {
 		case ppdNone, ppdFalse, ppdKMDuplexSingle:
-			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def, o.optionKeyword})
+			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def})
+			duplexMap[cdd.DuplexNoDuplex] = e.mainKeyword + internalKeySeparator + o.optionKeyword
 			foundDefault = foundDefault || def
 		case ppdDuplexNoTumble, ppdTrue, ppdKMDuplexDouble:
-			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def, o.optionKeyword})
+			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def})
+			duplexMap[cdd.DuplexLongEdge] = e.mainKeyword + internalKeySeparator + o.optionKeyword
 			foundDefault = foundDefault || def
 		case ppdDuplexTumble, ppdKMDuplexBooklet:
-			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexShortEdge, def, o.optionKeyword})
+			d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexShortEdge, def})
+			duplexMap[cdd.DuplexShortEdge] = e.mainKeyword + internalKeySeparator + o.optionKeyword
 			foundDefault = foundDefault || def
 		default:
 			if strings.HasPrefix(o.optionKeyword, "1") {
-				d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def, o.optionKeyword})
+				d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexNoDuplex, def})
+				duplexMap[cdd.DuplexNoDuplex] = e.mainKeyword + internalKeySeparator + o.optionKeyword
 				foundDefault = foundDefault || def
 			} else if strings.HasPrefix(o.optionKeyword, "2") {
-				d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def, o.optionKeyword})
+				d.Option = append(d.Option, cdd.DuplexOption{cdd.DuplexLongEdge, def})
+				duplexMap[cdd.DuplexLongEdge] = e.mainKeyword + internalKeySeparator + o.optionKeyword
 				foundDefault = foundDefault || def
 			}
 		}
 	}
 
 	if len(d.Option) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	if !foundDefault {
 		d.Option[0].IsDefault = true
 	}
-	return &d
+	return &d, duplexMap
 }
 
 func convertDPI(e entry) *cdd.DPI {
@@ -718,6 +763,13 @@ func getCustomMediaSizeOption(optionKeyword, translation string) *cdd.MediaSizeO
 		found = rPageSize.FindStringSubmatch(translation)
 	}
 	if found == nil {
+		found = rPageSizeInPoints.FindStringSubmatch(optionKeyword)
+		if found == nil {
+			return nil
+		}
+		found = append(found, "points")
+	}
+	if len(found) != 4 {
 		return nil
 	}
 
@@ -730,22 +782,21 @@ func getCustomMediaSizeOption(optionKeyword, translation string) *cdd.MediaSizeO
 		return nil
 	}
 
-	if found[3] == "mm" {
-		return &cdd.MediaSizeOption{
-			Name:                       cdd.MediaSizeCustom,
-			WidthMicrons:               mmToMicrons(float32(width)),
-			HeightMicrons:              mmToMicrons(float32(height)),
-			VendorID:                   optionKeyword,
-			CustomDisplayNameLocalized: cdd.NewLocalizedString(translation),
-		}
-	} else {
-		return &cdd.MediaSizeOption{
-			Name:                       cdd.MediaSizeCustom,
-			WidthMicrons:               inchesToMicrons(float32(width)),
-			HeightMicrons:              inchesToMicrons(float32(height)),
-			VendorID:                   optionKeyword,
-			CustomDisplayNameLocalized: cdd.NewLocalizedString(translation),
-		}
+	var toMicrons func(float32) int32
+	switch found[3] {
+	case "mm":
+		toMicrons = mmToMicrons
+	case "points":
+		toMicrons = pointsToMicrons
+	default:
+		toMicrons = inchesToMicrons
+	}
+	return &cdd.MediaSizeOption{
+		Name:                       cdd.MediaSizeCustom,
+		WidthMicrons:               toMicrons(float32(width)),
+		HeightMicrons:              toMicrons(float32(height)),
+		VendorID:                   optionKeyword,
+		CustomDisplayNameLocalized: cdd.NewLocalizedString(translation),
 	}
 }
 
@@ -757,8 +808,8 @@ func mmToMicrons(mm float32) int32 {
 	return int32(mm*1000 + 0.5)
 }
 
-func pointsToMicrons(points int64) int32 {
-	return int32(float32(points*25400)/72 + 0.5)
+func pointsToMicrons(points float32) int32 {
+	return int32(points*25400/72 + 0.5)
 }
 
 var ppdMediaSizes = map[string]cdd.MediaSizeOption{

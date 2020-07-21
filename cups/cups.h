@@ -12,6 +12,7 @@ https://developers.google.com/open-source/licenses/bsd
 #define _IPP_PRIVATE_STRUCTURES 1
 
 #include <cups/cups.h>
+#include <cups/ppd.h>
 #include <stddef.h>      // size_t
 #include <stdlib.h>      // free, calloc, malloc
 #include <sys/socket.h>  // AF_UNSPEC

@@ -4,7 +4,7 @@
 // license that can be found in the LICENSE file or at
 // https://developers.google.com/open-source/licenses/bsd
 
-// +build linux darwin
+// +build linux darwin freebsd
 
 package cups
 
@@ -13,8 +13,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/log"
+	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/log"
 )
 
 func TestGetUUID(t *testing.T) {
