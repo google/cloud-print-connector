@@ -4,26 +4,25 @@
 // license that can be found in the LICENSE file or at
 // https://developers.google.com/open-source/licenses/bsd
 
-// +build linux darwin
+// +build linux darwin freebsd
 
 package main
 
 import (
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"time"
 
-	"github.com/codegangsta/cli"
-	"github.com/google/cups-connector/lib"
+	"github.com/google/cloud-print-connector/lib"
+	"github.com/urfave/cli"
 )
 
-func monitorConnector(context *cli.Context) {
+func monitorConnector(context *cli.Context) error {
 	config, filename, err := lib.GetConfig(context)
 	if err != nil {
-		log.Fatalf("Failed to read config file: %s\n", err)
+		return fmt.Errorf("Failed to read config file: %s", err)
 	}
 	if filename == "" {
 		fmt.Println("No config file was found, so using defaults")
@@ -31,31 +30,33 @@ func monitorConnector(context *cli.Context) {
 
 	if _, err := os.Stat(config.MonitorSocketFilename); err != nil {
 		if !os.IsNotExist(err) {
-			log.Fatalln(err)
+			return err
 		}
-		log.Fatalf(
-			"No connector is running, or the monitoring socket %s is mis-configured\n",
+		return fmt.Errorf(
+			"No connector is running, or the monitoring socket %s is mis-configured",
 			config.MonitorSocketFilename)
 	}
 
 	timer := time.AfterFunc(context.Duration("monitor-timeout"), func() {
-		log.Fatalf("Timeout after %s\n", context.Duration("monitor-timeout").String())
+		fmt.Fprintf(os.Stderr, "Monitor check timed out after %s", context.Duration("monitor-timeout").String())
+		os.Exit(1)
 	})
 
 	conn, err := net.DialTimeout("unix", config.MonitorSocketFilename, time.Second)
 	if err != nil {
-		log.Fatalf(
-			"No connector is running, or it is not listening to socket %s\n",
+		return fmt.Errorf(
+			"No connector is running, or it is not listening to socket %s",
 			config.MonitorSocketFilename)
 	}
 	defer conn.Close()
 
 	buf, err := ioutil.ReadAll(conn)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 
 	timer.Stop()
 
 	fmt.Printf(string(buf))
+	return nil
 }

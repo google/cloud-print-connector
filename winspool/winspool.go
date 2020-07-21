@@ -1,10 +1,10 @@
-/*
-Copyright 2015 Google Inc. All rights reserved.
+// Copyright 2015 Google Inc. All rights reserved.
 
-Use of this source code is governed by a BSD-style
-license that can be found in the LICENSE file or at
-https://developers.google.com/open-source/licenses/bsd
-*/
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file or at
+// https://developers.google.com/open-source/licenses/bsd
+
+// +build windows
 
 package winspool
 
@@ -16,8 +16,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/google/cups-connector/cdd"
-	"github.com/google/cups-connector/lib"
+	"github.com/google/cloud-print-connector/cdd"
+	"github.com/google/cloud-print-connector/lib"
+	"github.com/google/cloud-print-connector/log"
+	"golang.org/x/sys/windows"
 )
 
 // winspoolPDS represents capabilities that WinSpool always provides.
@@ -45,10 +47,11 @@ type WinSpool struct {
 	displayNamePrefix     string
 	systemTags            map[string]string
 	printerBlacklist      map[string]interface{}
+	printerWhitelist      map[string]interface{}
 }
 
-func NewWinSpool(prefixJobIDToJobTitle bool, displayNamePrefix string, printerBlacklist []string) (*WinSpool, error) {
-	systemTags, err := getSystemTags()
+func NewWinSpool(prefixJobIDToJobTitle bool, displayNamePrefix string, printerBlacklist []string, printerWhitelist []string, fcmNotificationsEnable bool) (*WinSpool, error) {
+	systemTags, err := getSystemTags(fcmNotificationsEnable)
 	if err != nil {
 		return nil, err
 	}
@@ -58,16 +61,22 @@ func NewWinSpool(prefixJobIDToJobTitle bool, displayNamePrefix string, printerBl
 		pb[p] = struct{}{}
 	}
 
+	pw := map[string]interface{}{}
+	for _, p := range printerWhitelist {
+		pw[p] = struct{}{}
+	}
+
 	ws := WinSpool{
 		prefixJobIDToJobTitle: prefixJobIDToJobTitle,
 		displayNamePrefix:     displayNamePrefix,
 		systemTags:            systemTags,
 		printerBlacklist:      pb,
+		printerWhitelist:      pw,
 	}
 	return &ws, nil
 }
 
-func getSystemTags() (map[string]string, error) {
+func getSystemTags(fcmNotificationsEnable bool) (map[string]string, error) {
 	tags := make(map[string]string)
 
 	tags["connector-version"] = lib.BuildDate
@@ -77,12 +86,17 @@ func getSystemTags() (map[string]string, error) {
 	}
 	tags["system-arch"] = runtime.GOARCH
 	tags["system-golang-version"] = runtime.Version()
+	if fcmNotificationsEnable {
+		tags["system-notifications-channel"] = "fcm"
+	} else {
+		tags["system-notifications-channel"] = "xmpp"
+	}
 	tags["system-windows-version"] = GetWindowsVersion()
 
 	return tags, nil
 }
 
-func convertPrinterState(wsStatus uint32) *cdd.PrinterStateSection {
+func convertPrinterState(wsStatus uint32, wsAttributes uint32) *cdd.PrinterStateSection {
 	state := cdd.PrinterStateSection{
 		State:       cdd.CloudDeviceStateIdle,
 		VendorState: &cdd.VendorState{},
@@ -147,7 +161,12 @@ func convertPrinterState(wsStatus uint32) *cdd.PrinterStateSection {
 		}
 		state.VendorState.Item = append(state.VendorState.Item, vs)
 	}
-	if wsStatus&PRINTER_STATUS_OFFLINE != 0 {
+
+	// If PRINTER_ATTRIBUTE_WORK_OFFLINE is set
+	// spooler won't despool any jobs to the printer.
+	// At least for some USB printers, this flag is controlled
+	// automatically by the system depending on the state of physical connection.
+	if wsStatus&PRINTER_STATUS_OFFLINE != 0 || wsAttributes&PRINTER_ATTRIBUTE_WORK_OFFLINE != 0 {
 		state.State = cdd.CloudDeviceStateStopped
 		vs := cdd.VendorStateItem{
 			State:                cdd.VendorStateError,
@@ -300,18 +319,30 @@ func (ws *WinSpool) GetPrinters() ([]lib.Printer, error) {
 	printers := make([]lib.Printer, 0, len(pi2s))
 	for _, pi2 := range pi2s {
 		printerName := pi2.GetPrinterName()
+
+		// Check whitelist/blacklist in loop once we have printerName.
+		// Avoids unnecessary processing of excluded printers.
+		if _, exists := ws.printerBlacklist[printerName]; exists {
+			log.Debugf("Ignoring blacklisted printer %s", printerName)
+			continue
+		}
+		if len(ws.printerWhitelist) != 0 {
+			if _, exists := ws.printerWhitelist[printerName]; !exists {
+				log.Debugf("Ignoring non-whitelisted printer %s", printerName)
+				continue
+			}
+		}
 		portName := pi2.GetPortName()
 		devMode := pi2.GetDevMode()
 
 		manufacturer, model := getManModel(pi2.GetDriverName())
-
 		printer := lib.Printer{
 			Name:               printerName,
 			DefaultDisplayName: ws.displayNamePrefix + printerName,
 			UUID:               printerName, // TODO: Add something unique from host.
 			Manufacturer:       manufacturer,
 			Model:              model,
-			State:              convertPrinterState(pi2.GetStatus()),
+			State:              convertPrinterState(pi2.GetStatus(), pi2.GetAttributes()),
 			Description:        &cdd.PrinterDescriptionSection{},
 			Tags: map[string]string{
 				"printer-location": pi2.GetLocation(),
@@ -431,21 +462,10 @@ func (ws *WinSpool) GetPrinters() ([]lib.Printer, error) {
 		printers = append(printers, printer)
 	}
 
-	printers = ws.filterBlacklistPrinters(printers)
 	printers = addStaticDescriptionToPrinters(printers)
 	printers = ws.addSystemTagsToPrinters(printers)
 
 	return printers, nil
-}
-
-func (ws *WinSpool) filterBlacklistPrinters(printers []lib.Printer) []lib.Printer {
-	result := make([]lib.Printer, 0, len(printers))
-	for i := range printers {
-		if _, exists := ws.printerBlacklist[printers[i].Name]; !exists {
-			result = append(result, printers[i])
-		}
-	}
-	return result
 }
 
 // addStaticDescriptionToPrinters adds information that is true for all
@@ -545,8 +565,7 @@ func convertJobState(wsStatus uint32) *cdd.JobState {
 		state.Type = cdd.JobStateDone
 
 	} else if wsStatus&JOB_STATUS_PAUSED != 0 || wsStatus == 0 {
-		state.Type = cdd.JobStateStopped
-		state.UserActionCause = &cdd.UserActionCause{cdd.UserActionCausePaused}
+		state.Type = cdd.JobStateDone
 
 	} else if wsStatus&JOB_STATUS_ERROR != 0 {
 		state.Type = cdd.JobStateAborted
@@ -606,7 +625,7 @@ type jobContext struct {
 	cContext CairoContext
 }
 
-func newJobContext(printerName, fileName, title string) (*jobContext, error) {
+func newJobContext(printerName, fileName, title, user string) (*jobContext, error) {
 	pDoc, err := PopplerDocumentNewFromFile(fileName)
 	if err != nil {
 		return nil, err
@@ -641,14 +660,7 @@ func newJobContext(printerName, fileName, title string) (*jobContext, error) {
 		pDoc.Unref()
 		return nil, err
 	}
-	err = hPrinter.SetJob(jobID, JOB_CONTROL_RETAIN)
-	if err != nil {
-		hDC.EndDoc()
-		hDC.DeleteDC()
-		hPrinter.ClosePrinter()
-		pDoc.Unref()
-		return nil, err
-	}
+	hPrinter.SetJobUserName(jobID, user)
 	cSurface, err := CairoWin32PrintingSurfaceCreate(hDC)
 	if err != nil {
 		hDC.EndDoc()
@@ -677,10 +689,6 @@ func (c *jobContext) free() error {
 		return err
 	}
 	err = c.cSurface.Destroy()
-	if err != nil {
-		return err
-	}
-	err = c.hPrinter.SetJob(c.jobID, JOB_CONTROL_RELEASE)
 	if err != nil {
 		return err
 	}
@@ -829,7 +837,7 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 		return 0, errors.New("Print() called with nil ticket")
 	}
 
-	jobContext, err := newJobContext(printer.Name, fileName, title)
+	jobContext, err := newJobContext(printer.Name, fileName, title, user)
 	if err != nil {
 		return 0, err
 	}
@@ -902,10 +910,48 @@ func (ws *WinSpool) Print(printer *lib.Printer, fileName, title, user, gcpJobID 
 		}
 	}
 
+	// Retain unpaused jobs to check the status later. Don't retain paused jobs because
+	// release would delete the job even if it was still paused and hadn't been printed
+	ji1, err := jobContext.hPrinter.GetJob(jobContext.jobID)
+	if err != nil {
+		return 0, err
+	}
+	if ji1.status&JOB_STATUS_PAUSED == 0 {
+		err = jobContext.hPrinter.SetJobCommand(jobContext.jobID, JOB_CONTROL_RETAIN)
+		if err != nil {
+			return 0, err
+		}
+	}
+
 	return uint32(jobContext.jobID), nil
+}
+
+func (ws *WinSpool) ReleaseJob(printerName string, jobID uint32) error {
+	hPrinter, err := OpenPrinter(printerName)
+	if err != nil {
+		return err
+	}
+
+	// Only release if the job was retained (otherwise we get an error)
+	ji1, err := hPrinter.GetJob(int32(jobID))
+	if err != nil {
+		return err
+	}
+	if ji1.status&JOB_STATUS_RETAINED != 0 {
+		err = hPrinter.SetJobCommand(int32(jobID), JOB_CONTROL_RELEASE)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (ws *WinSpool) StartPrinterNotifications(handle windows.Handle) error {
+	err := RegisterDeviceNotification(handle)
+	return err
 }
 
 // The following functions are not relevant to Windows printing, but are required by the NativePrintSystem interface.
 
-func (ws *WinSpool) Quit()                              {}
 func (ws *WinSpool) RemoveCachedPPD(printerName string) {}

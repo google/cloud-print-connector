@@ -18,11 +18,11 @@ func newZeroconf() (*zeroconf, error) {
 	return nil, errors.New("Privet has not been implemented for Windows")
 }
 
-func (z *zeroconf) addPrinter(name string, port uint16, ty, url, id string, online bool) error {
+func (z *zeroconf) addPrinter(name string, port uint16, ty, note, url, id string, online bool) error {
 	return nil
 }
 
-func (z *zeroconf) updatePrinterTXT(name, ty, url, id string, online bool) error {
+func (z *zeroconf) updatePrinterTXT(name, ty, note, url, id string, online bool) error {
 	return nil
 }
 

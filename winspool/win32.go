@@ -1,10 +1,10 @@
-/*
-Copyright 2015 Google Inc. All rights reserved.
+// Copyright 2015 Google Inc. All rights reserved.
 
-Use of this source code is governed by a BSD-style
-license that can be found in the LICENSE file or at
-https://developers.google.com/open-source/licenses/bsd
-*/
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file or at
+// https://developers.google.com/open-source/licenses/bsd
+
+// +build windows
 
 package winspool
 
@@ -15,6 +15,8 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 var (
@@ -22,26 +24,28 @@ var (
 	kernel32 = syscall.MustLoadDLL("kernel32.dll")
 	ntoskrnl = syscall.MustLoadDLL("ntoskrnl.exe")
 	winspool = syscall.MustLoadDLL("winspool.drv")
+	user32   = syscall.MustLoadDLL("user32.dll")
 
-	abortDocProc           = gdi32.MustFindProc("AbortDoc")
-	closePrinterProc       = winspool.MustFindProc("ClosePrinter")
-	createDCProc           = gdi32.MustFindProc("CreateDCW")
-	deleteDCProc           = gdi32.MustFindProc("DeleteDC")
-	deviceCapabilitiesProc = winspool.MustFindProc("DeviceCapabilitiesW")
-	documentPropertiesProc = winspool.MustFindProc("DocumentPropertiesW")
-	endDocProc             = gdi32.MustFindProc("EndDoc")
-	endPageProc            = gdi32.MustFindProc("EndPage")
-	enumPrintersProc       = winspool.MustFindProc("EnumPrintersW")
-	getDeviceCapsProc      = gdi32.MustFindProc("GetDeviceCaps")
-	getJobProc             = winspool.MustFindProc("GetJobW")
-	openPrinterProc        = winspool.MustFindProc("OpenPrinterW")
-	resetDCProc            = gdi32.MustFindProc("ResetDCW")
-	rtlGetVersionProc      = ntoskrnl.MustFindProc("RtlGetVersion")
-	setGraphicsModeProc    = gdi32.MustFindProc("SetGraphicsMode")
-	setJobProc             = winspool.MustFindProc("SetJobW")
-	setWorldTransformProc  = gdi32.MustFindProc("SetWorldTransform")
-	startDocProc           = gdi32.MustFindProc("StartDocW")
-	startPageProc          = gdi32.MustFindProc("StartPage")
+	abortDocProc                   = gdi32.MustFindProc("AbortDoc")
+	closePrinterProc               = winspool.MustFindProc("ClosePrinter")
+	createDCProc                   = gdi32.MustFindProc("CreateDCW")
+	deleteDCProc                   = gdi32.MustFindProc("DeleteDC")
+	deviceCapabilitiesProc         = winspool.MustFindProc("DeviceCapabilitiesW")
+	documentPropertiesProc         = winspool.MustFindProc("DocumentPropertiesW")
+	endDocProc                     = gdi32.MustFindProc("EndDoc")
+	endPageProc                    = gdi32.MustFindProc("EndPage")
+	enumPrintersProc               = winspool.MustFindProc("EnumPrintersW")
+	getDeviceCapsProc              = gdi32.MustFindProc("GetDeviceCaps")
+	getJobProc                     = winspool.MustFindProc("GetJobW")
+	openPrinterProc                = winspool.MustFindProc("OpenPrinterW")
+	resetDCProc                    = gdi32.MustFindProc("ResetDCW")
+	rtlGetVersionProc              = ntoskrnl.MustFindProc("RtlGetVersion")
+	setGraphicsModeProc            = gdi32.MustFindProc("SetGraphicsMode")
+	setJobProc                     = winspool.MustFindProc("SetJobW")
+	setWorldTransformProc          = gdi32.MustFindProc("SetWorldTransform")
+	startDocProc                   = gdi32.MustFindProc("StartDocW")
+	startPageProc                  = gdi32.MustFindProc("StartPage")
+	registerDeviceNotificationProc = user32.MustFindProc("RegisterDeviceNotificationW")
 )
 
 // System error codes.
@@ -97,6 +101,24 @@ const (
 	REG_RESOURCE_REQUIREMENTS_LIST = 10
 	REG_QWORD                      = 11
 	REG_QWORD_LITTLE_ENDIAN        = 11
+)
+
+// PRINTER_INFO_2 attribute values
+const (
+	PRINTER_ATTRIBUTE_QUEUED            uint32 = 0x00000001
+	PRINTER_ATTRIBUTE_DIRECT            uint32 = 0x00000002
+	PRINTER_ATTRIBUTE_DEFAULT           uint32 = 0x00000004
+	PRINTER_ATTRIBUTE_SHARED            uint32 = 0x00000008
+	PRINTER_ATTRIBUTE_NETWORK           uint32 = 0x00000010
+	PRINTER_ATTRIBUTE_HIDDEN            uint32 = 0x00000020
+	PRINTER_ATTRIBUTE_LOCAL             uint32 = 0x00000040
+	PRINTER_ATTRIBUTE_ENABLE_DEVQ       uint32 = 0x00000080
+	PRINTER_ATTRIBUTE_KEEPPRINTEDJOBS   uint32 = 0x00000100
+	PRINTER_ATTRIBUTE_DO_COMPLETE_FIRST uint32 = 0x00000200
+	PRINTER_ATTRIBUTE_WORK_OFFLINE      uint32 = 0x00000400
+	PRINTER_ATTRIBUTE_ENABLE_BIDI       uint32 = 0x00000800
+	PRINTER_ATTRIBUTE_RAW_ONLY          uint32 = 0x00001000
+	PRINTER_ATTRIBUTE_PUBLISHED         uint32 = 0x00002000
 )
 
 // PRINTER_INFO_2 status values.
@@ -173,6 +195,10 @@ func (pi *PrinterInfo2) GetLocation() string {
 
 func (pi *PrinterInfo2) GetDevMode() *DevMode {
 	return pi.pDevMode
+}
+
+func (pi *PrinterInfo2) GetAttributes() uint32 {
+	return pi.attributes
 }
 
 func (pi *PrinterInfo2) GetStatus() uint32 {
@@ -573,8 +599,8 @@ func enumPrinters(level uint32) ([]byte, uint32, error) {
 	}
 
 	var pPrinterEnum []byte = make([]byte, cbBuf)
-	_, _, err = enumPrintersProc.Call(PRINTER_ENUM_LOCAL, 0, uintptr(level), uintptr(unsafe.Pointer(&pPrinterEnum[0])), uintptr(cbBuf), uintptr(unsafe.Pointer(&cbBuf)), uintptr(unsafe.Pointer(&pcReturned)))
-	if err != NO_ERROR {
+	r1, _, err := enumPrintersProc.Call(PRINTER_ENUM_LOCAL, 0, uintptr(level), uintptr(unsafe.Pointer(&pPrinterEnum[0])), uintptr(cbBuf), uintptr(unsafe.Pointer(&cbBuf)), uintptr(unsafe.Pointer(&pcReturned)))
+	if r1 == 0 {
 		return nil, 0, err
 	}
 
@@ -606,16 +632,16 @@ func OpenPrinter(printerName string) (HANDLE, error) {
 	}
 
 	var hPrinter HANDLE
-	_, _, err = openPrinterProc.Call(uintptr(unsafe.Pointer(pPrinterName)), uintptr(unsafe.Pointer(&hPrinter)), 0)
-	if err != NO_ERROR {
+	r1, _, err := openPrinterProc.Call(uintptr(unsafe.Pointer(pPrinterName)), uintptr(unsafe.Pointer(&hPrinter)), 0)
+	if r1 == 0 {
 		return 0, err
 	}
 	return hPrinter, nil
 }
 
 func (hPrinter *HANDLE) ClosePrinter() error {
-	_, _, err := closePrinterProc.Call(uintptr(*hPrinter))
-	if err != NO_ERROR {
+	r1, _, err := closePrinterProc.Call(uintptr(*hPrinter))
+	if r1 == 0 {
 		return err
 	}
 	*hPrinter = 0
@@ -726,8 +752,8 @@ func (hPrinter HANDLE) GetJob(jobID int32) (*JobInfo1, error) {
 	}
 
 	var pJob []byte = make([]byte, cbBuf)
-	_, _, err = getJobProc.Call(uintptr(hPrinter), uintptr(jobID), 1, uintptr(unsafe.Pointer(&pJob[0])), uintptr(cbBuf), uintptr(unsafe.Pointer(&cbBuf)))
-	if err != NO_ERROR {
+	r1, _, err := getJobProc.Call(uintptr(hPrinter), uintptr(jobID), 1, uintptr(unsafe.Pointer(&pJob[0])), uintptr(cbBuf), uintptr(unsafe.Pointer(&cbBuf)))
+	if r1 == 0 {
 		return nil, err
 	}
 
@@ -749,12 +775,39 @@ const (
 	JOB_CONTROL_RELEASE           uint32 = 9
 )
 
-func (hPrinter HANDLE) SetJob(jobID int32, command uint32) error {
-	_, _, err := setJobProc.Call(uintptr(hPrinter), uintptr(jobID), 0, 0, uintptr(command))
-	if err != NO_ERROR {
+func (hPrinter HANDLE) SetJobCommand(jobID int32, command uint32) error {
+	r1, _, err := setJobProc.Call(uintptr(hPrinter), uintptr(jobID), 0, 0, uintptr(command))
+	if r1 == 0 {
+		return err
+	}
+	return nil
+}
+
+func (hPrinter HANDLE) SetJobInfo1(jobID int32, ji1 *JobInfo1) error {
+	r1, _, err := setJobProc.Call(uintptr(hPrinter), uintptr(jobID), 1, uintptr(unsafe.Pointer(ji1)), 0)
+	if r1 == 0 {
+		return err
+	}
+	return nil
+}
+
+func (hPrinter HANDLE) SetJobUserName(jobID int32, userName string) error {
+	ji1, err := hPrinter.GetJob(jobID)
+	if err != nil {
 		return err
 	}
 
+	pUserName, err := syscall.UTF16PtrFromString(userName)
+	if err != nil {
+		return err
+	}
+
+	ji1.pUserName = pUserName
+	ji1.position = 0 // To prevent a possible access denied error (0 is JOB_POSITION_UNSPECIFIED)
+	err = hPrinter.SetJobInfo1(jobID, ji1)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -769,7 +822,6 @@ func CreateDC(deviceName string, devMode *DevMode) (HDC, error) {
 	if r1 == 0 {
 		return 0, err
 	}
-
 	return HDC(r1), nil
 }
 
@@ -806,15 +858,15 @@ func (hDC HDC) StartDoc(docName string) (int32, error) {
 	}
 
 	r1, _, err := startDocProc.Call(uintptr(hDC), uintptr(unsafe.Pointer(&docInfo)))
-	if err != NO_ERROR {
+	if r1 <= 0 {
 		return 0, err
 	}
 	return int32(r1), nil
 }
 
 func (hDC HDC) EndDoc() error {
-	_, _, err := endDocProc.Call(uintptr(hDC))
-	if err != NO_ERROR {
+	r1, _, err := endDocProc.Call(uintptr(hDC))
+	if r1 <= 0 {
 		return err
 	}
 	return nil
@@ -827,16 +879,16 @@ func (hDC HDC) AbortDoc() error {
 }
 
 func (hDC HDC) StartPage() error {
-	_, _, err := startPageProc.Call(uintptr(hDC))
-	if err != NO_ERROR {
+	r1, _, err := startPageProc.Call(uintptr(hDC))
+	if r1 <= 0 {
 		return err
 	}
 	return nil
 }
 
 func (hDC HDC) EndPage() error {
-	_, _, err := endPageProc.Call(uintptr(hDC))
-	if err != NO_ERROR {
+	r1, _, err := endPageProc.Call(uintptr(hDC))
+	if r1 <= 0 {
 		return err
 	}
 	return nil
@@ -848,8 +900,8 @@ const (
 )
 
 func (hDC HDC) SetGraphicsMode(iMode int32) error {
-	_, _, err := setGraphicsModeProc.Call(uintptr(hDC), uintptr(iMode))
-	if err != NO_ERROR {
+	r1, _, err := setGraphicsModeProc.Call(uintptr(hDC), uintptr(iMode))
+	if r1 == 0 {
 		return err
 	}
 	return nil
@@ -1147,4 +1199,50 @@ func GetWindowsVersion() string {
 	}
 
 	return version
+}
+
+type GUID struct {
+	Data1 uint32
+	Data2 uint16
+	Data3 uint16
+	Data4 [8]byte
+}
+
+var PRINTERS_DEVICE_CLASS = GUID{
+	0x4d36e979,
+	0xe325,
+	0x11ce,
+	[8]byte{0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18},
+}
+
+type DevBroadcastDevinterface struct {
+	dwSize       uint32
+	dwDeviceType uint32
+	dwReserved   uint32
+	classGuid    GUID
+	szName       uint16
+}
+
+const (
+	DEVICE_NOTIFY_SERVICE_HANDLE        = 1
+	DEVICE_NOTIFY_ALL_INTERFACE_CLASSES = 4
+
+	DBT_DEVTYP_DEVICEINTERFACE = 5
+)
+
+func RegisterDeviceNotification(handle windows.Handle) error {
+
+	var notificationFilter DevBroadcastDevinterface
+	notificationFilter.dwSize = uint32(unsafe.Sizeof(notificationFilter))
+	notificationFilter.dwDeviceType = DBT_DEVTYP_DEVICEINTERFACE
+	notificationFilter.dwReserved = 0
+	// BUG(pastarmovj): This class is ignored for now. Figure out what the right GUID is.
+	notificationFilter.classGuid = PRINTERS_DEVICE_CLASS
+	notificationFilter.szName = 0
+
+	r1, _, err := registerDeviceNotificationProc.Call(uintptr(handle), uintptr(unsafe.Pointer(&notificationFilter)), DEVICE_NOTIFY_SERVICE_HANDLE|DEVICE_NOTIFY_ALL_INTERFACE_CLASSES)
+	if r1 == 0 {
+		return err
+	}
+	return nil
 }

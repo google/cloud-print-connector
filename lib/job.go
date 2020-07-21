@@ -8,7 +8,7 @@ https://developers.google.com/open-source/licenses/bsd
 
 package lib
 
-import "github.com/google/cups-connector/cdd"
+import "github.com/google/cloud-print-connector/cdd"
 
 type Job struct {
 	NativePrinterName string
