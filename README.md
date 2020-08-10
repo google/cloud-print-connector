@@ -5,9 +5,6 @@ Share printers from your Windows, Linux, FreeBSD or OS X computer with ChromeOS 
 
 Lots of help can be found in [the wiki](https://github.com/google/cloud-print-connector/wiki).
 
-## Mailing list
-Please join the mailing list at https://groups.google.com/forum/#!forum/cloud-print-connector. Anyone can post and view messages.
-
 ## Build Status
 * Linux/OSX: [![Build Status](https://travis-ci.org/google/cloud-print-connector.svg?branch=master)](https://travis-ci.org/google/cloud-print-connector)
 
