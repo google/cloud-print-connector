@@ -1,5 +1,7 @@
 # Google Cloud Print Connector
 
+**Note: After December 31, 2020, Google Cloud Print will no longer be supported. Learn more about your [migration options](https://support.google.com/chrome/?p=cloudprint).**
+
 ## Introduction
 Share printers from your Windows, Linux, FreeBSD or OS X computer with ChromeOS and Android devices, using the Cloud Print Connector. The Connector is a purpose-built system process. It can share hundreds of printers on a powerful server, or one printer on a Raspberry Pi.
 
