@@ -63,7 +63,7 @@ func NewFCM(clientID string, proxyName string, fcmServerBindURL string, FcmSubsc
 	return &f, nil
 }
 
-//  get token from GCP and connect to FCM.
+// Init gets token from GCP and connect to FCM.
 func (f *FCM) Init() {
 	iidToken := f.GetTokenWithRetry()
 	if err := f.ConnectToFcm(f.notifications, iidToken, f.dead, f.quit); err != nil {
@@ -220,7 +220,7 @@ func (f *FCM) GetTokenWithRetry() string {
 	return iidToken
 }
 
-// Returns cached token and Refresh token if needed.
+// GetToken returns cached token and Refresh token if needed.
 func (f *FCM) GetToken() (string, error) {
 	if f.tokenRefreshTime == (time.Time{}) || time.Now().UTC().Sub(f.tokenRefreshTime).Seconds() > f.fcmTTLSecs {
 		result, err := f.FcmSubscribe(fmt.Sprintf("%s?client=%s&proxy=%s", gcpFcmSubscribePath, f.clientID, f.proxyName))

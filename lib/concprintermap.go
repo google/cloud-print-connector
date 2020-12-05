@@ -47,7 +47,7 @@ func (cpm *ConcurrentPrinterMap) Refresh(newPrinters []Printer) {
 	cpm.byGCPID = g
 }
 
-// Get gets a printer, using the native name as key.
+// GetByNativeName gets gets a printer, using the native name as key.
 //
 // The second return value is true if the entry exists.
 func (cpm *ConcurrentPrinterMap) GetByNativeName(name string) (Printer, bool) {
@@ -60,7 +60,7 @@ func (cpm *ConcurrentPrinterMap) GetByNativeName(name string) (Printer, bool) {
 	return Printer{}, false
 }
 
-// Get gets a printer, using the GCP ID as key.
+// GetByGCPID gets gets a printer, using the GCP ID as key.
 //
 // The second return value is true if the entry exists.
 func (cpm *ConcurrentPrinterMap) GetByGCPID(gcpID string) (Printer, bool) {
