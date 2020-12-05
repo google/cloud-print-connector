@@ -39,41 +39,44 @@ void freeStringArrayAndStrings(char **stringArray, int size) {
 // getIPPRequestStatusCode gets the status_code field.
 // This field is not visible to cgo (don't know why).
 ipp_status_t getIPPRequestStatusCode(ipp_t *ipp) {
-	return ipp->request.status.status_code;
+
+	return ippGetStatusCode(ipp);
 }
 
 // getAttributeDateValue gets the ith date value from attr.
 const ipp_uchar_t *getAttributeDateValue(ipp_attribute_t *attr, int i) {
-	return attr->values[i].date;
+	return ippGetDate(attr,i);
 }
 
 // getAttributeIntegerValue gets the ith integer value from attr.
 int getAttributeIntegerValue(ipp_attribute_t *attr, int i) {
-	return attr->values[i].integer;
+	return ippGetInteger(attr,i);
 }
 
 // getAttributeStringValue gets the ith string value from attr.
 const char *getAttributeStringValue(ipp_attribute_t *attr, int i) {
-	return attr->values[i].string.text;
+	return ippGetString(attr,i,NULL);
 }
 
 // getAttributeValueRange gets the ith range value from attr.
 void getAttributeValueRange(ipp_attribute_t *attr, int i, int *lower,
 		int *upper) {
-	*lower = attr->values[i].range.lower;
-	*upper = attr->values[i].range.upper;
+	*lower = ippGetRange(attr,i,upper);
 }
 
 // getAttributeValueResolution gets the ith resolution value from attr.
 // The values returned are always "per inch" not "per centimeter".
 void getAttributeValueResolution(ipp_attribute_t *attr, int i, int *xres,
 		int *yres) {
-	if (IPP_RES_PER_CM == attr->values[i].resolution.units) {
-		*xres = attr->values[i].resolution.xres * 2.54;
-		*yres = attr->values[i].resolution.yres * 2.54;
+	int yreslocal;
+	ipp_res_t unitslocal;
+	int xreslocal = ippGetResolution(attr,i,&yreslocal,&unitslocal);
+	if (IPP_RES_PER_CM == unitslocal) {
+		*xres = xreslocal * 2.54;
+		*yres = yreslocal * 2.54;
 	} else {
-		*xres = attr->values[i].resolution.xres;
-		*yres = attr->values[i].resolution.yres;
+		*xres = xreslocal;
+		*yres = yreslocal;
 	}
 }
 

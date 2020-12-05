@@ -240,13 +240,13 @@ func (c *CUPS) GetPrinters() ([]lib.Printer, error) {
 func (c *CUPS) responseToPrinters(response *C.ipp_t) []lib.Printer {
 	printers := make([]lib.Printer, 0, 1)
 
-	for a := response.attrs; a != nil; a = a.next {
-		if a.group_tag != C.IPP_TAG_PRINTER {
+	for a := C.ippFirstAttribute(response); a != nil; a = C.ippNextAttribute(response) {
+		if C.ippGetGroupTag(a) != C.IPP_TAG_PRINTER {
 			continue
 		}
 
 		attributes := make([]*C.ipp_attribute_t, 0, C.int(len(c.printerAttributes)))
-		for ; a != nil && a.group_tag == C.IPP_TAG_PRINTER; a = a.next {
+		for ; a != nil && C.ippGetGroupTag(a) == C.IPP_TAG_PRINTER; a = C.ippNextAttribute(response) {
 			attributes = append(attributes, a)
 		}
 		mAttributes := attributesToMap(attributes)
@@ -562,11 +562,11 @@ func attributesToMap(attributes []*C.ipp_attribute_t) map[string][]string {
 	m := make(map[string][]string)
 
 	for _, a := range attributes {
-		key := C.GoString(a.name)
-		count := int(a.num_values)
+		key := C.GoString(C.ippGetName(a))
+		count := int(C.ippGetCount(a))
 		values := make([]string, count)
 
-		switch a.value_tag {
+		switch C.ippGetValueTag(a) {
 		case C.IPP_TAG_NOVALUE, C.IPP_TAG_NOTSETTABLE:
 			// No value means no value.
 
